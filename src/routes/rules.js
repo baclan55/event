@@ -1,0 +1,95 @@
+const express = require('express');
+const pool = require('../db/pool');
+const upload = require('../middleware/upload');
+const { saveImage } = require('../db/images');
+const { requireAdmin } = require('../middleware/auth');
+
+const router = express.Router();
+
+router.get('/', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, position, title, body, image_id, updated_at
+       FROM rules ORDER BY position ASC, id ASC`
+    );
+    res.json({ rules: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/', requireAdmin, async (req, res, next) => {
+  try {
+    const title = (req.body.title || '').trim();
+    const body = req.body.body || '';
+    if (!title) return res.status(400).json({ error: 'Укажите заголовок правила.' });
+    const maxPos = await pool.query('SELECT COALESCE(MAX(position), -1) + 1 AS next FROM rules');
+    const { rows } = await pool.query(
+      `INSERT INTO rules (position, title, body) VALUES ($1, $2, $3) RETURNING id`,
+      [maxPos.rows[0].next, title, body]
+    );
+    res.json({ ok: true, id: rows[0].id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/reorder', requireAdmin, express.json(), async (req, res, next) => {
+  // не используется UI, но оставлено для удобства (перетаскивание порядка)
+  try {
+    const { order } = req.body || {};
+    if (!Array.isArray(order)) return res.status(400).json({ error: 'order должен быть массивом id.' });
+    for (let i = 0; i < order.length; i++) {
+      await pool.query('UPDATE rules SET position = $1 WHERE id = $2', [i, order[i]]);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const title = (req.body.title || '').trim();
+    const body = req.body.body || '';
+    if (!title) return res.status(400).json({ error: 'Укажите заголовок правила.' });
+    await pool.query(
+      `UPDATE rules SET title = $1, body = $2, updated_at = now() WHERE id = $3`,
+      [title, body, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/image', requireAdmin, upload.single('image'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Файл не получен.' });
+    const imageId = await saveImage(req.file);
+    await pool.query('UPDATE rules SET image_id = $1, updated_at = now() WHERE id = $2', [imageId, req.params.id]);
+    res.json({ ok: true, imageId });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id/image', requireAdmin, async (req, res, next) => {
+  try {
+    await pool.query('UPDATE rules SET image_id = NULL, updated_at = now() WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id', requireAdmin, async (req, res, next) => {
+  try {
+    await pool.query('DELETE FROM rules WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;

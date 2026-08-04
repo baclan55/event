@@ -1,0 +1,38 @@
+# Render Blueprint. Позволяет создать сервис через "New +" -> "Blueprint" в Render,
+# указав на репозиторий с этим проектом. Базу данных (Neon) blueprint не создаёт —
+# её нужно создать отдельно на neon.tech и вставить строку подключения в переменную
+# DATABASE_URL (см. README.md, раздел «Деплой на Render»).
+services:
+  - type: web
+    name: event-department-portal
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/config
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: OWNER_LOGIN
+        sync: false
+      - key: OWNER_PASSWORD
+        sync: false
+      - key: OWNER_NICKNAME
+        value: Владелец
+      - key: APP_TITLE
+        value: Event Department
+      - key: APP_SUBTITLE
+        value: Внутренний портал
+      - key: WEEKLY_EVENTS_TARGET
+        value: "5"
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      - key: DISCORD_REDIRECT_URI
+        sync: false
