@@ -1,5 +1,4 @@
 const App = {
-  // Разделы личного кабинета (внутренний портал для сотрудников).
   navItems: [
     { key: 'faq', label: 'FAQ', icon: 'faq', title: 'FAQ', sub: 'Последовательность проведения мероприятий' },
     { key: 'roster', label: 'Состав', icon: 'roster', title: 'Состав', sub: 'Иерархия сотрудников и мероприятия за неделю' },
@@ -7,14 +6,11 @@ const App = {
     { key: 'regulations', label: 'Регламент', icon: 'regulations', title: 'Регламент', sub: 'Регламент работы по ролям' },
     { key: 'firstSteps', label: 'Первые шаги', icon: 'firstSteps', title: 'Первые шаги', sub: 'С чего начать новому сотруднику' },
     { key: 'reprimands', label: 'Система выговоров', icon: 'reprimands', title: 'Система выговоров', sub: 'Учёт дисциплинарных взысканий', adminOnly: true },
-    { key: 'applications', label: 'Заявки', icon: 'applications', title: 'Заявки', sub: 'Заявки на роль Event Helper', adminOnly: true },
+    { key: 'applications', label: 'Заявки', icon: 'applications', title: 'Заявки', sub: 'Заявки сотрудников' },
   ],
   ownerItem: { key: 'owner', label: 'Панель владельца', icon: 'owner', title: 'Панель владельца', sub: 'Управление пользователями и правами' },
 
-  // Публичные страницы сайта (не требуют входа) — своя, более простая шапка.
-  siteKeys: ['home', 'apply'],
-
-  currentKey: 'home',
+  currentKey: 'faq',
 
   visibleNavItems() {
     return App.navItems.filter((item) => !item.adminOnly || Auth.isAdmin());
@@ -28,6 +24,7 @@ const App = {
   async init() {
     document.body.insertAdjacentHTML('afterbegin', '<div class="bg-decor"></div>');
     await Auth.bootstrap();
+    App.renderShell();
     window.addEventListener('hashchange', App.router);
     App.router();
   },
@@ -35,25 +32,12 @@ const App = {
   navigate(key) { window.location.hash = '#/' + key; },
 
   router() {
-    const hash = (window.location.hash || '#/home').replace('#/', '');
-
-    if (App.siteKeys.includes(hash)) {
-      App.currentKey = hash;
-      App.renderSite(hash);
-      return;
-    }
-
+    const hash = (window.location.hash || '#/faq').replace('#/', '');
     let item = App.findItem(hash);
     if (!item) item = App.navItems[0];
     if (item.adminOnly && !Auth.isAdmin()) item = App.navItems[0];
     if (item.key === 'owner' && !Auth.isOwner()) item = App.navItems[0];
     App.currentKey = item.key;
-
-    // Каркас личного кабинета (сайдбар) перестраивается только когда мы в
-    // него заходим впервые (например, с публичного сайта) — переходы между
-    // разделами внутри кабинета просто обновляют контент.
-    if (!document.querySelector('.sidebar')) App.renderShell();
-
     App.renderTopbar(item);
     App.highlightNav(item.key);
     App.closeMobileSidebar();
@@ -85,47 +69,6 @@ const App = {
     document.querySelector('.sidebar-scrim')?.classList.remove('show');
   },
 
-  // ---------------------------------------------------------------------
-  // Публичный сайт: Главная / Оставить заявку. Простая шапка со ссылкой
-  // на Discord-сообщество и входом в личный кабинет.
-  // ---------------------------------------------------------------------
-  renderSite(key) {
-    const app = document.getElementById('app');
-    const loggedIn = !!Auth.currentUser;
-
-    app.innerHTML = `
-      <div class="site">
-        <header class="site-header">
-          <div class="site-header-inner">
-            <a href="#/home" class="site-brand">
-              <span class="site-brand-mark">ED</span>
-              <span class="site-brand-name">EVENTS DENVER</span>
-            </a>
-            <nav class="site-nav">
-              <a href="#/home" class="site-nav-link ${key === 'home' ? 'active' : ''}">Главная</a>
-              <a href="#/apply" class="site-nav-link ${key === 'apply' ? 'active' : ''}">Оставить заявку</a>
-              <button type="button" class="btn btn-primary btn-sm" id="siteAccountBtn">
-                ${loggedIn ? esc(Auth.currentUser.nickname) : 'Личный кабинет'}
-              </button>
-            </nav>
-          </div>
-        </header>
-        <main class="site-main" id="siteMain"></main>
-      </div>`;
-
-    document.getElementById('siteAccountBtn').addEventListener('click', () => {
-      if (Auth.currentUser) App.navigate('faq');
-      else Auth.openLoginModal();
-    });
-
-    const mount = document.getElementById('siteMain');
-    if (key === 'apply') Site.renderApply(mount);
-    else Site.renderHome(mount);
-  },
-
-  // ---------------------------------------------------------------------
-  // Личный кабинет: сайдбар + внутренние разделы портала.
-  // ---------------------------------------------------------------------
   renderShell() {
     const user = Auth.currentUser;
     const app = document.getElementById('app');
@@ -160,11 +103,10 @@ const App = {
         <div class="brand">
           <div class="brand-mark">${ICONS.faq()}</div>
           <div class="brand-text">
-            <div class="brand-title">Events</div>
-            <div class="brand-sub">Denver · Department Portal</div>
+            <div class="brand-title">Event</div>
+            <div class="brand-sub">Department Portal</div>
           </div>
         </div>
-        <a href="#/home" class="nav-item" style="margin-bottom:14px;">${ICONS.home()}<span>На сайт</span></a>
         <nav class="nav-group">${navHTML}</nav>
         ${ownerHTML}
         <div class="sidebar-spacer"></div>
@@ -184,7 +126,7 @@ const App = {
         <div class="content" id="content"></div>
       </main>`;
 
-    app.querySelectorAll('.nav-item[data-key]').forEach((btn) => {
+    app.querySelectorAll('.nav-item').forEach((btn) => {
       btn.addEventListener('click', () => App.navigate(btn.dataset.key));
     });
     document.getElementById('menuToggle')?.addEventListener('click', () => {
@@ -193,7 +135,7 @@ const App = {
     });
     document.querySelector('.sidebar-scrim')?.addEventListener('click', App.closeMobileSidebar);
     document.getElementById('logoutBtn')?.addEventListener('click', Auth.logout);
-    document.getElementById('sidebarLoginBtn')?.addEventListener('click', () => Auth.openLoginModal());
+    document.getElementById('sidebarLoginBtn')?.addEventListener('click', () => Auth.openLoginModal('login'));
 
     App.wireAccountWidget();
     App.highlightNav(App.currentKey);
@@ -219,7 +161,7 @@ const App = {
       if (Auth.currentUser) {
         App.openAccountMenu(el);
       } else {
-        Auth.openLoginModal();
+        Auth.openLoginModal('login');
       }
     });
   },

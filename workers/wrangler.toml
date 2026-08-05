@@ -1,0 +1,20 @@
+name = "event-department-portal"
+main = "src/index.js"
+compatibility_date = "2026-08-05"
+compatibility_flags = ["nodejs_compat"]
+
+# public/ лежит на уровень выше (общая папка для Render- и Workers-версий).
+[assets]
+directory = "../public/"
+binding = "ASSETS"
+
+# Несекретные настройки — можно менять прямо здесь и переразворачивать.
+# Секреты (DATABASE_URL, SESSION_SECRET, DISCORD_*) сюда НЕ кладём —
+# см. workers/README.md, там про `wrangler secret put`.
+[vars]
+APP_TITLE = "Event Department"
+APP_SUBTITLE = "Внутренний портал"
+WEEKLY_EVENTS_TARGET = "5"
+
+[observability]
+enabled = true

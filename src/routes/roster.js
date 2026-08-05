@@ -11,7 +11,7 @@ const TARGET = parseInt(process.env.WEEKLY_EVENTS_TARGET, 10) || 5;
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT u.id, u.nickname, u.discord_username, u.avatar_image_id,
+      `SELECT u.id, u.nickname, u.login, u.discord_username, u.avatar_image_id,
               u.weekly_events, u.note, u.role_id,
               r.name AS role_name, r.priority AS role_priority
        FROM users u

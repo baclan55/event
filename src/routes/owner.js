@@ -1,4 +1,5 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const pool = require('../db/pool');
 const { requireOwner } = require('../middleware/auth');
 
@@ -9,7 +10,7 @@ router.use(requireOwner);
 router.get('/users', async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT u.id, u.discord_id, u.nickname, u.discord_username, u.is_owner, u.is_admin,
+      `SELECT u.id, u.login, u.nickname, u.discord_username, u.is_owner, u.is_admin,
               u.weekly_events, u.role_id, r.name AS role_name, u.created_at
        FROM users u
        LEFT JOIN roles r ON r.id = u.role_id
@@ -48,6 +49,20 @@ router.put('/users/:id', async (req, res, next) => {
 
     values.push(req.params.id);
     await pool.query(`UPDATE users SET ${fields.join(', ')} WHERE id = $${i}`, values);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/users/:id/password', async (req, res, next) => {
+  try {
+    const { password } = req.body || {};
+    if (!password || String(password).length < 4) {
+      return res.status(400).json({ error: 'Пароль должен быть не короче 4 символов.' });
+    }
+    const hash = await bcrypt.hash(password, 10);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, req.params.id]);
     res.json({ ok: true });
   } catch (err) {
     next(err);

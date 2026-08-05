@@ -75,9 +75,7 @@ CREATE TABLE IF NOT EXISTS reprimands (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Заявки на роль Event Helper (публичная форма на главной странице, без входа).
--- contact/message оставлены для обратной совместимости со старыми записями,
--- новые заявки используют отдельные поля ниже.
+-- Заявки
 CREATE TABLE IF NOT EXISTS applications (
   id             SERIAL PRIMARY KEY,
   applicant_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -88,17 +86,6 @@ CREATE TABLE IF NOT EXISTS applications (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   reviewed_by    INTEGER REFERENCES users(id) ON DELETE SET NULL
 );
-
--- Поля формы заявки (см. src/routes/applications.js). ADD COLUMN IF NOT EXISTS
--- делает это безопасным при повторном запуске и на уже существующей базе.
-ALTER TABLE applications ADD COLUMN IF NOT EXISTS discord          TEXT NOT NULL DEFAULT '';
-ALTER TABLE applications ADD COLUMN IF NOT EXISTS nickname_static  TEXT NOT NULL DEFAULT '';
-ALTER TABLE applications ADD COLUMN IF NOT EXISTS age              TEXT NOT NULL DEFAULT '';
-ALTER TABLE applications ADD COLUMN IF NOT EXISTS avg_online       TEXT NOT NULL DEFAULT '';
-ALTER TABLE applications ADD COLUMN IF NOT EXISTS time_period      TEXT NOT NULL DEFAULT '';
-ALTER TABLE applications ADD COLUMN IF NOT EXISTS experience       TEXT NOT NULL DEFAULT '';
-ALTER TABLE applications ADD COLUMN IF NOT EXISTS ideas            TEXT NOT NULL DEFAULT '';
-ALTER TABLE applications ADD COLUMN IF NOT EXISTS motivation       TEXT NOT NULL DEFAULT '';
 
 -- Таблица сессий для connect-pg-simple (тем же способом её создаёт сама
 -- библиотека, но мы объявляем явно, чтобы миграция была самодостаточной).

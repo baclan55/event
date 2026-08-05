@@ -2,6 +2,7 @@ window.Sections = window.Sections || {};
 window.Sections.roster = {
   async render(container) {
     let members = [], roles = [], target = 5;
+    let activeTab = 'with'; // 'with' | 'without'
     try {
       const [rosterData, rolesData] = await Promise.all([
         api.get('/api/roster'),
@@ -21,61 +22,73 @@ window.Sections.roster = {
       return `<span class="badge ${cls} events-count">${count} / нед.</span>`;
     }
 
+    function memberRowHTML(m, admin) {
+      const actions = admin ? (
+        '<div class="row-actions">' +
+          `<button type="button" class="icon-btn" data-edit="${m.id}" title="Редактировать">${ICONS.edit()}</button>` +
+          `<button type="button" class="icon-btn danger" data-del="${m.id}" title="Удалить">${ICONS.trash()}</button>` +
+        '</div>'
+      ) : '';
+      return `
+        <div class="roster-row" data-id="${m.id}">
+          <div class="who">
+            ${avatarHTML(m.avatar_image_id, m.nickname, 38)}
+            <div>
+              <div class="nickname">${esc(m.nickname)}</div>
+              <div class="role-tag">${esc(m.role_name || 'Без роли')}${m.discord_username ? ' · ' + esc(m.discord_username) : ''}</div>
+            </div>
+          </div>
+          ${eventsBadge(m.weekly_events)}
+          ${actions}
+        </div>`;
+    }
+
     function paint() {
       const admin = Auth.isAdmin();
+      const withRole = members.filter((m) => m.role_id);
+      const withoutRole = members.filter((m) => !m.role_id);
+      const visible = activeTab === 'with' ? withRole : withoutRole;
 
-      // Группируем по роли, сохраняя порядок приоритета (высшая -> низшая)
-      const groups = [];
-      const byRole = new Map();
-      for (const m of members) {
-        const key = m.role_id || 'none';
-        if (!byRole.has(key)) {
-          byRole.set(key, { label: m.role_name || 'Без роли', priority: m.role_priority ?? 999, items: [] });
-          groups.push(byRole.get(key));
+      let listHTML;
+      if (activeTab === 'with') {
+        // Группируем по роли, сохраняя порядок приоритета (высшая -> низшая)
+        const groups = [];
+        const byRole = new Map();
+        for (const m of withRole) {
+          const key = m.role_id;
+          if (!byRole.has(key)) {
+            byRole.set(key, { label: m.role_name || 'Без роли', priority: m.role_priority ?? 999, items: [] });
+            groups.push(byRole.get(key));
+          }
+          byRole.get(key).items.push(m);
         }
-        byRole.get(key).items.push(m);
+        groups.sort((a, b) => a.priority - b.priority);
+        listHTML = groups.length
+          ? groups.map((g) => `
+              <div class="role-group-label">${esc(g.label)} · ${g.items.length}</div>
+              ${g.items.map((m) => memberRowHTML(m, admin)).join('')}`).join('')
+          : `<div class="empty-state"><h3>Никому ещё не назначена роль</h3><p>Назначьте роль участникам во вкладке «Без ролей».</p></div>`;
+      } else {
+        listHTML = withoutRole.length
+          ? withoutRole.map((m) => memberRowHTML(m, admin)).join('')
+          : `<div class="empty-state"><h3>Все участники с ролями</h3><p>Новых сотрудников без роли сейчас нет.</p></div>`;
       }
-      groups.sort((a, b) => a.priority - b.priority);
-
-      function memberRowHTML(m) {
-        const actions = admin ? (
-          '<div class="row-actions">' +
-            `<button type="button" class="icon-btn" data-edit="${m.id}" title="Редактировать">${ICONS.edit()}</button>` +
-            `<button type="button" class="icon-btn danger" data-del="${m.id}" title="Удалить">${ICONS.trash()}</button>` +
-          '</div>'
-        ) : '';
-        return `
-          <div class="roster-row" data-id="${m.id}">
-            <div class="who">
-              ${avatarHTML(m.avatar_image_id, m.nickname, 38)}
-              <div>
-                <div class="nickname">${esc(m.nickname)}</div>
-                <div class="role-tag">${esc(m.role_name || 'Без роли')}${m.discord_username ? ' · ' + esc(m.discord_username) : ''}</div>
-              </div>
-            </div>
-            ${eventsBadge(m.weekly_events)}
-            ${actions}
-          </div>`;
-      }
-
-      function groupHTML(g) {
-        return `
-          <div class="role-group-label">${esc(g.label)} · ${g.items.length}</div>
-          ${g.items.map(memberRowHTML).join('')}`;
-      }
-
-      const groupsHTML = groups.length
-        ? groups.map(groupHTML).join('')
-        : `<div class="empty-state"><h3>Состав пока пуст</h3><p>Добавьте первого участника отдела.</p></div>`;
 
       container.innerHTML = `
         <div class="toolbar">
-          <div class="toolbar-left">${members.length} участников · норма ${target}+ мероприятий в неделю</div>
+          <div class="toolbar-left">${visible.length} ${activeTab === 'with' ? 'участников с ролями' : 'участников без роли'} · норма ${target}+ мероприятий в неделю</div>
           ${admin ? `<div class="toolbar-right"><button type="button" class="btn btn-primary btn-sm" id="addMemberBtn">${ICONS.plus()} Добавить участника</button></div>` : ''}
         </div>
-        ${groupsHTML}`;
+        <div class="segmented" style="margin-bottom:18px;">
+          <button type="button" data-tab="with" class="${activeTab === 'with' ? 'active' : ''}">С ролями · ${withRole.length}</button>
+          <button type="button" data-tab="without" class="${activeTab === 'without' ? 'active' : ''}">Без ролей · ${withoutRole.length}</button>
+        </div>
+        ${listHTML}`;
 
       container.querySelector('#addMemberBtn')?.addEventListener('click', () => openEditModal(null));
+      container.querySelectorAll('[data-tab]').forEach((btn) => {
+        btn.addEventListener('click', () => { activeTab = btn.dataset.tab; paint(); });
+      });
       container.querySelectorAll('[data-edit]').forEach((btn) => {
         btn.addEventListener('click', () => openEditModal(members.find((m) => String(m.id) === btn.dataset.edit)));
       });

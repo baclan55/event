@@ -1,17 +1,49 @@
 window.Sections = window.Sections || {};
 window.Sections.applications = {
   async render(container) {
-    // Подача заявки теперь происходит на публичной странице «Оставить
-    // заявку» (без входа) — здесь только рассмотрение администрацией.
-    if (!Auth.isAdmin()) {
+    if (!Auth.currentUser) {
       container.innerHTML = `
         <div class="empty-state">
-          <h3>Доступ ограничен</h3>
-          <p>Раздел рассмотрения заявок виден только администраторам.</p>
+          <h3>Нужно войти</h3>
+          <p>Чтобы подать заявку, войдите в личный кабинет.</p>
+          <button type="button" class="btn btn-primary btn-sm" id="goLoginBtn" style="margin-top:14px;">Войти</button>
         </div>`;
+      container.querySelector('#goLoginBtn').addEventListener('click', () => Auth.openLoginModal('login'));
       return;
     }
 
+    if (Auth.isAdmin()) {
+      return Sections.applications._renderAdmin(container);
+    }
+    return Sections.applications._renderForm(container);
+  },
+
+  _renderForm(container) {
+    container.innerHTML = `
+      <div class="card card-pad" style="max-width:520px;">
+        <div class="card-header"><h3>Подать заявку</h3></div>
+        <div class="error-text" id="appErr"></div>
+        <div class="field"><label>Контакт (Discord, телефон и т.п.)</label><input class="input" id="appContact"></div>
+        <div class="field"><label>Сообщение</label><textarea class="input" id="appMessage" rows="5" placeholder="Опишите суть заявки"></textarea></div>
+        <button type="button" class="btn btn-primary" id="sendAppBtn">Отправить заявку</button>
+        <div id="appSuccess" class="field-hint" style="color:var(--green);margin-top:10px;"></div>
+      </div>`;
+
+    container.querySelector('#sendAppBtn').addEventListener('click', async () => {
+      const contact = container.querySelector('#appContact').value.trim();
+      const message = container.querySelector('#appMessage').value.trim();
+      const err = container.querySelector('#appErr');
+      const ok = container.querySelector('#appSuccess');
+      err.textContent = ''; ok.textContent = '';
+      try {
+        await api.post('/api/applications', { contact, message });
+        ok.textContent = 'Заявка отправлена. Администратор рассмотрит её в ближайшее время.';
+        container.querySelector('#appMessage').value = '';
+      } catch (e) { err.textContent = e.message; }
+    });
+  },
+
+  async _renderAdmin(container) {
     let items = [];
     try {
       const data = await api.get('/api/applications');
@@ -22,27 +54,14 @@ window.Sections.applications = {
     }
     paint();
 
-    function field(label, value) {
-      if (!value) return '';
-      return `<div><span style="color:var(--text-faint);">${esc(label)}:</span> ${esc(value)}</div>`;
-    }
-
     function paint() {
       const listHTML = items.length ? items.map((a) => `
         <div class="rule-card" data-id="${a.id}">
           <div class="rule-body">
-            <h4>${esc(a.nickname_static || 'Без имени')} ${statusBadge(a.status)}</h4>
-            <div class="rule-text" style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;">
-              ${field('Discord', a.discord)}
-              ${field('Возраст', a.age)}
-              ${field('Среднесуточный онлайн', a.avg_online)}
-              ${field('Промежуток времени в игре', a.time_period)}
-            </div>
-            <div class="rule-text"><b>Опыт:</b> ${esc(a.experience)}</div>
-            <div class="rule-text" style="margin-top:8px;"><b>Идеи по мероприятиям:</b> ${esc(a.ideas)}</div>
-            <div class="rule-text" style="margin-top:8px;"><b>Почему именно они:</b> ${esc(a.motivation)}</div>
+            <h4>${esc(a.applicant_name)} ${statusBadge(a.status)}</h4>
+            <div class="rule-text">${esc(a.message)}</div>
             <div class="meta-line">
-              ${formatDate(a.created_at)}
+              ${a.contact ? 'Контакт: ' + esc(a.contact) + ' · ' : ''}${formatDate(a.created_at)}
               ${a.reviewed_by_nickname ? ' · рассмотрел ' + esc(a.reviewed_by_nickname) : ''}
             </div>
           </div>
@@ -52,7 +71,7 @@ window.Sections.applications = {
             <button type="button" class="btn btn-danger btn-sm" data-del="${a.id}">Удалить</button>
           </div>
         </div>`).join('')
-        : `<div class="empty-state"><h3>Заявок нет</h3><p>Здесь появятся заявки на роль Event Helper с публичной формы сайта.</p></div>`;
+        : `<div class="empty-state"><h3>Заявок нет</h3><p>Здесь появятся заявки сотрудников.</p></div>`;
 
       container.innerHTML = `
         <div class="toolbar"><div class="toolbar-left">${items.length} заявок</div></div>

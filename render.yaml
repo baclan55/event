@@ -18,12 +18,16 @@ services:
         sync: false
       - key: SESSION_SECRET
         generateValue: true
-      - key: DISCORD_OWNER_ID
+      - key: OWNER_LOGIN
         sync: false
+      - key: OWNER_PASSWORD
+        sync: false
+      - key: OWNER_NICKNAME
+        value: Владелец
       - key: APP_TITLE
-        value: Events Denver
+        value: Event Department
       - key: APP_SUBTITLE
-        value: Ивент-отдел сервера
+        value: Внутренний портал
       - key: WEEKLY_EVENTS_TARGET
         value: "5"
       - key: DISCORD_CLIENT_ID
@@ -31,6 +35,4 @@ services:
       - key: DISCORD_CLIENT_SECRET
         sync: false
       - key: DISCORD_REDIRECT_URI
-        sync: false
-      - key: APPLICATIONS_WEBHOOK_URL
         sync: false
