@@ -27,7 +27,7 @@ window.Sections.owner = {
             ${avatarHTML(null, u.nickname, 38)}
             <div>
               <div class="nickname">${esc(u.nickname)} ${u.is_owner ? '<span class="badge badge-purple">Владелец</span>' : ''} ${u.is_admin && !u.is_owner ? '<span class="badge badge-purple">Админ</span>' : ''}</div>
-              <div class="role-tag">${esc(u.role_name || 'Без роли')}${u.login ? ' · логин: ' + esc(u.login) : ''}${u.discord_username ? ' · Discord: ' + esc(u.discord_username) : ''}</div>
+              <div class="role-tag">${esc(u.role_name || 'Без роли')}${u.discord_username ? ' · Discord: ' + esc(u.discord_username) : ''}</div>
             </div>
           </div>
           <div class="row-actions">
@@ -70,7 +70,6 @@ window.Sections.owner = {
             <input type="checkbox" id="uIsOwner" ${user.is_owner ? 'checked' : ''}> Владелец (полный доступ)
           </label>
         </div>
-        <div class="field"><label>Новый пароль (необязательно)</label><input class="input" type="password" id="uPassword" placeholder="Оставьте пустым, чтобы не менять"></div>
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" data-modal-close>Отмена</button>
           <button type="button" class="btn btn-primary" id="saveUserBtn">Сохранить</button>
@@ -81,13 +80,9 @@ window.Sections.owner = {
         const roleId = overlay.querySelector('#uRole').value || null;
         const isAdmin = overlay.querySelector('#uIsAdmin').checked;
         const isOwner = overlay.querySelector('#uIsOwner').checked;
-        const password = overlay.querySelector('#uPassword').value;
         const err = overlay.querySelector('#uErr');
         try {
           await api.put(`/api/owner/users/${user.id}`, { nickname, roleId, isAdmin, isOwner });
-          if (password) {
-            await api.put(`/api/owner/users/${user.id}/password`, { password });
-          }
           Modal.close();
           reload();
         } catch (e) { err.textContent = e.message; }

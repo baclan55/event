@@ -50,8 +50,8 @@ app.use('/media', mediaRoutes);
 
 app.get('/api/config', (req, res) => {
   res.json({
-    appTitle: process.env.APP_TITLE || 'Event Department',
-    appSubtitle: process.env.APP_SUBTITLE || 'Внутренний портал',
+    appTitle: process.env.APP_TITLE || 'Events Denver',
+    appSubtitle: process.env.APP_SUBTITLE || 'Ивент-отдел сервера',
     weeklyEventsTarget: parseInt(process.env.WEEKLY_EVENTS_TARGET, 10) || 5,
     discordEnabled: Boolean(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET),
   });
