@@ -1,5 +1,4 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
 const pool = require('../db/pool');
 
 const router = express.Router();
@@ -8,7 +7,6 @@ function publicUser(u) {
   if (!u) return null;
   return {
     id: u.id,
-    login: u.login,
     nickname: u.nickname,
     discordUsername: u.discord_username,
     avatarImageId: u.avatar_image_id,
@@ -24,56 +22,6 @@ router.get('/me', (req, res) => {
   res.json({ user: publicUser(req.user) });
 });
 
-router.post('/register', async (req, res, next) => {
-  try {
-    const { login, password, nickname } = req.body || {};
-    if (!login || !password || !nickname) {
-      return res.status(400).json({ error: 'Заполните логин, пароль и никнейм.' });
-    }
-    if (String(password).length < 4) {
-      return res.status(400).json({ error: 'Пароль должен быть не короче 4 символов.' });
-    }
-    const existing = await pool.query('SELECT id FROM users WHERE login = $1', [login]);
-    if (existing.rows.length) {
-      return res.status(409).json({ error: 'Такой логин уже занят.' });
-    }
-    const hash = await bcrypt.hash(password, 10);
-    // Новый пользователь регистрируется без роли — роль назначает
-    // администратор вручную во вкладке "Без ролей" на странице "Состав".
-    const { rows } = await pool.query(
-      `INSERT INTO users (login, password_hash, nickname, role_id)
-       VALUES ($1, $2, $3, NULL) RETURNING id`,
-      [login, hash, nickname]
-    );
-    req.session.userId = rows[0].id;
-    res.json({ ok: true });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.post('/login', async (req, res, next) => {
-  try {
-    const { login, password } = req.body || {};
-    if (!login || !password) {
-      return res.status(400).json({ error: 'Введите логин и пароль.' });
-    }
-    const { rows } = await pool.query('SELECT * FROM users WHERE login = $1', [login]);
-    const user = rows[0];
-    if (!user || !user.password_hash) {
-      return res.status(401).json({ error: 'Неверный логин или пароль.' });
-    }
-    const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) {
-      return res.status(401).json({ error: 'Неверный логин или пароль.' });
-    }
-    req.session.userId = user.id;
-    res.json({ ok: true });
-  } catch (err) {
-    next(err);
-  }
-});
-
 router.post('/logout', (req, res) => {
   req.session.destroy(() => {
     res.clearCookie('connect.sid');
@@ -82,10 +30,16 @@ router.post('/logout', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Вход через Discord OAuth2.
-// Требует DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET / DISCORD_REDIRECT_URI в .env.
+// Вход в личный кабинет — только через Discord OAuth2. Требует
+// DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET / DISCORD_REDIRECT_URI в .env.
 // Redirect URI нужно также добавить в настройках приложения на
 // https://discord.com/developers/applications -> ваше приложение -> OAuth2.
+//
+// DISCORD_OWNER_ID (необязательно) — Discord ID аккаунта, который должен
+// автоматически получать права владельца при входе (см. README.md).
+// Если в базе вообще ещё нет ни одного пользователя, первый, кто войдёт
+// через Discord, тоже становится владельцем — чтобы новый портал не
+// оставался без администратора.
 // ---------------------------------------------------------------------------
 router.get('/discord', (req, res) => {
   const clientId = process.env.DISCORD_CLIENT_ID;
@@ -143,6 +97,9 @@ router.get('/discord/callback', async (req, res, next) => {
     }
     const discordUser = await userRes.json();
 
+    const isDesignatedOwner =
+      !!process.env.DISCORD_OWNER_ID && String(discordUser.id) === String(process.env.DISCORD_OWNER_ID);
+
     const existing = await pool.query('SELECT id FROM users WHERE discord_id = $1', [discordUser.id]);
     let userId;
     if (existing.rows.length) {
@@ -152,16 +109,36 @@ router.get('/discord/callback', async (req, res, next) => {
         [discordUser.username, userId]
       );
     } else {
-      // Новый пользователь через Discord тоже стартует без роли.
+      const { rows: countRows } = await pool.query('SELECT COUNT(*)::int AS c FROM users');
+      const isFirstEverUser = countRows[0].c === 0;
+      const grantOwner = isDesignatedOwner || isFirstEverUser;
+
+      // Новый рядовой пользователь роль не получает — остаётся "Без роли"
+      // (роль ему назначает администратор вручную на странице «Состав»).
+      // Владельцу (назначенному по DISCORD_OWNER_ID или первому вошедшему)
+      // по-прежнему выдаём высшую роль в иерархии.
+      let roleId = null;
+      if (grantOwner) {
+        const { rows: roleRows } = await pool.query('SELECT id FROM roles ORDER BY priority ASC LIMIT 1');
+        roleId = roleRows[0]?.id || null;
+      }
+
       const { rows } = await pool.query(
-        `INSERT INTO users (discord_id, discord_username, nickname, role_id)
-         VALUES ($1, $2, $3, NULL) RETURNING id`,
-        [discordUser.id, discordUser.username, discordUser.username]
+        `INSERT INTO users (discord_id, discord_username, nickname, role_id, is_owner, is_admin)
+         VALUES ($1, $2, $3, $4, $5, $5) RETURNING id`,
+        [discordUser.id, discordUser.username, discordUser.username, roleId, grantOwner]
       );
       userId = rows[0].id;
     }
+
+    // Всегда синхронизируем права для явно назначенного владельца — так он
+    // не потеряет доступ, даже если его аккаунт уже существовал без прав.
+    if (isDesignatedOwner) {
+      await pool.query('UPDATE users SET is_owner = TRUE, is_admin = TRUE WHERE id = $1', [userId]);
+    }
+
     req.session.userId = userId;
-    res.redirect('/');
+    res.redirect('/#/faq');
   } catch (err) {
     next(err);
   }

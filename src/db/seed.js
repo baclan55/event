@@ -1,9 +1,8 @@
-// Заполняет базу начальными данными: иерархия ролей, аккаунт владельца
-// и заготовки текстов для FAQ / Регламента / Первых шагов, чтобы страницы
-// не были пустыми сразу после установки.
+// Заполняет базу начальными данными: иерархия ролей, назначение владельца
+// по Discord ID и заготовки текстов для FAQ / Регламента / Первых шагов,
+// чтобы страницы не были пустыми сразу после установки.
 // Запуск: npm run db:seed  (безопасно запускать повторно — не создаёт дублей)
 require('dotenv').config();
-const bcrypt = require('bcryptjs');
 const pool = require('./pool');
 
 // Иерархия ролей — от самой высокой (priority 1) до самой низкой.
@@ -95,31 +94,37 @@ async function ensureRoles(client) {
   console.log(`[seed] Роли готовы (${ROLES.length}).`);
 }
 
+// Вход теперь только через Discord, поэтому владелец назначается по его
+// Discord ID (переменная DISCORD_OWNER_ID), а не логином/паролем.
+// Если пользователь с таким discord_id ещё не входил на сайт — назначать
+// пока нечего, он получит права владельца автоматически при первом входе
+// через Discord (см. src/routes/auth.js). Эта функция полезна, если
+// DISCORD_OWNER_ID добавили уже после того, как человек когда-то входил.
 async function ensureOwner(client) {
-  const login = process.env.OWNER_LOGIN;
-  const password = process.env.OWNER_PASSWORD;
-  const nickname = process.env.OWNER_NICKNAME || 'Владелец';
-
-  if (!login || !password) {
-    console.log('[seed] OWNER_LOGIN/OWNER_PASSWORD не заданы — пропускаю создание владельца.');
+  const discordId = process.env.DISCORD_OWNER_ID;
+  if (!discordId) {
+    console.log('[seed] DISCORD_OWNER_ID не задан — пропускаю назначение владельца (см. README.md).');
     return;
   }
 
-  const { rows } = await client.query('SELECT id FROM users WHERE login = $1', [login]);
-  if (rows.length) {
-    console.log(`[seed] Владелец "${login}" уже существует — пропускаю.`);
-    return;
-  }
-
-  const topRole = await client.query('SELECT id FROM roles ORDER BY priority ASC LIMIT 1');
-  const passwordHash = await bcrypt.hash(password, 10);
-
-  await client.query(
-    `INSERT INTO users (login, password_hash, nickname, role_id, is_owner, is_admin, weekly_events)
-     VALUES ($1, $2, $3, $4, TRUE, TRUE, 0)`,
-    [login, passwordHash, nickname, topRole.rows[0]?.id || null]
+  const { rows } = await client.query(
+    'SELECT id, nickname, is_owner FROM users WHERE discord_id = $1',
+    [discordId]
   );
-  console.log(`[seed] Создан аккаунт владельца: логин "${login}".`);
+  if (!rows.length) {
+    console.log(
+      `[seed] Пользователь с Discord ID "${discordId}" ещё не входил через Discord — ` +
+      'он автоматически получит права владельца при первом входе, ничего делать не нужно.'
+    );
+    return;
+  }
+  if (rows[0].is_owner) {
+    console.log(`[seed] "${rows[0].nickname}" уже владелец — пропускаю.`);
+    return;
+  }
+
+  await client.query('UPDATE users SET is_owner = TRUE, is_admin = TRUE WHERE id = $1', [rows[0].id]);
+  console.log(`[seed] "${rows[0].nickname}" назначен(а) владельцем.`);
 }
 
 async function ensureContent(client) {
