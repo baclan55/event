@@ -6,7 +6,6 @@ const Site = {
   renderHome(container) {
     container.innerHTML = `
       <section class="site-hero">
-        <div class="site-seal"><b>ED</b><span>Event Dept</span></div>
         <h1>Events Denver</h1>
         <p class="site-hero-sub">Ивент-отдел сервера — команда, которая придумывает и проводит мероприятия для всех игроков.</p>
         <div class="site-hero-actions">

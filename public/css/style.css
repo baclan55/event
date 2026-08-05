@@ -472,13 +472,6 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
     url('/img/mountains-bg.jpg');
   background-size:cover; background-position:center;
 }
-.site-seal{
-  width:78px; height:78px; margin:0 auto 22px; flex-shrink:0;
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  position:relative;
-}
-.site-seal b{ font-size:18px; font-weight:800; color:var(--text-heading); }
-.site-seal span{ font-size:6.5px; letter-spacing:.12em; color:var(--text-muted); text-transform:uppercase; margin-top:1px; }
 .site-hero h1{ font-size:40px; font-weight:800; margin-bottom:14px; }
 .site-hero-sub{ max-width:560px; margin:0 auto 28px; color:var(--text-body); font-size:14.5px; }
 .site-hero-actions{ display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
