@@ -437,7 +437,7 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
 /* =============================================================================
    Публичный сайт: Главная и форма заявки (без сайдбара, своя шапка)
    ============================================================================= */
-.site{ position:relative; z-index:1; min-height:100vh; display:flex; flex-direction:column; }
+.site{ position:relative; z-index:1; min-height:100vh; width:100%; display:flex; flex-direction:column; }
 
 .site-header{
   position:sticky; top:0; z-index:20;
