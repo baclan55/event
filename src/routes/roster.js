@@ -3,6 +3,7 @@ const pool = require('../db/pool');
 const upload = require('../middleware/upload');
 const { saveImage } = require('../db/images');
 const { requireAdmin } = require('../middleware/auth');
+const { tierForPriority } = require('../utils/tier');
 
 const router = express.Router();
 
@@ -18,7 +19,8 @@ router.get('/', async (req, res, next) => {
        LEFT JOIN roles r ON r.id = u.role_id
        ORDER BY COALESCE(r.priority, 999) ASC, u.nickname ASC`
     );
-    res.json({ members: rows, target: TARGET });
+    const members = rows.map((m) => ({ ...m, tier: tierForPriority(m.role_priority) }));
+    res.json({ members, target: TARGET });
   } catch (err) {
     next(err);
   }

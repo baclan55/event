@@ -10,6 +10,10 @@ const App = {
     { key: 'applications', label: 'Заявки', icon: 'applications', title: 'Заявки', sub: 'Заявки на роль Event Helper', adminOnly: true },
   ],
   ownerItem: { key: 'owner', label: 'Панель владельца', icon: 'owner', title: 'Панель владельца', sub: 'Управление пользователями и правами' },
+  // Вкладка "Главная" в личном кабинете — самая верхняя, сразу после ссылки
+  // "На сайт". Отдельная от navItems, потому что рисуется в сайдбаре особо
+  // (см. renderShell), а не в общем списке разделов.
+  dashboardItem: { key: 'dashboard', label: 'Главная', icon: 'dashboard', title: 'Главная', sub: 'Обзор состава и присутствия на мероприятиях' },
 
   // Публичные страницы сайта (не требуют входа) — своя, более простая шапка.
   siteKeys: ['home', 'apply'],
@@ -22,6 +26,7 @@ const App = {
 
   findItem(key) {
     if (key === 'owner') return App.ownerItem;
+    if (key === 'dashboard') return App.dashboardItem;
     return App.navItems.find((i) => i.key === key);
   },
 
@@ -164,7 +169,8 @@ const App = {
             <div class="brand-sub">Denver · Department Portal</div>
           </div>
         </div>
-        <a href="#/home" class="nav-item" style="margin-bottom:14px;">${ICONS.home()}<span>На сайт</span></a>
+        <a href="#/home" class="nav-item" style="margin-bottom:2px;">${ICONS.home()}<span>На сайт</span></a>
+        <button type="button" class="nav-item" data-key="dashboard" style="margin-bottom:14px;">${ICONS.dashboard()}<span>${esc(App.dashboardItem.label)}</span></button>
         <nav class="nav-group">${navHTML}</nav>
         ${ownerHTML}
         <div class="sidebar-spacer"></div>

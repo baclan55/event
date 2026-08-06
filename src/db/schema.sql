@@ -66,7 +66,11 @@ CREATE TABLE IF NOT EXISTS rules (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Система выговоров
+-- Система выговоров. Разделена на два тира по роли сотрудника (см.
+-- src/utils/tier.js): у хелперов type = 'verbal' (устный, максимум 4) или
+-- 'strict' (строгий, максимум 2) — не снимаются по времени; у
+-- администраторов type всегда 'point' (балл, максимум 3) — каждый балл
+-- автоматически перестаёт учитываться через 10 дней после выдачи.
 CREATE TABLE IF NOT EXISTS reprimands (
   id         SERIAL PRIMARY KEY,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -74,6 +78,8 @@ CREATE TABLE IF NOT EXISTS reprimands (
   issued_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE reprimands ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'verbal';
+CREATE INDEX IF NOT EXISTS idx_reprimands_type ON reprimands(type);
 
 -- Заявки на роль Event Helper (публичная форма на главной странице, без входа).
 -- contact/message оставлены для обратной совместимости со старыми записями,

@@ -27,6 +27,12 @@ function formatDate(iso) {
     ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatDateOnly(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 function statusBadge(status) {
   if (status === 'approved') return `<span class="badge badge-green">Одобрено</span>`;
   if (status === 'rejected') return `<span class="badge badge-red">Отклонено</span>`;
