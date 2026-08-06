@@ -34,7 +34,9 @@ function formatDateOnly(iso) {
 }
 
 function statusBadge(status) {
-  if (status === 'approved') return `<span class="badge badge-green">Одобрено</span>`;
+  if (status === 'approved') return `<span class="badge badge-purple">Кандидат</span>`;
+  if (status === 'call_passed') return `<span class="badge badge-green">Прошёл обзвон</span>`;
+  if (status === 'call_failed') return `<span class="badge badge-red">Не прошёл обзвон</span>`;
   if (status === 'rejected') return `<span class="badge badge-red">Отклонено</span>`;
   return `<span class="badge badge-amber">На рассмотрении</span>`;
 }

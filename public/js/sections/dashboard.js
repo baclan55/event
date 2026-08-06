@@ -12,7 +12,8 @@ window.Sections.dashboard = {
     }
 
     const withRole = members.filter((m) => m.role_id);
-    const withoutRole = members.length - withRole.length;
+    const candidates = members.filter((m) => m.status === 'candidate');
+    const withoutRole = members.length - withRole.length - candidates.length;
 
     // Топ-3 по присутствию на мероприятиях — считаем по счётчику
     // "мероприятий за неделю" (тот же показатель, что и в разделе «Состав»),
@@ -37,7 +38,7 @@ window.Sections.dashboard = {
       : `<div class="empty-state"><h3>Пока нет данных</h3><p>Как только у сотрудников появятся мероприятия за неделю в «Составе», здесь будет рейтинг.</p></div>`;
 
     container.innerHTML = `
-      <div class="stat-grid">
+      <div class="stat-grid stat-grid-4">
         <div class="card card-pad stat-card">
           <div class="stat-value">${members.length}</div>
           <div class="stat-label">Всего людей в составе</div>
@@ -49,6 +50,10 @@ window.Sections.dashboard = {
         <div class="card card-pad stat-card">
           <div class="stat-value">${withoutRole}</div>
           <div class="stat-label">Без роли</div>
+        </div>
+        <div class="card card-pad stat-card">
+          <div class="stat-value">${candidates.length}</div>
+          <div class="stat-label">Кандидатов</div>
         </div>
       </div>
 

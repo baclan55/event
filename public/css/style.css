@@ -380,7 +380,8 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
    Личный кабинет: вкладка "Главная" (дашборд)
    ============================================================================= */
 .stat-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; }
-@media (max-width:700px){ .stat-grid{ grid-template-columns:1fr; } }
+.stat-grid.stat-grid-4{ grid-template-columns:repeat(4, 1fr); }
+@media (max-width:700px){ .stat-grid{ grid-template-columns:1fr 1fr; } }
 .stat-card{ text-align:center; }
 .stat-value{ font-size:32px; font-weight:800; color:var(--text-heading); font-family:var(--font-mono); }
 .stat-label{ margin-top:6px; font-size:12.5px; color:var(--text-muted); }

@@ -15,7 +15,7 @@ window.Sections.roster = {
       return;
     }
 
-    let activeTab = 'with'; // 'with' — С ролями, 'without' — Без ролей
+    let activeTab = 'with'; // 'with' — С ролями, 'without' — Без ролей, 'candidates' — Кандидаты
     paint();
 
     function eventsBadge(count) {
@@ -23,18 +23,23 @@ window.Sections.roster = {
       return `<span class="badge ${cls} events-count">${count} / нед.</span>`;
     }
 
-    function tabsHTML(withoutCount, withCount) {
+    function tabsHTML(withCount, withoutCount, candidatesCount) {
       return `
         <div class="segmented roster-tabs">
-          <button type="button" data-tab="without" class="${activeTab === 'without' ? 'active' : ''}">Без ролей · ${withoutCount}</button>
           <button type="button" data-tab="with" class="${activeTab === 'with' ? 'active' : ''}">С ролями · ${withCount}</button>
+          <button type="button" data-tab="without" class="${activeTab === 'without' ? 'active' : ''}">Без ролей · ${withoutCount}</button>
+          <button type="button" data-tab="candidates" class="${activeTab === 'candidates' ? 'active' : ''}">Кандидаты · ${candidatesCount}</button>
         </div>`;
     }
 
     function paint() {
       const admin = Auth.isAdmin();
 
-      const withoutRole = members.filter((m) => !m.role_id);
+      // Кандидаты (одобренные заявки, ждущие обзвона) — отдельная категория:
+      // у них тоже нет role_id, но их не показываем во вкладке "Без ролей",
+      // чтобы не путать с обычными сотрудниками без роли.
+      const candidates = members.filter((m) => m.status === 'candidate');
+      const withoutRole = members.filter((m) => !m.role_id && m.status !== 'candidate');
       const withRole = members.filter((m) => m.role_id);
 
       // Группируем участников с ролями по роли, сохраняя порядок приоритета
@@ -72,6 +77,23 @@ window.Sections.roster = {
           </div>`;
       }
 
+      // Кандидаты пока ничего не решают в "Составе" — статус (прошёл/не
+      // прошёл обзвон) выставляется в разделе "Заявки" → вкладка
+      // "Кандидаты", отсюда просто ссылка-подсказка.
+      function candidateRowHTML(m) {
+        return `
+          <div class="roster-row" data-id="${m.id}">
+            <div class="who">
+              ${avatarHTML(m.avatar_image_id, m.nickname, 38)}
+              <div>
+                <div class="nickname">${esc(m.nickname)}</div>
+                <div class="role-tag">Кандидат${m.discord_username ? ' · ' + esc(m.discord_username) : ''}</div>
+              </div>
+            </div>
+            <span class="badge badge-amber">Ожидает обзвона</span>
+          </div>`;
+      }
+
       function groupHTML(g) {
         return `
           <div class="role-group-label">${esc(g.label)} · ${g.items.length}</div>
@@ -83,6 +105,10 @@ window.Sections.roster = {
         bodyHTML = withoutRole.length
           ? withoutRole.map(memberRowHTML).join('')
           : `<div class="empty-state"><h3>Здесь никого нет</h3><p>Все участники состава уже с ролью.</p></div>`;
+      } else if (activeTab === 'candidates') {
+        bodyHTML = candidates.length
+          ? `<div class="rp-legend">Решение по обзвону — в разделе «Заявки» → вкладка «Кандидаты».</div>${candidates.map(candidateRowHTML).join('')}`
+          : `<div class="empty-state"><h3>Кандидатов нет</h3><p>Они появляются здесь после одобрения заявки в разделе «Заявки».</p></div>`;
       } else {
         bodyHTML = groups.length
           ? groups.map(groupHTML).join('')
@@ -94,7 +120,7 @@ window.Sections.roster = {
           <div class="toolbar-left">${members.length} участников · норма ${target}+ мероприятий в неделю</div>
           ${admin ? `<div class="toolbar-right"><button type="button" class="btn btn-primary btn-sm" id="addMemberBtn">${ICONS.plus()} Добавить участника</button></div>` : ''}
         </div>
-        ${tabsHTML(withoutRole.length, withRole.length)}
+        ${tabsHTML(withRole.length, withoutRole.length, candidates.length)}
         ${bodyHTML}`;
 
       container.querySelector('#addMemberBtn')?.addEventListener('click', () => openEditModal(null));

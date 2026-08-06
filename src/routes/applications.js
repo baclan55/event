@@ -63,15 +63,36 @@ async function notifyDiscord(app) {
   }
 }
 
+// Возвращает кандидата в исходное состояние, когда заявка перестаёт быть
+// "одобренной" (отклонили после одобрения) или кандидат не прошёл обзвон.
+// Если это была "заглушка" (создана прямо при одобрении, без входа через
+// Discord) — удаляем её, поскольку это не настоящий аккаунт. Если это был
+// уже существующий пользователь (подавал заявку из личного кабинета) —
+// просто снимаем статус кандидата, аккаунт остаётся.
+async function releaseCandidate(userId) {
+  if (!userId) return;
+  const { rows } = await pool.query('SELECT discord_id, login FROM users WHERE id = $1', [userId]);
+  if (!rows.length) return;
+  const isPlaceholder = !rows[0].discord_id && !rows[0].login;
+  if (isPlaceholder) {
+    await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+  } else {
+    await pool.query(`UPDATE users SET status = 'member' WHERE id = $1`, [userId]);
+  }
+}
+
 // Список заявок виден только администраторам/владельцу (рассмотрение).
 router.get('/', requireAdmin, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT a.id, a.discord, a.nickname_static, a.age, a.avg_online, a.time_period,
               a.experience, a.ideas, a.motivation, a.status, a.created_at,
-              r.nickname AS reviewed_by_nickname
+              a.candidate_user_id,
+              r.nickname AS reviewed_by_nickname,
+              cu.nickname AS candidate_nickname, cu.avatar_image_id AS candidate_avatar_image_id
        FROM applications a
        LEFT JOIN users r ON r.id = a.reviewed_by
+       LEFT JOIN users cu ON cu.id = a.candidate_user_id
        ORDER BY a.created_at DESC`
     );
     res.json({ applications: rows });
@@ -125,10 +146,80 @@ router.put('/:id', requireAdmin, async (req, res, next) => {
     if (!['pending', 'approved', 'rejected'].includes(status)) {
       return res.status(400).json({ error: 'Некорректный статус.' });
     }
-    await pool.query(
-      'UPDATE applications SET status = $1, reviewed_by = $2 WHERE id = $3',
-      [status, req.user.id, req.params.id]
-    );
+
+    const { rows: appRows } = await pool.query('SELECT * FROM applications WHERE id = $1', [req.params.id]);
+    if (!appRows.length) return res.status(404).json({ error: 'Заявка не найдена.' });
+    const application = appRows[0];
+
+    if (application.status === 'call_passed') {
+      return res.status(400).json({ error: 'Кандидат уже прошёл обзвон и стал сотрудником — статус заявки менять нельзя.' });
+    }
+
+    if (status === 'approved') {
+      // При одобрении заявитель попадает в "Кандидаты": используем уже
+      // привязанный аккаунт (если заявку подавали из личного кабинета),
+      // иначе создаём в "Составе" запись-заглушку по имени из анкеты.
+      let candidateId = application.candidate_user_id || application.applicant_id;
+      if (candidateId) {
+        await pool.query(`UPDATE users SET status = 'candidate' WHERE id = $1`, [candidateId]);
+      } else {
+        const nickname = application.nickname_static || application.discord || application.applicant_name || 'Кандидат';
+        const { rows: newUser } = await pool.query(
+          `INSERT INTO users (nickname, status) VALUES ($1, 'candidate') RETURNING id`,
+          [nickname]
+        );
+        candidateId = newUser[0].id;
+      }
+      await pool.query(
+        'UPDATE applications SET status = $1, reviewed_by = $2, candidate_user_id = $3 WHERE id = $4',
+        [status, req.user.id, candidateId, req.params.id]
+      );
+    } else {
+      if (application.candidate_user_id) await releaseCandidate(application.candidate_user_id);
+      await pool.query(
+        'UPDATE applications SET status = $1, reviewed_by = $2, candidate_user_id = NULL WHERE id = $3',
+        [status, req.user.id, req.params.id]
+      );
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Результат обзвона кандидата (вкладка "Кандидаты" в заявках):
+// прошёл — получает роль Mini Event Helper и становится обычным
+// сотрудником; не прошёл — кандидат снимается (см. releaseCandidate).
+router.post('/:id/call', requireAdmin, async (req, res, next) => {
+  try {
+    const passed = req.body.passed === true || req.body.passed === 'true';
+
+    const { rows } = await pool.query('SELECT * FROM applications WHERE id = $1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Заявка не найдена.' });
+    const application = rows[0];
+    if (application.status !== 'approved' || !application.candidate_user_id) {
+      return res.status(400).json({ error: 'Эта заявка сейчас не в статусе кандидата.' });
+    }
+
+    if (passed) {
+      const { rows: roleRows } = await pool.query(
+        `SELECT id FROM roles WHERE name = 'Mini Event Helper' LIMIT 1`
+      );
+      const roleId = roleRows.length ? roleRows[0].id : null;
+      await pool.query(
+        `UPDATE users SET status = 'member', role_id = COALESCE($1, role_id) WHERE id = $2`,
+        [roleId, application.candidate_user_id]
+      );
+      await pool.query(`UPDATE applications SET status = 'call_passed' WHERE id = $1`, [req.params.id]);
+    } else {
+      await releaseCandidate(application.candidate_user_id);
+      await pool.query(
+        `UPDATE applications SET status = 'call_failed', candidate_user_id = NULL WHERE id = $1`,
+        [req.params.id]
+      );
+    }
+
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -137,6 +228,10 @@ router.put('/:id', requireAdmin, async (req, res, next) => {
 
 router.delete('/:id', requireAdmin, async (req, res, next) => {
   try {
+    const { rows } = await pool.query('SELECT status, candidate_user_id FROM applications WHERE id = $1', [req.params.id]);
+    if (rows.length && rows[0].status === 'approved' && rows[0].candidate_user_id) {
+      await releaseCandidate(rows[0].candidate_user_id);
+    }
     await pool.query('DELETE FROM applications WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch (err) {

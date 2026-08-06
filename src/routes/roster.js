@@ -13,7 +13,7 @@ router.get('/', async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT u.id, u.nickname, u.discord_username, u.avatar_image_id,
-              u.weekly_events, u.note, u.role_id,
+              u.weekly_events, u.note, u.role_id, u.status,
               r.name AS role_name, r.priority AS role_priority
        FROM users u
        LEFT JOIN roles r ON r.id = u.role_id
@@ -60,8 +60,13 @@ router.put('/:id', requireAdmin, async (req, res, next) => {
     const roleId = req.body.roleId || null;
     const weeklyEvents = parseInt(req.body.weeklyEvents, 10) || 0;
     const note = req.body.note || '';
+    // Если роль назначают вручную (в том числе кандидату), он перестаёт
+    // считаться кандидатом — иначе он бы завис одновременно и "с ролью", и
+    // во вкладке "Кандидаты".
     await pool.query(
-      `UPDATE users SET nickname = $1, role_id = $2, weekly_events = $3, note = $4 WHERE id = $5`,
+      `UPDATE users SET nickname = $1, role_id = $2, weekly_events = $3, note = $4,
+              status = CASE WHEN $2 IS NOT NULL THEN 'member' ELSE status END
+       WHERE id = $5`,
       [nickname, roleId, weeklyEvents, note, req.params.id]
     );
     res.json({ ok: true });

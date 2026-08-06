@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS images (
 -- Пользователи (сотрудники). login/password_hash — вход по паролю,
 -- discord_id — вход через Discord. Одновременно эта таблица — источник
 -- данных для страницы "Состав".
+-- status: 'member' — обычный сотрудник, 'candidate' — кандидат, которого
+-- одобрили по заявке, но он ещё не прошёл обзвон (см. applications ниже).
+-- Пока кандидат — у него нет роли (role_id) и он не входит в "С ролями".
 CREATE TABLE IF NOT EXISTS users (
   id               SERIAL PRIMARY KEY,
   login            TEXT UNIQUE,
@@ -40,6 +43,8 @@ CREATE TABLE IF NOT EXISTS users (
   note             TEXT NOT NULL DEFAULT '',
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'member';
+CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 
 -- Текстовые разделы с переключателем "Event Helper / Event Administrator":
 -- используется для FAQ и Регламента. section: 'faq' | 'regulations'.
@@ -84,16 +89,21 @@ CREATE INDEX IF NOT EXISTS idx_reprimands_type ON reprimands(type);
 -- Заявки на роль Event Helper (публичная форма на главной странице, без входа).
 -- contact/message оставлены для обратной совместимости со старыми записями,
 -- новые заявки используют отдельные поля ниже.
+-- status: 'pending' -> 'approved' (создаёт/помечает кандидата в users,
+-- candidate_user_id) -> 'call_passed' (кандидат прошёл обзвон, получает роль
+-- Mini Event Helper) или 'call_failed' (не прошёл обзвон, кандидат снимается).
+-- Также возможен статус 'rejected' на любом этапе рассмотрения.
 CREATE TABLE IF NOT EXISTS applications (
   id             SERIAL PRIMARY KEY,
   applicant_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
   applicant_name TEXT NOT NULL,
   contact        TEXT NOT NULL DEFAULT '',
   message        TEXT NOT NULL DEFAULT '',
-  status         TEXT NOT NULL DEFAULT 'pending', -- pending | approved | rejected
+  status         TEXT NOT NULL DEFAULT 'pending',
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   reviewed_by    INTEGER REFERENCES users(id) ON DELETE SET NULL
 );
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS candidate_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
 
 -- Поля формы заявки (см. src/routes/applications.js). ADD COLUMN IF NOT EXISTS
 -- делает это безопасным при повторном запуске и на уже существующей базе.

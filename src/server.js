@@ -80,6 +80,24 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`[server] Event Department Portal запущен на порту ${PORT}`);
+
+// Схема идемпотентна (CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS),
+// поэтому безопасно применять её на каждом старте сервера — это защищает от
+// ситуации "задеплоили новый код, но забыли прогнать npm run db:migrate",
+// из-за которой раньше отваливались, например, выговоры (не было колонки type).
+async function applySchema() {
+  const fs = require('fs');
+  const schemaPath = path.join(__dirname, 'db', 'schema.sql');
+  try {
+    await pool.query(fs.readFileSync(schemaPath, 'utf8'));
+    console.log('[server] Схема базы данных проверена/обновлена.');
+  } catch (err) {
+    console.error('[server] Не удалось применить схему БД при старте:', err.message);
+  }
+}
+
+applySchema().then(() => {
+  app.listen(PORT, () => {
+    console.log(`[server] Event Department Portal запущен на порту ${PORT}`);
+  });
 });
