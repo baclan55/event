@@ -64,8 +64,8 @@ router.put('/:id', requireAdmin, async (req, res, next) => {
     // считаться кандидатом — иначе он бы завис одновременно и "с ролью", и
     // во вкладке "Кандидаты".
     await pool.query(
-      `UPDATE users SET nickname = $1, role_id = $2, weekly_events = $3, note = $4,
-              status = CASE WHEN $2 IS NOT NULL THEN 'member' ELSE status END
+      `UPDATE users SET nickname = $1, role_id = $2::integer, weekly_events = $3, note = $4,
+              status = CASE WHEN $2::integer IS NOT NULL THEN 'member' ELSE status END
        WHERE id = $5`,
       [nickname, roleId, weeklyEvents, note, req.params.id]
     );
