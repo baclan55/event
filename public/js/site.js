@@ -82,6 +82,12 @@ const Site = {
               ? `<textarea class="input" id="q_${q.id}" rows="4" placeholder="Ваш ответ"></textarea>`
               : `<input class="input" id="q_${q.id}" placeholder="${q.placeholder ? escAttr(q.placeholder) : 'Ваш ответ'}">`}
           </div>`).join('')}
+        <div class="qform-card">
+          <label class="qform-check-label" for="q_consent">
+            <input type="checkbox" id="q_consent">
+            <span>Я даю согласие на обработку моих персональных данных, указанных в этой заявке, в соответствии с законодательством РФ, Украины, Казахстана и Беларуси о персональных данных.<span class="qform-required">*</span></span>
+          </label>
+        </div>
         <div class="error-text" id="applyErr"></div>
         <button type="submit" class="btn btn-primary btn-block" id="applySubmitBtn">Отправить</button>
       </form>`;
@@ -101,10 +107,16 @@ const Site = {
         return;
       }
 
+      const consentEl = container.querySelector('#q_consent');
+      if (!consentEl.checked) {
+        errEl.textContent = 'Необходимо дать согласие на обработку персональных данных.';
+        return;
+      }
+
       const btn = container.querySelector('#applySubmitBtn');
       btn.disabled = true;
       try {
-        await api.post('/api/applications', payload);
+        await api.post('/api/applications', { ...payload, consent: true });
         container.innerHTML = `
           <div class="empty-state" style="padding-top:64px;">
             <h3>Заявка отправлена</h3>

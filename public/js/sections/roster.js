@@ -193,9 +193,12 @@ window.Sections.roster = {
     }
 
     async function removeMember(id) {
-      if (!confirm('Удалить этого участника из состава?')) return;
-      try { await api.del(`/api/roster/${id}`); reload(); }
-      catch (e) { alert(e.message); }
+      Modal.confirm({
+        title: 'Удалить этого участника из состава?',
+        message: 'Действие нельзя отменить.',
+        confirmText: 'Удалить',
+        onConfirm: async () => { await api.del(`/api/roster/${id}`); reload(); },
+      });
     }
 
     async function reload() {

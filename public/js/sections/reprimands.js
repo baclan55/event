@@ -254,9 +254,12 @@ window.Sections.reprimands = {
     }
 
     async function removeItem(id) {
-      if (!confirm('Удалить эту запись?')) return;
-      try { await api.del(`/api/reprimands/${id}`); reload(); }
-      catch (e) { alert(e.message); }
+      Modal.confirm({
+        title: 'Удалить эту запись?',
+        message: 'Действие нельзя отменить.',
+        confirmText: 'Удалить',
+        onConfirm: async () => { await api.del(`/api/reprimands/${id}`); reload(); },
+      });
     }
 
     async function reload() {

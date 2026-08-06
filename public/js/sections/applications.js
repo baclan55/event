@@ -135,9 +135,12 @@ window.Sections.applications = {
       catch (e) { alert(e.message); }
     }
     async function removeItem(id) {
-      if (!confirm('Удалить заявку?')) return;
-      try { await api.del(`/api/applications/${id}`); reload(); }
-      catch (e) { alert(e.message); }
+      Modal.confirm({
+        title: 'Удалить заявку?',
+        message: 'Действие нельзя отменить.',
+        confirmText: 'Удалить',
+        onConfirm: async () => { await api.del(`/api/applications/${id}`); reload(); },
+      });
     }
     async function reload() {
       const data = await api.get('/api/applications');

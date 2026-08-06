@@ -50,6 +50,14 @@ router.get('/discord', (req, res) => {
       'и DISCORD_REDIRECT_URI в файле .env (см. .env.example и README.md).'
     );
   }
+  // Согласие на обработку персональных данных обязательно (чекбокс в окне
+  // входа на фронтенде) — проверяем и на сервере, чтобы его нельзя было
+  // обойти прямым переходом по этой ссылке.
+  if (req.query.consent !== '1') {
+    return res.status(400).send(
+      'Необходимо подтвердить согласие на обработку персональных данных, отметив чекбокс в окне входа.'
+    );
+  }
   const url = new URL('https://discord.com/api/oauth2/authorize');
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', redirectUri);

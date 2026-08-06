@@ -90,9 +90,12 @@ window.Sections.owner = {
     }
 
     async function removeUser(id) {
-      if (!confirm('Удалить пользователя безвозвратно?')) return;
-      try { await api.del(`/api/owner/users/${id}`); reload(); }
-      catch (e) { alert(e.message); }
+      Modal.confirm({
+        title: 'Удалить пользователя безвозвратно?',
+        message: 'Учётную запись нельзя будет восстановить.',
+        confirmText: 'Удалить',
+        onConfirm: async () => { await api.del(`/api/owner/users/${id}`); reload(); },
+      });
     }
 
     async function reload() {

@@ -99,9 +99,12 @@ window.Sections.rules = {
     }
 
     async function removeRule(id) {
-      if (!confirm('Удалить это правило?')) return;
-      try { await api.del(`/api/rules/${id}`); reload(); }
-      catch (e) { alert(e.message); }
+      Modal.confirm({
+        title: 'Удалить это правило?',
+        message: 'Действие нельзя отменить.',
+        confirmText: 'Удалить',
+        onConfirm: async () => { await api.del(`/api/rules/${id}`); reload(); },
+      });
     }
 
     async function reload() {

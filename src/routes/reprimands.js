@@ -1,6 +1,6 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { requireAdmin } = require('../middleware/auth');
+const { requireAdmin, requireAuth } = require('../middleware/auth');
 const { tierForPriority } = require('../utils/tier');
 
 const router = express.Router();
@@ -52,6 +52,40 @@ router.get('/', requireAdmin, async (req, res, next) => {
     });
 
     res.json({ reprimands, limits: LIMITS_PAYLOAD });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Личная версия списка — доступна любому вошедшему сотруднику (не только
+// администратору) и отдаёт только ЕГО СОБСТВЕННЫЕ записи. Используется на
+// личной мини-странице сотрудника, чтобы не открывать ему полный раздел
+// "Система выговоров" (тот остаётся admin-only, см. GET '/' выше).
+router.get('/me', requireAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT rp.id, rp.reason, rp.type, rp.created_at,
+              iu.nickname AS issued_by_nickname
+       FROM reprimands rp
+       LEFT JOIN users iu ON iu.id = rp.issued_by
+       WHERE rp.user_id = $1
+       ORDER BY rp.created_at DESC`,
+      [req.user.id]
+    );
+
+    const decayMs = ADMIN_POINT_DECAY_DAYS * 24 * 60 * 60 * 1000;
+    const reprimands = rows.map((r) => {
+      let active = true;
+      let expiresAt = null;
+      if (r.type === 'point') {
+        expiresAt = new Date(new Date(r.created_at).getTime() + decayMs).toISOString();
+        active = new Date(expiresAt).getTime() > Date.now();
+      }
+      return { ...r, active, expires_at: expiresAt };
+    });
+
+    const tier = tierForPriority(req.user.role_priority);
+    res.json({ reprimands, limits: LIMITS_PAYLOAD, tier });
   } catch (err) {
     next(err);
   }

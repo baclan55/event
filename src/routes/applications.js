@@ -114,6 +114,10 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'Заполните все поля формы.' });
     }
 
+    if (body.consent !== true && body.consent !== 'true') {
+      return res.status(400).json({ error: 'Необходимо дать согласие на обработку персональных данных.' });
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO applications
          (applicant_id, applicant_name, discord, nickname_static, age, avg_online, time_period, experience, ideas, motivation)
