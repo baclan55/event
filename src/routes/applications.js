@@ -18,13 +18,22 @@ const FIELDS = [
   ['motivation', 'motivation'],
 ];
 
+// Discord ID (snowflake) — обычно 17-19 цифр, берём диапазон 15-25 с
+// запасом. Если в поле "Discord" анкеты указан именно ID (а не username),
+// его можно однозначно сопоставить с аккаунтом, который войдёт через
+// Discord OAuth (там приходит числовой id, не имя).
+function extractDiscordId(raw) {
+  const v = String(raw || '').trim();
+  return /^\d{15,25}$/.test(v) ? v : null;
+}
+
 // Если указан Discord ID (просто цифры), делаем из него кликабельное
 // упоминание для уведомления в Discord — <@id>. Иначе оставляем как есть
 // (это может быть username вида "name" или "name#1234").
 function discordMention(raw) {
-  const v = String(raw || '').trim();
-  if (/^\d{15,25}$/.test(v)) return `<@${v}>`;
-  return v || '—';
+  const id = extractDiscordId(raw);
+  if (id) return `<@${id}>`;
+  return String(raw || '').trim() || '—';
 }
 
 // Необязательное уведомление в Discord о новой заявке через Webhook URL
@@ -65,15 +74,17 @@ async function notifyDiscord(app) {
 
 // Возвращает кандидата в исходное состояние, когда заявка перестаёт быть
 // "одобренной" (отклонили после одобрения) или кандидат не прошёл обзвон.
-// Если это была "заглушка" (создана прямо при одобрении, без входа через
-// Discord) — удаляем её, поскольку это не настоящий аккаунт. Если это был
-// уже существующий пользователь (подавал заявку из личного кабинета) —
-// просто снимаем статус кандидата, аккаунт остаётся.
+// Если это была "заглушка" (создана прямо при одобрении, человек ей ни разу
+// не входил через Discord) — удаляем её, поскольку это не настоящий
+// аккаунт. Если человек уже хоть раз входил через Discord (есть
+// discord_username — его проставляет только реальный OAuth-вход) или
+// подавал заявку из личного кабинета с логином/паролем — просто снимаем
+// статус кандидата, аккаунт остаётся.
 async function releaseCandidate(userId) {
   if (!userId) return;
-  const { rows } = await pool.query('SELECT discord_id, login FROM users WHERE id = $1', [userId]);
+  const { rows } = await pool.query('SELECT discord_username, login FROM users WHERE id = $1', [userId]);
   if (!rows.length) return;
-  const isPlaceholder = !rows[0].discord_id && !rows[0].login;
+  const isPlaceholder = !rows[0].discord_username && !rows[0].login;
   if (isPlaceholder) {
     await pool.query('DELETE FROM users WHERE id = $1', [userId]);
   } else {
@@ -116,6 +127,19 @@ router.post('/', async (req, res, next) => {
 
     if (body.consent !== true && body.consent !== 'true') {
       return res.status(400).json({ error: 'Необходимо дать согласие на обработку персональных данных.' });
+    }
+
+    // Один и тот же человек (по указанному Discord) не может подать вторую
+    // заявку, пока первая ещё "на рассмотрении" — после решения по ней
+    // (одобрили/отклонили/прошёл-не прошёл обзвон) подать новую снова можно.
+    const { rows: pendingRows } = await pool.query(
+      `SELECT id FROM applications WHERE status = 'pending' AND LOWER(discord) = LOWER($1) LIMIT 1`,
+      [data.discord]
+    );
+    if (pendingRows.length) {
+      return res.status(400).json({
+        error: 'Заявка с этим Discord уже подана и находится на рассмотрении. Дождитесь решения по ней, прежде чем подавать новую.',
+      });
     }
 
     const { rows } = await pool.query(
@@ -162,15 +186,29 @@ router.put('/:id', requireAdmin, async (req, res, next) => {
     if (status === 'approved') {
       // При одобрении заявитель попадает в "Кандидаты": используем уже
       // привязанный аккаунт (если заявку подавали из личного кабинета),
-      // иначе создаём в "Составе" запись-заглушку по имени из анкеты.
+      // иначе — если в анкете указан настоящий числовой Discord ID —
+      // проверяем, нет ли уже аккаунта с этим discord_id (человек мог
+      // когда-то раньше входить через Discord), и переиспользуем его.
+      // Только если совсем ничего нет — создаём запись-заглушку и сразу
+      // прописываем ей discord_id из анкеты: тогда при первом настоящем
+      // входе через Discord (см. routes/auth.js) человек попадёт именно в
+      // этот профиль, а не создаст себе второй, и сохранит роль/статус,
+      // которые получит после обзвона.
+      const discordId = extractDiscordId(application.discord);
       let candidateId = application.candidate_user_id || application.applicant_id;
+
+      if (!candidateId && discordId) {
+        const { rows: existing } = await pool.query('SELECT id FROM users WHERE discord_id = $1', [discordId]);
+        if (existing.length) candidateId = existing[0].id;
+      }
+
       if (candidateId) {
         await pool.query(`UPDATE users SET status = 'candidate' WHERE id = $1`, [candidateId]);
       } else {
         const nickname = application.nickname_static || application.discord || application.applicant_name || 'Кандидат';
         const { rows: newUser } = await pool.query(
-          `INSERT INTO users (nickname, status) VALUES ($1, 'candidate') RETURNING id`,
-          [nickname]
+          `INSERT INTO users (nickname, status, discord_id) VALUES ($1, 'candidate', $2) RETURNING id`,
+          [nickname, discordId]
         );
         candidateId = newUser[0].id;
       }

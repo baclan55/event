@@ -57,7 +57,7 @@ const Site = {
         id: 'discord',
         label: 'Ваш Discord',
         hint: 'Укажите Discord ID — тогда в уведомлении будет кликабельное упоминание',
-        placeholder: 'username / 000000000000000000',
+        placeholder: '000000000000000000',
       },
       { id: 'nicknameStatic', label: 'Ваш игровой Nickname и StaticID' },
       { id: 'age', label: 'Ваш возраст' },
