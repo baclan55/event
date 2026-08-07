@@ -1,5 +1,7 @@
 const express = require('express');
 const pool = require('../db/pool');
+const upload = require('../middleware/upload');
+const { saveImage } = require('../db/images');
 const { requireAnyRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -42,6 +44,27 @@ router.put('/me/nickname', requireAnyRole, async (req, res, next) => {
     const updated = rows[0];
     // role_name у UPDATE ... RETURNING не подтянется джойном, поэтому берём
     // его из уже загруженного req.user (сама роль этим запросом не менялась).
+    res.json({ user: publicUser({ ...updated, role_name: req.user.role_name }) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Самостоятельная смена своего аватара — доступна любому сотруднику с ролью
+// (та же граница, что и у остального личного кабинета). Меняет только свой
+// собственный avatar_image_id; загрузка аватара ДРУГОМУ пользователю
+// по-прежнему делается через «Состав» и требует EDIT_ROLES (см. roster.js).
+router.post('/me/avatar', requireAnyRole, upload.single('image'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Файл не получен.' });
+    const imageId = await saveImage(req.file);
+    const { rows } = await pool.query(
+      `UPDATE users SET avatar_image_id = $1 WHERE id = $2
+       RETURNING id, nickname, discord_username, avatar_image_id, is_owner, is_admin,
+                 weekly_events, role_id`,
+      [imageId, req.user.id]
+    );
+    const updated = rows[0];
     res.json({ user: publicUser({ ...updated, role_name: req.user.role_name }) });
   } catch (err) {
     next(err);

@@ -88,7 +88,11 @@ window.Sections.profile = {
 
     container.innerHTML = `
       <div class="card card-pad" style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
-        ${avatarHTML(user.avatarImageId, user.nickname, 64)}
+        <div style="position:relative;flex-shrink:0;">
+          ${avatarHTML(user.avatarImageId, user.nickname, 64)}
+          <button type="button" class="icon-btn" id="editAvatarBtn" title="Изменить аватар"
+            style="position:absolute;right:-3px;bottom:-3px;width:26px;height:26px;border-radius:50%;background:var(--bg-card);border:1px solid var(--border);padding:0;">${ICONS.image()}</button>
+        </div>
         <div style="min-width:0;flex:1;">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <div style="font-size:19px;font-weight:800;color:var(--text-heading);">${esc(user.nickname)}</div>
@@ -113,6 +117,17 @@ window.Sections.profile = {
       </div>`;
 
     container.querySelector('#editNicknameBtn').addEventListener('click', openEditNicknameModal);
+    container.querySelector('#editAvatarBtn').addEventListener('click', openEditAvatarModal);
+
+    // Никнейм/аватар показываются ещё в сайдбаре и в виджете аккаунта наверху
+    // — после успешного сохранения обновляем их точечно, не перестраивая всю
+    // страницу целиком.
+    function syncHeaderUI(updated) {
+      document.querySelectorAll('.sidebar-user-name').forEach((el) => { el.textContent = updated.nickname; });
+      document.querySelectorAll('#accountWidget .name').forEach((el) => { el.textContent = updated.nickname; });
+      document.querySelectorAll('.sidebar-user .avatar').forEach((el) => { el.outerHTML = avatarHTML(updated.avatarImageId, updated.nickname, 34); });
+      document.querySelectorAll('#accountWidget .avatar').forEach((el) => { el.outerHTML = avatarHTML(updated.avatarImageId, updated.nickname, 32); });
+    }
 
     // -----------------------------------------------------------------
     // Смена собственного никнейма — доступна любому сотруднику для самого
@@ -141,10 +156,43 @@ window.Sections.profile = {
           Auth.currentUser = updated;
           user = updated;
           Modal.close();
-          // Никнейм показывается ещё в сайдбаре и в виджете аккаунта наверху —
-          // обновляем их точечно, не перестраивая всю страницу.
-          document.querySelectorAll('.sidebar-user-name').forEach((el) => { el.textContent = updated.nickname; });
-          document.querySelectorAll('#accountWidget .name').forEach((el) => { el.textContent = updated.nickname; });
+          syncHeaderUI(updated);
+          window.Sections.profile.render(container);
+        } catch (e) { err.textContent = e.message; }
+      });
+    }
+
+    // -----------------------------------------------------------------
+    // Смена собственного аватара — доступна любому сотруднику для самого
+    // себя. Аватар ДРУГОГО пользователя по-прежнему меняется только через
+    // «Состав» и только ролями Chief Event / Dep.Chief Event.
+    // -----------------------------------------------------------------
+    function openEditAvatarModal() {
+      const overlay = Modal.open(`
+        <h2>Изменить аватар</h2>
+        <div class="error-text" id="avatarErr"></div>
+        <div class="field">
+          <label>Изображение</label>
+          <div style="margin-bottom:10px;">${avatarHTML(user.avatarImageId, user.nickname, 64)}</div>
+          <input type="file" accept="image/*" id="avatarFileInput" class="input">
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-modal-close>Отмена</button>
+          <button type="button" class="btn btn-primary" id="saveAvatarBtn">Сохранить</button>
+        </div>`);
+
+      overlay.querySelector('#saveAvatarBtn').addEventListener('click', async () => {
+        const file = overlay.querySelector('#avatarFileInput').files[0];
+        const err = overlay.querySelector('#avatarErr');
+        if (!file) { err.textContent = 'Выберите файл изображения.'; return; }
+        try {
+          const fd = new FormData();
+          fd.append('image', file);
+          const { user: updated } = await api.upload('/api/auth/me/avatar', fd);
+          Auth.currentUser = updated;
+          user = updated;
+          Modal.close();
+          syncHeaderUI(updated);
           window.Sections.profile.render(container);
         } catch (e) { err.textContent = e.message; }
       });
