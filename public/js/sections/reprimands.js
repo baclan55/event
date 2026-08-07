@@ -24,6 +24,16 @@ window.Sections.reprimands = {
     }
 
     let activeTab = 'helper'; // 'helper' | 'admin'
+
+    // Роли с "Helper" в названии не могут выдавать выговоры сотрудникам с
+    // ролью выше Chief Event Helper — то есть тиру "администраторы" (см.
+    // ту же проверку на бэкенде в src/routes/reprimands.js). Дублируем на
+    // фронте только для UX: реальная защита — на сервере.
+    function isHelperRoleUser() {
+      return !!(Auth.currentUser && !Auth.currentUser.isOwner &&
+        Auth.currentUser.roleName && Auth.currentUser.roleName.includes('Helper'));
+    }
+
     paint();
 
     // -----------------------------------------------------------------
@@ -141,12 +151,18 @@ window.Sections.reprimands = {
         ? groups.map((g) => groupHTML(g, activeTab)).join('')
         : `<div class="empty-state"><h3>Выговоров нет</h3><p>${activeTab === 'helper' ? 'У хелперов пока нет выговоров.' : 'У администраторов пока нет баллов.'}</p></div>`;
 
+      const addBlocked = activeTab === 'admin' && isHelperRoleUser();
       container.innerHTML = `
         <div class="toolbar">
           <div class="toolbar-left">${items.length} записей всего</div>
-          <div class="toolbar-right"><button type="button" class="btn btn-primary btn-sm" id="addBtn">${ICONS.plus()} Добавить выговор</button></div>
+          <div class="toolbar-right">
+            <button type="button" class="btn btn-primary btn-sm" id="addBtn" ${addBlocked ? 'disabled' : ''}
+              ${addBlocked ? 'title="Роли с \'Helper\' в названии не могут выдавать выговоры сотрудникам с ролью выше Chief Event Helper."' : ''}
+            >${ICONS.plus()} Добавить выговор</button>
+          </div>
         </div>
         ${tabsHTML()}
+        ${addBlocked ? `<div class="rp-legend">Вашей роли недоступна выдача выговоров сотрудникам с ролью выше <b>Chief Event Helper</b>.</div>` : ''}
         ${legendHTML()}
         ${bodyHTML}`;
 
@@ -165,6 +181,10 @@ window.Sections.reprimands = {
     // администраторов — сразу балл, с проверкой лимита.
     // -----------------------------------------------------------------
     function openAddModal(tier) {
+      if (tier === 'admin' && isHelperRoleUser()) {
+        alert('Роли с "Helper" в названии не могут выдавать выговоры сотрудникам с ролью выше Chief Event Helper.');
+        return;
+      }
       const tierMembers = members.filter((m) => m.tier === tier);
       if (!tierMembers.length) {
         alert(tier === 'helper'

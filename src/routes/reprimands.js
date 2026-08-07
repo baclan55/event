@@ -110,6 +110,21 @@ router.post('/', requireRoleIn(REPRIMANDS_ROLES), async (req, res, next) => {
     if (!userRows.length) return res.status(404).json({ error: 'Участник не найден.' });
     const tier = tierForPriority(userRows[0].role_priority);
 
+    // Роли, в названии которых есть слово "Helper" (Chief Event Helper,
+    // Dep.Chief Event Helper, Senior Event Helper — это единственные такие
+    // роли, у которых вообще есть доступ к этому роуту, см. REPRIMANDS_ROLES),
+    // не могут выдавать выговоры сотрудникам с ролью ВЫШЕ Chief Event Helper.
+    // Тир "admin" по построению (см. ADMIN_TIER_MAX_PRIORITY в src/utils/tier.js)
+    // — это как раз все роли строго выше Chief Event Helper по priority
+    // (Curator Event, Event Administrator, Dep.Chief Event, Chief Event).
+    const issuerIsHelperRole = !req.user.is_owner &&
+      !!(req.user.role_name && req.user.role_name.includes('Helper'));
+    if (issuerIsHelperRole && tier === 'admin') {
+      return res.status(403).json({
+        error: 'Роли с "Helper" в названии не могут выдавать выговоры сотрудникам с ролью выше Chief Event Helper.',
+      });
+    }
+
     let type;
     if (tier === 'admin') {
       // У администраторов тип всегда "балл" — значение type из запроса
