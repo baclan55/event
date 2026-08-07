@@ -2,14 +2,14 @@ const express = require('express');
 const pool = require('../db/pool');
 const upload = require('../middleware/upload');
 const { saveImage } = require('../db/images');
-const { requireAdmin } = require('../middleware/auth');
+const { requireAdmin, requireAnyRole } = require('../middleware/auth');
 const { tierForPriority } = require('../utils/tier');
 
 const router = express.Router();
 
 const TARGET = parseInt(process.env.WEEKLY_EVENTS_TARGET, 10) || 5;
 
-router.get('/', async (req, res, next) => {
+router.get('/', requireAnyRole, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT u.id, u.nickname, u.discord_username, u.avatar_image_id,
@@ -26,7 +26,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.get('/roles', async (req, res, next) => {
+router.get('/roles', requireAnyRole, async (req, res, next) => {
   try {
     const { rows } = await pool.query('SELECT id, name, priority FROM roles ORDER BY priority ASC');
     res.json({ roles: rows });

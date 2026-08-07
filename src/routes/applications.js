@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { requireAdmin } = require('../middleware/auth');
+const { requireRole } = require('../middleware/auth');
+const { APPLICATIONS_ROLES } = require('../utils/access');
 
 const router = express.Router();
 
@@ -92,8 +93,9 @@ async function releaseCandidate(userId) {
   }
 }
 
-// Список заявок виден только администраторам/владельцу (рассмотрение).
-router.get('/', requireAdmin, async (req, res, next) => {
+// Список заявок виден только ролям из APPLICATIONS_ROLES (см.
+// src/utils/access.js) — те же роли ведут их рассмотрение.
+router.get('/', requireRole(APPLICATIONS_ROLES), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT a.id, a.discord, a.nickname_static, a.age, a.avg_online, a.time_period,
@@ -168,7 +170,7 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.put('/:id', requireAdmin, async (req, res, next) => {
+router.put('/:id', requireRole(APPLICATIONS_ROLES), async (req, res, next) => {
   try {
     const status = req.body.status;
     if (!['pending', 'approved', 'rejected'].includes(status)) {
@@ -233,7 +235,7 @@ router.put('/:id', requireAdmin, async (req, res, next) => {
 // Результат обзвона кандидата (вкладка "Кандидаты" в заявках):
 // прошёл — получает роль Mini Event Helper и становится обычным
 // сотрудником; не прошёл — кандидат снимается (см. releaseCandidate).
-router.post('/:id/call', requireAdmin, async (req, res, next) => {
+router.post('/:id/call', requireRole(APPLICATIONS_ROLES), async (req, res, next) => {
   try {
     const passed = req.body.passed === true || req.body.passed === 'true';
 
@@ -268,7 +270,7 @@ router.post('/:id/call', requireAdmin, async (req, res, next) => {
   }
 });
 
-router.delete('/:id', requireAdmin, async (req, res, next) => {
+router.delete('/:id', requireRole(APPLICATIONS_ROLES), async (req, res, next) => {
   try {
     const { rows } = await pool.query('SELECT status, candidate_user_id FROM applications WHERE id = $1', [req.params.id]);
     if (rows.length && rows[0].status === 'approved' && rows[0].candidate_user_id) {

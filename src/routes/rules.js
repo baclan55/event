@@ -2,11 +2,11 @@ const express = require('express');
 const pool = require('../db/pool');
 const upload = require('../middleware/upload');
 const { saveImage } = require('../db/images');
-const { requireAdmin } = require('../middleware/auth');
+const { requireAdmin, requireAnyRole } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.get('/', async (req, res, next) => {
+router.get('/', requireAnyRole, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT id, position, title, body, image_id, updated_at

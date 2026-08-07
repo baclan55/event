@@ -1,8 +1,8 @@
 window.Sections = window.Sections || {};
 window.Sections.owner = {
   async render(container) {
-    if (!Auth.isOwner()) {
-      container.innerHTML = `<div class="empty-state"><h3>Доступ ограничен</h3><p>Раздел виден только владельцу портала.</p></div>`;
+    if (!App.hasRole(ACCESS.OWNER_PANEL_ROLES)) {
+      container.innerHTML = `<div class="empty-state"><h3>Доступ ограничен</h3><p>Панель видна только Chief Event и Dep.Chief Event.</p></div>`;
       return;
     }
 

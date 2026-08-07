@@ -1,10 +1,11 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { requireOwner } = require('../middleware/auth');
+const { requireRole } = require('../middleware/auth');
+const { OWNER_PANEL_ROLES } = require('../utils/access');
 
 const router = express.Router();
 
-router.use(requireOwner);
+router.use(requireRole(OWNER_PANEL_ROLES));
 
 router.get('/users', async (req, res, next) => {
   try {

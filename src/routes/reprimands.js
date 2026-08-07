@@ -1,7 +1,8 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { requireAdmin, requireAuth } = require('../middleware/auth');
+const { requireAnyRole, requireRole } = require('../middleware/auth');
 const { tierForPriority } = require('../utils/tier');
+const { REPRIMANDS_ROLES } = require('../utils/access');
 
 const router = express.Router();
 
@@ -20,12 +21,12 @@ const LIMITS_PAYLOAD = {
   admin: { points: ADMIN_POINT_LIMIT, decayDays: ADMIN_POINT_DECAY_DAYS },
 };
 
-// Список виден только администраторам/владельцу — это раздел внутренней
-// дисциплины отдела. К каждой записи добавляем tier (тир сотрудника на
-// сегодня, по его текущей роли) и active — для баллов админов это значит
-// "ещё не списан" (моложе ADMIN_POINT_DECAY_DAYS дней), для устных/строгих
-// выговоров хелперов active всегда true, так как они не сгорают.
-router.get('/', requireAdmin, async (req, res, next) => {
+// Список виден только ролям из REPRIMANDS_ROLES (см. src/utils/access.js) —
+// это раздел внутренней дисциплины отдела. К каждой записи добавляем tier
+// (тир сотрудника на сегодня, по его текущей роли) и active — для баллов
+// админов это значит "ещё не списан" (моложе ADMIN_POINT_DECAY_DAYS дней),
+// для устных/строгих выговоров хелперов active всегда true, они не сгорают.
+router.get('/', requireRole(REPRIMANDS_ROLES), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT rp.id, rp.reason, rp.type, rp.created_at,
@@ -57,11 +58,13 @@ router.get('/', requireAdmin, async (req, res, next) => {
   }
 });
 
-// Личная версия списка — доступна любому вошедшему сотруднику (не только
-// администратору) и отдаёт только ЕГО СОБСТВЕННЫЕ записи. Используется на
-// личной мини-странице сотрудника, чтобы не открывать ему полный раздел
-// "Система выговоров" (тот остаётся admin-only, см. GET '/' выше).
-router.get('/me', requireAuth, async (req, res, next) => {
+// Личная версия списка — доступна любому сотруднику С НАЗНАЧЕННОЙ РОЛЬЮ
+// (не только тем, кто есть в REPRIMANDS_ROLES) и отдаёт только ЕГО
+// СОБСТВЕННЫЕ записи. Используется на личной мини-странице сотрудника,
+// чтобы не открывать ему полный раздел "Система выговоров" (тот доступен
+// только REPRIMANDS_ROLES, см. GET '/' выше). Сотрудник "без роли" не
+// видит и эту версию — личный кабинет для него полностью закрыт.
+router.get('/me', requireAnyRole, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT rp.id, rp.reason, rp.type, rp.created_at,
@@ -91,7 +94,7 @@ router.get('/me', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/', requireAdmin, async (req, res, next) => {
+router.post('/', requireRole(REPRIMANDS_ROLES), async (req, res, next) => {
   try {
     const userId = req.body.userId;
     const reason = (req.body.reason || '').trim();
@@ -151,7 +154,7 @@ router.post('/', requireAdmin, async (req, res, next) => {
   }
 });
 
-router.delete('/:id', requireAdmin, async (req, res, next) => {
+router.delete('/:id', requireRole(REPRIMANDS_ROLES), async (req, res, next) => {
   try {
     await pool.query('DELETE FROM reprimands WHERE id = $1', [req.params.id]);
     res.json({ ok: true });

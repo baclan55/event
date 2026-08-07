@@ -2,7 +2,7 @@ const express = require('express');
 const pool = require('../db/pool');
 const upload = require('../middleware/upload');
 const { saveImage } = require('../db/images');
-const { requireAdmin } = require('../middleware/auth');
+const { requireAdmin, requireAnyRole } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -18,7 +18,7 @@ function checkSection(req, res, next) {
 
 // Возвращает все блоки раздела (обе аудитории для faq/regulations,
 // одну "general" для first_steps), в виде { helper: {...}, administrator: {...} }
-router.get('/:section', checkSection, async (req, res, next) => {
+router.get('/:section', checkSection, requireAnyRole, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT c.audience, c.body, c.image_id, c.updated_at, u.nickname AS updated_by_name

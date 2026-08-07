@@ -1,8 +1,8 @@
 window.Sections = window.Sections || {};
 window.Sections.reprimands = {
   async render(container) {
-    if (!Auth.isAdmin()) {
-      container.innerHTML = `<div class="empty-state"><h3>Доступ ограничен</h3><p>Раздел виден администраторам и владельцу отдела.</p></div>`;
+    if (!App.hasRole(ACCESS.REPRIMANDS_ROLES)) {
+      container.innerHTML = `<div class="empty-state"><h3>Доступ ограничен</h3><p>Раздел виден только определённым ролям (Chief Event Helper и выше).</p></div>`;
       return;
     }
 
