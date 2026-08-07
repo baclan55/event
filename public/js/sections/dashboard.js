@@ -28,7 +28,7 @@ window.Sections.dashboard = {
     const topHTML = top3.length ? top3.map((m, i) => `
       <div class="top-row">
         <div class="top-rank">${medal[i] || i + 1}</div>
-        ${avatarHTML(m.avatar_image_id, m.nickname, 38)}
+        ${avatarHTML(m.avatar_url || m.avatar_image_id, m.nickname, 38)}
         <div style="min-width:0;flex:1;">
           <div class="nickname">${esc(m.nickname)}</div>
           <div class="role-tag">${esc(m.role_name || 'Без роли')}</div>

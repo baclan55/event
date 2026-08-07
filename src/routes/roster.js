@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db/pool');
 const upload = require('../middleware/upload');
 const { saveImage } = require('../db/images');
+const cloudinary = require('../utils/cloudinary');
 const { requireAnyRole, requireRoleIn } = require('../middleware/auth');
 const { EDIT_ROLES } = require('../utils/roleAccess');
 const { tierForPriority } = require('../utils/tier');
@@ -14,7 +15,7 @@ const TARGET = parseInt(process.env.WEEKLY_EVENTS_TARGET, 10) || 5;
 router.get('/', requireAnyRole, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT u.id, u.nickname, u.discord_username, u.avatar_image_id,
+      `SELECT u.id, u.nickname, u.discord_username, u.avatar_image_id, u.avatar_url,
               u.weekly_events, u.note, u.role_id, u.status,
               r.name AS role_name, r.priority AS role_priority
        FROM users u
@@ -80,9 +81,25 @@ router.put('/:id', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
 router.post('/:id/avatar', requireRoleIn(EDIT_ROLES), upload.single('image'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Файл не получен.' });
-    const imageId = await saveImage(req.file);
-    await pool.query('UPDATE users SET avatar_image_id = $1 WHERE id = $2', [imageId, req.params.id]);
-    res.json({ ok: true, imageId });
+
+    if (cloudinary.isConfigured()) {
+      const { url, publicId } = await cloudinary.uploadAvatar(req.file.buffer);
+      const { rows } = await pool.query(
+        'SELECT avatar_public_id FROM users WHERE id = $1',
+        [req.params.id]
+      );
+      const oldPublicId = rows[0]?.avatar_public_id;
+      await pool.query(
+        'UPDATE users SET avatar_url = $1, avatar_public_id = $2, avatar_image_id = NULL WHERE id = $3',
+        [url, publicId, req.params.id]
+      );
+      if (oldPublicId) cloudinary.deleteAvatar(oldPublicId);
+      res.json({ ok: true, avatarUrl: url });
+    } else {
+      const imageId = await saveImage(req.file);
+      await pool.query('UPDATE users SET avatar_image_id = $1 WHERE id = $2', [imageId, req.params.id]);
+      res.json({ ok: true, imageId });
+    }
   } catch (err) {
     next(err);
   }

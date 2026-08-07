@@ -12,10 +12,13 @@ function initials(name) {
   return parts.map((p) => p[0]).join('').toUpperCase() || '?';
 }
 
-function avatarHTML(imageId, nickname, size) {
+// avatarSource — либо полный URL картинки (например, из Cloudinary), либо
+// числовой id из внутренней таблицы images (тогда отдаётся через /media/:id).
+function avatarHTML(avatarSource, nickname, size) {
   const style = size ? ` style="width:${size}px;height:${size}px;"` : '';
-  if (imageId) {
-    return `<div class="avatar"${style}><img src="/media/${imageId}" alt=""></div>`;
+  if (avatarSource) {
+    const src = /^https?:\/\//i.test(avatarSource) ? avatarSource : `/media/${avatarSource}`;
+    return `<div class="avatar"${style}><img src="${escAttr(src)}" alt=""></div>`;
   }
   return `<div class="avatar"${style}>${esc(initials(nickname))}</div>`;
 }

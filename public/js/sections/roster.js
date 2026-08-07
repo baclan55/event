@@ -66,7 +66,7 @@ window.Sections.roster = {
         return `
           <div class="roster-row" data-id="${m.id}">
             <div class="who">
-              ${avatarHTML(m.avatar_image_id, m.nickname, 38)}
+              ${avatarHTML(m.avatar_url || m.avatar_image_id, m.nickname, 38)}
               <div>
                 <div class="nickname">${esc(m.nickname)}</div>
                 <div class="role-tag">${esc(m.role_name || 'Без роли')}${m.discord_username ? ' · ' + esc(m.discord_username) : ''}</div>
@@ -84,7 +84,7 @@ window.Sections.roster = {
         return `
           <div class="roster-row" data-id="${m.id}">
             <div class="who">
-              ${avatarHTML(m.avatar_image_id, m.nickname, 38)}
+              ${avatarHTML(m.avatar_url || m.avatar_image_id, m.nickname, 38)}
               <div>
                 <div class="nickname">${esc(m.nickname)}</div>
                 <div class="role-tag">Кандидат${m.discord_username ? ' · ' + esc(m.discord_username) : ''}</div>
@@ -158,7 +158,7 @@ window.Sections.roster = {
         <div class="field"><label>Заметка (необязательно)</label><textarea class="input" id="mNote" rows="3">${esc(member ? member.note || '' : '')}</textarea></div>
         <div class="field">
           <label>Аватар</label>
-          ${member && member.avatar_image_id ? `<div style="margin-bottom:10px;">${avatarHTML(member.avatar_image_id, member.nickname, 56)}</div>` : ''}
+          ${member && (member.avatar_url || member.avatar_image_id) ? `<div style="margin-bottom:10px;">${avatarHTML(member.avatar_url || member.avatar_image_id, member.nickname, 56)}</div>` : ''}
           <input type="file" accept="image/*" id="mAvatar" class="input">
         </div>
         <div class="modal-actions">

@@ -37,7 +37,7 @@ window.Sections.reprimands = {
           map.set(it.user_id, {
             user_id: it.user_id,
             nickname: it.user_nickname,
-            avatar: it.avatar_image_id,
+            avatar: it.avatar_url || it.avatar_image_id,
             role: it.role_name,
             entries: [],
           });

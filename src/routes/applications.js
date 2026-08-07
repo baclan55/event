@@ -102,7 +102,8 @@ router.get('/', requireRoleIn(APPLICATIONS_ROLES), async (req, res, next) => {
               a.experience, a.ideas, a.motivation, a.status, a.created_at,
               a.candidate_user_id,
               r.nickname AS reviewed_by_nickname,
-              cu.nickname AS candidate_nickname, cu.avatar_image_id AS candidate_avatar_image_id
+              cu.nickname AS candidate_nickname, cu.avatar_image_id AS candidate_avatar_image_id,
+              cu.avatar_url AS candidate_avatar_url
        FROM applications a
        LEFT JOIN users r ON r.id = a.reviewed_by
        LEFT JOIN users cu ON cu.id = a.candidate_user_id

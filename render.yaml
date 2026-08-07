@@ -34,3 +34,13 @@ services:
         sync: false
       - key: APPLICATIONS_WEBHOOK_URL
         sync: false
+      # Опционально — если задать, аватары сотрудников будут храниться в
+      # Cloudinary вместо базы данных (см. README.md, раздел «Аватары через
+      # Cloudinary»). Можно оставить пустыми — тогда аватары продолжат
+      # храниться в Postgres, как раньше.
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false

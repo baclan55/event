@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db/pool');
 const upload = require('../middleware/upload');
 const { saveImage } = require('../db/images');
+const cloudinary = require('../utils/cloudinary');
 const { requireAnyRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -13,6 +14,7 @@ function publicUser(u) {
     nickname: u.nickname,
     discordUsername: u.discord_username,
     avatarImageId: u.avatar_image_id,
+    avatarUrl: u.avatar_url,
     isOwner: u.is_owner,
     isAdmin: u.is_admin,
     weeklyEvents: u.weekly_events,
@@ -37,7 +39,7 @@ router.put('/me/nickname', requireAnyRole, async (req, res, next) => {
 
     const { rows } = await pool.query(
       `UPDATE users SET nickname = $1 WHERE id = $2
-       RETURNING id, nickname, discord_username, avatar_image_id, is_owner, is_admin,
+       RETURNING id, nickname, discord_username, avatar_image_id, avatar_url, is_owner, is_admin,
                  weekly_events, role_id`,
       [nickname, req.user.id]
     );
@@ -57,13 +59,31 @@ router.put('/me/nickname', requireAnyRole, async (req, res, next) => {
 router.post('/me/avatar', requireAnyRole, upload.single('image'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Файл не получен.' });
-    const imageId = await saveImage(req.file);
-    const { rows } = await pool.query(
-      `UPDATE users SET avatar_image_id = $1 WHERE id = $2
-       RETURNING id, nickname, discord_username, avatar_image_id, is_owner, is_admin,
-                 weekly_events, role_id`,
-      [imageId, req.user.id]
-    );
+
+    let rows;
+    if (cloudinary.isConfigured()) {
+      // Cloudinary настроен (см. README) — грузим туда, а старый файл (если
+      // был) удаляем, чтобы не копить мусор в аккаунте Cloudinary.
+      const { url, publicId } = await cloudinary.uploadAvatar(req.file.buffer);
+      const oldPublicId = req.user.avatar_public_id;
+      ({ rows } = await pool.query(
+        `UPDATE users SET avatar_url = $1, avatar_public_id = $2, avatar_image_id = NULL
+         WHERE id = $3
+         RETURNING id, nickname, discord_username, avatar_image_id, avatar_url, is_owner, is_admin,
+                   weekly_events, role_id`,
+        [url, publicId, req.user.id]
+      ));
+      if (oldPublicId) cloudinary.deleteAvatar(oldPublicId);
+    } else {
+      // Cloudinary не настроен — прежнее поведение: файл целиком в Postgres.
+      const imageId = await saveImage(req.file);
+      ({ rows } = await pool.query(
+        `UPDATE users SET avatar_image_id = $1 WHERE id = $2
+         RETURNING id, nickname, discord_username, avatar_image_id, avatar_url, is_owner, is_admin,
+                   weekly_events, role_id`,
+        [imageId, req.user.id]
+      ));
+    }
     const updated = rows[0];
     res.json({ user: publicUser({ ...updated, role_name: req.user.role_name }) });
   } catch (err) {

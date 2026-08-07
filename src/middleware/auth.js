@@ -11,7 +11,8 @@ async function attachUser(req, res, next) {
     }
     const { rows } = await pool.query(
       `SELECT u.id, u.nickname, u.discord_id, u.discord_username,
-              u.avatar_image_id, u.is_owner, u.is_admin, u.weekly_events, u.note,
+              u.avatar_image_id, u.avatar_url, u.avatar_public_id,
+              u.is_owner, u.is_admin, u.weekly_events, u.note,
               u.role_id, r.name AS role_name, r.priority AS role_priority
        FROM users u
        LEFT JOIN roles r ON r.id = u.role_id

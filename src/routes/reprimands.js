@@ -31,7 +31,7 @@ router.get('/', requireRoleIn(REPRIMANDS_ROLES), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT rp.id, rp.reason, rp.type, rp.created_at,
-              u.id AS user_id, u.nickname AS user_nickname, u.avatar_image_id,
+              u.id AS user_id, u.nickname AS user_nickname, u.avatar_image_id, u.avatar_url,
               r.name AS role_name, r.priority AS role_priority,
               iu.nickname AS issued_by_nickname
        FROM reprimands rp

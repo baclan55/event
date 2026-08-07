@@ -66,7 +66,7 @@ window.Sections.applications = {
         <div class="rule-card" data-id="${a.id}">
           <div class="rule-body">
             <div class="who" style="margin-bottom:8px;">
-              ${avatarHTML(a.candidate_avatar_image_id, a.candidate_nickname || a.nickname_static, 38)}
+              ${avatarHTML(a.candidate_avatar_url || a.candidate_avatar_image_id, a.candidate_nickname || a.nickname_static, 38)}
               <div>
                 <div class="nickname">${esc(a.candidate_nickname || a.nickname_static || 'Без имени')}</div>
                 <div class="role-tag">Discord: ${esc(a.discord || '—')}</div>

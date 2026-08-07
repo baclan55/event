@@ -89,7 +89,7 @@ window.Sections.profile = {
     container.innerHTML = `
       <div class="card card-pad" style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
         <div style="position:relative;flex-shrink:0;">
-          ${avatarHTML(user.avatarImageId, user.nickname, 64)}
+          ${avatarHTML(user.avatarUrl || user.avatarImageId, user.nickname, 64)}
           <button type="button" class="icon-btn" id="editAvatarBtn" title="Изменить аватар"
             style="position:absolute;right:-3px;bottom:-3px;width:26px;height:26px;border-radius:50%;background:var(--bg-card);border:1px solid var(--border);padding:0;">${ICONS.image()}</button>
         </div>
@@ -125,8 +125,8 @@ window.Sections.profile = {
     function syncHeaderUI(updated) {
       document.querySelectorAll('.sidebar-user-name').forEach((el) => { el.textContent = updated.nickname; });
       document.querySelectorAll('#accountWidget .name').forEach((el) => { el.textContent = updated.nickname; });
-      document.querySelectorAll('.sidebar-user .avatar').forEach((el) => { el.outerHTML = avatarHTML(updated.avatarImageId, updated.nickname, 34); });
-      document.querySelectorAll('#accountWidget .avatar').forEach((el) => { el.outerHTML = avatarHTML(updated.avatarImageId, updated.nickname, 32); });
+      document.querySelectorAll('.sidebar-user .avatar').forEach((el) => { el.outerHTML = avatarHTML(updated.avatarUrl || updated.avatarImageId, updated.nickname, 34); });
+      document.querySelectorAll('#accountWidget .avatar').forEach((el) => { el.outerHTML = avatarHTML(updated.avatarUrl || updated.avatarImageId, updated.nickname, 32); });
     }
 
     // -----------------------------------------------------------------
@@ -173,7 +173,7 @@ window.Sections.profile = {
         <div class="error-text" id="avatarErr"></div>
         <div class="field">
           <label>Изображение</label>
-          <div style="margin-bottom:10px;">${avatarHTML(user.avatarImageId, user.nickname, 64)}</div>
+          <div style="margin-bottom:10px;">${avatarHTML(user.avatarUrl || user.avatarImageId, user.nickname, 64)}</div>
           <input type="file" accept="image/*" id="avatarFileInput" class="input">
         </div>
         <div class="modal-actions">

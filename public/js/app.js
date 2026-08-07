@@ -212,7 +212,7 @@ const App = {
 
     const sidebarUserHTML = user ? `
       <div class="sidebar-user">
-        ${avatarHTML(user.avatarImageId, user.nickname, 34)}
+        ${avatarHTML(user.avatarUrl || user.avatarImageId, user.nickname, 34)}
         <div class="sidebar-user-info">
           <div class="sidebar-user-name">${esc(user.nickname)}</div>
           <div class="sidebar-user-role">${esc(user.roleName || 'Без роли')}</div>
@@ -272,7 +272,7 @@ const App = {
     if (user) {
       return `
         <div class="account-widget" id="accountWidget">
-          ${avatarHTML(user.avatarImageId, user.nickname, 32)}
+          ${avatarHTML(user.avatarUrl || user.avatarImageId, user.nickname, 32)}
           <span class="name">${esc(user.nickname)}</span>
           <span class="chev">${ICONS.chevronDown()}</span>
         </div>`;

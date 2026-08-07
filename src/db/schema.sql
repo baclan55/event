@@ -46,6 +46,14 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'member';
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 
+-- Аватар через Cloudinary (опционально, см. src/utils/cloudinary.js). Если
+-- задан avatar_url — используется он (отдаётся напрямую с CDN Cloudinary),
+-- иначе фронтенд показывает старый avatar_image_id (картинка из таблицы
+-- images в этой же базе). avatar_public_id хранится, чтобы можно было
+-- удалить прежний файл в Cloudinary при загрузке нового аватара.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_public_id TEXT;
+
 -- Текстовые разделы с переключателем "Event Helper / Event Administrator":
 -- используется для FAQ и Регламента. section: 'faq' | 'regulations'.
 -- audience: 'helper' | 'administrator'.
