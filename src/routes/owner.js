@@ -1,11 +1,13 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { requireRole } = require('../middleware/auth');
-const { OWNER_PANEL_ROLES } = require('../utils/access');
+const { requireRoleIn } = require('../middleware/auth');
+const { OWNER_PANEL_ROLES } = require('../utils/roleAccess');
 
 const router = express.Router();
 
-router.use(requireRole(OWNER_PANEL_ROLES));
+// Панель владельца доступна только ролям Chief Event / Dep.Chief Event
+// (плюс аккаунту с флагом is_owner — см. src/utils/roleAccess.js).
+router.use(requireRoleIn(OWNER_PANEL_ROLES));
 
 router.get('/users', async (req, res, next) => {
   try {

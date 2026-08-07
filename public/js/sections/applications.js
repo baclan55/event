@@ -3,11 +3,11 @@ window.Sections.applications = {
   async render(container) {
     // Подача заявки теперь происходит на публичной странице «Оставить
     // заявку» (без входа) — здесь только рассмотрение администрацией.
-    if (!App.hasRole(ACCESS.APPLICATIONS_ROLES)) {
+    if (!Auth.hasRoleIn(Auth.ROLE_GROUPS.applications)) {
       container.innerHTML = `
         <div class="empty-state">
           <h3>Доступ ограничен</h3>
-          <p>Раздел рассмотрения заявок виден только определённым ролям.</p>
+          <p>Раздел рассмотрения заявок виден только определённым ролям отдела.</p>
         </div>`;
       return;
     }

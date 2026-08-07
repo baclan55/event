@@ -1,5 +1,9 @@
 const App = {
   // Разделы личного кабинета (внутренний портал для сотрудников).
+  // Разделы без поля `roles` — "общие": доступны любому сотруднику с
+  // назначенной ролью (см. canAccessCabinet/canAccessItem ниже). Разделы с
+  // `roles` — доступны только сотрудникам с одной из перечисленных ролей
+  // (совпадает с Auth.ROLE_GROUPS / src/utils/roleAccess.js на бэкенде).
   navItems: [
     { key: 'profile', label: 'Моя страница', icon: 'user', title: 'Моя страница', sub: 'Ваши мероприятия за неделю и выговоры' },
     { key: 'faq', label: 'FAQ', icon: 'faq', title: 'FAQ', sub: 'Последовательность проведения мероприятий' },
@@ -7,10 +11,10 @@ const App = {
     { key: 'rules', label: 'Правила МП', icon: 'rules', title: 'Правила МП', sub: 'Правила проведения мероприятий и их суть' },
     { key: 'regulations', label: 'Регламент', icon: 'regulations', title: 'Регламент', sub: 'Регламент работы по ролям' },
     { key: 'firstSteps', label: 'Первые шаги', icon: 'firstSteps', title: 'Первые шаги', sub: 'С чего начать новому сотруднику' },
-    { key: 'reprimands', label: 'Система выговоров', icon: 'reprimands', title: 'Система выговоров', sub: 'Учёт дисциплинарных взысканий', roles: ACCESS.REPRIMANDS_ROLES },
-    { key: 'applications', label: 'Заявки', icon: 'applications', title: 'Заявки', sub: 'Заявки на роль Event Helper', roles: ACCESS.APPLICATIONS_ROLES },
+    { key: 'reprimands', label: 'Система выговоров', icon: 'reprimands', title: 'Система выговоров', sub: 'Учёт дисциплинарных взысканий', roles: Auth.ROLE_GROUPS.reprimands },
+    { key: 'applications', label: 'Заявки', icon: 'applications', title: 'Заявки', sub: 'Заявки на роль Event Helper', roles: Auth.ROLE_GROUPS.applications },
   ],
-  ownerItem: { key: 'owner', label: 'Панель владельца', icon: 'owner', title: 'Панель владельца', sub: 'Управление пользователями и правами', roles: ACCESS.OWNER_PANEL_ROLES },
+  ownerItem: { key: 'owner', label: 'Панель владельца', icon: 'owner', title: 'Панель владельца', sub: 'Управление пользователями и правами', roles: Auth.ROLE_GROUPS.owner },
   // Вкладка "Главная" в личном кабинете — самая верхняя, сразу после ссылки
   // "На сайт". Отдельная от navItems, потому что рисуется в сайдбаре особо
   // (см. renderShell), а не в общем списке разделов.
@@ -21,25 +25,20 @@ const App = {
 
   currentKey: 'home',
 
+  // Личный кабинет целиком закрыт для сотрудников без роли — они не видят
+  // ни одного раздела, пока администратор не назначит роль в «Составе».
+  canAccessCabinet() {
+    return Auth.hasRole();
+  },
+
+  canAccessItem(item) {
+    if (!item || !App.canAccessCabinet()) return false;
+    if (item.roles) return Auth.hasRoleIn(item.roles);
+    return true;
+  },
+
   visibleNavItems() {
-    return App.navItems.filter((item) => App.canAccess(item));
-  },
-
-  // "Без роли" (кандидаты, только что вошедшие через Discord и ещё не
-  // назначенные администратором) не видят в личном кабинете ничего.
-  hasAnyRole() {
-    return !!(Auth.currentUser && Auth.currentUser.roleId);
-  },
-
-  hasRole(allowedRoleNames) {
-    return !!(Auth.currentUser && Auth.currentUser.roleName && allowedRoleNames.includes(Auth.currentUser.roleName));
-  },
-
-  // Раздел без списка ролей (item.roles) открыт всем, у кого есть хоть
-  // какая-то роль; раздел со списком — только перечисленным в нём ролям.
-  canAccess(item) {
-    if (!App.hasAnyRole()) return false;
-    return !item.roles || App.hasRole(item.roles);
+    return App.navItems.filter((item) => App.canAccessItem(item));
   },
 
   findItem(key) {
@@ -66,35 +65,32 @@ const App = {
       return;
     }
 
-    // Личный кабинет требует входа — без него отправляем на сайт.
+    // Личный кабинет требует входа — не вошедших отправляем на главную
+    // сайта вместо того, чтобы показывать им внутренние разделы.
     if (!Auth.currentUser) {
       window.location.hash = '#/home';
       return;
     }
 
-    // Каркас личного кабинета (сайдбар) перестраивается только когда мы в
-    // него заходим впервые (например, с публичного сайта) — переходы между
-    // разделами внутри кабинета просто обновляют контент.
-    if (!document.querySelector('.sidebar')) App.renderShell();
-
-    // "Без роли" не видит внутри личного кабинета ни одного раздела —
-    // ждём, пока администратор назначит роль в «Составе».
-    if (!App.hasAnyRole()) {
-      App.currentKey = null;
-      App.renderTopbar({ title: 'Личный кабинет', sub: 'Роль ещё не назначена' });
-      App.highlightNav(null);
-      App.closeMobileSidebar();
-      document.getElementById('content').innerHTML = `
-        <div class="empty-state">
-          <h3>Роль ещё не назначена</h3>
-          <p>Доступ к разделам личного кабинета откроется, как только администратор назначит вам роль в «Составе».</p>
-        </div>`;
+    // Сотрудники без роли не видят в личном кабинете ни одного раздела —
+    // показываем отдельный экран "доступ появится после назначения роли"
+    // вместо сайдбара с разделами.
+    if (!App.canAccessCabinet()) {
+      App.currentKey = 'pending';
+      App.renderPendingAccess();
       return;
     }
 
     let item = App.findItem(hash);
-    if (!item || !App.canAccess(item)) item = App.navItems.find((i) => App.canAccess(i)) || App.dashboardItem;
+    if (!App.canAccessItem(item)) {
+      item = App.navItems.find((i) => App.canAccessItem(i));
+    }
     App.currentKey = item.key;
+
+    // Каркас личного кабинета (сайдбар) перестраивается только когда мы в
+    // него заходим впервые (например, с публичного сайта) — переходы между
+    // разделами внутри кабинета просто обновляют контент.
+    if (!document.querySelector('.sidebar')) App.renderShell();
 
     App.renderTopbar(item);
     App.highlightNav(item.key);
@@ -106,6 +102,35 @@ const App = {
     if (section && typeof section.render === 'function') {
       section.render(mount);
     }
+  },
+
+  // Экран для вошедших сотрудников, у которых ещё нет ни одной роли —
+  // видят только сообщение о том, что доступ откроется после назначения
+  // роли, без сайдбара и разделов личного кабинета.
+  renderPendingAccess() {
+    const app = document.getElementById('app');
+    app.innerHTML = `
+      <div class="site">
+        <header class="site-header">
+          <div class="site-header-inner">
+            <a href="#/home" class="site-brand">
+              <span class="site-brand-mark">ED</span>
+              <span class="site-brand-name">EVENTS DENVER</span>
+            </a>
+            <nav class="site-nav">
+              <a href="#/home" class="site-nav-link">Главная</a>
+              <button type="button" class="btn btn-ghost btn-sm" id="pendingLogoutBtn">Выйти</button>
+            </nav>
+          </div>
+        </header>
+        <main class="site-main">
+          <div class="empty-state" style="max-width:480px;margin:64px auto;">
+            <h3>Доступ пока закрыт</h3>
+            <p>Личный кабинет открывается сотрудникам после того, как им назначат роль в «Составе». Обратитесь к руководству отдела — как только роль будет назначена, разделы личного кабинета станут доступны.</p>
+          </div>
+        </main>
+      </div>`;
+    document.getElementById('pendingLogoutBtn')?.addEventListener('click', Auth.logout);
   },
 
   highlightNav(key) {
@@ -171,17 +196,13 @@ const App = {
   renderShell() {
     const user = Auth.currentUser;
     const app = document.getElementById('app');
-    const anyRole = App.hasAnyRole();
 
     const navHTML = App.visibleNavItems().map((item) => `
       <button type="button" class="nav-item" data-key="${item.key}">
         ${ICONS[item.icon]()}<span>${esc(item.label)}</span>
       </button>`).join('');
 
-    const dashboardBtnHTML = anyRole ? `
-      <button type="button" class="nav-item" data-key="dashboard" style="margin-bottom:14px;">${ICONS.dashboard()}<span>${esc(App.dashboardItem.label)}</span></button>` : '';
-
-    const ownerHTML = App.canAccess(App.ownerItem) ? `
+    const ownerHTML = App.canAccessItem(App.ownerItem) ? `
       <div class="nav-group">
         <div class="nav-label">Владелец</div>
         <button type="button" class="nav-item" data-key="owner">
@@ -211,7 +232,7 @@ const App = {
           </div>
         </div>
         <a href="#/home" class="nav-item" style="margin-bottom:2px;">${ICONS.home()}<span>На сайт</span></a>
-        ${dashboardBtnHTML}
+        <button type="button" class="nav-item" data-key="dashboard" style="margin-bottom:14px;">${ICONS.dashboard()}<span>${esc(App.dashboardItem.label)}</span></button>
         <nav class="nav-group">${navHTML}</nav>
         ${ownerHTML}
         <div class="sidebar-spacer"></div>
@@ -278,7 +299,7 @@ const App = {
     menu.className = 'card account-dropdown';
     menu.style.cssText = `position:fixed; top:${rect.bottom + 8}px; right:${window.innerWidth - rect.right}px; z-index:60; min-width:190px; padding:8px;`;
     menu.innerHTML = `
-      ${App.canAccess(App.ownerItem) ? `<button type="button" class="nav-item" style="width:100%" data-go="owner">${ICONS.owner()}<span>Панель владельца</span></button>` : ''}
+      ${App.canAccessItem(App.ownerItem) ? `<button type="button" class="nav-item" style="width:100%" data-go="owner">${ICONS.owner()}<span>Панель владельца</span></button>` : ''}
       <button type="button" class="nav-item" style="width:100%" id="ddLogout">${ICONS.logout()}<span>Выйти</span></button>`;
     document.body.appendChild(menu);
     menu.querySelector('[data-go="owner"]')?.addEventListener('click', () => { menu.remove(); App.navigate('owner'); });

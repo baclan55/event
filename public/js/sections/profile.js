@@ -90,7 +90,10 @@ window.Sections.profile = {
       <div class="card card-pad" style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
         ${avatarHTML(user.avatarImageId, user.nickname, 64)}
         <div style="min-width:0;flex:1;">
-          <div style="font-size:19px;font-weight:800;color:var(--text-heading);">${esc(user.nickname)}</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div style="font-size:19px;font-weight:800;color:var(--text-heading);">${esc(user.nickname)}</div>
+            <button type="button" class="icon-btn" id="editNicknameBtn" title="Изменить никнейм">${ICONS.edit()}</button>
+          </div>
           <div class="role-tag" style="font-size:12.5px;margin-top:2px;">${esc(user.roleName || 'Без роли')}${user.discordUsername ? ' · ' + esc(user.discordUsername) : ''}</div>
         </div>
         <div style="text-align:right;">
@@ -108,5 +111,43 @@ window.Sections.profile = {
         ${legendHTML}
         <div class="rp-group-entries">${entriesHTML}</div>
       </div>`;
+
+    container.querySelector('#editNicknameBtn').addEventListener('click', openEditNicknameModal);
+
+    // -----------------------------------------------------------------
+    // Смена собственного никнейма — доступна любому сотруднику для самого
+    // себя (не меняет роль/права/счётчики, только nickname).
+    // -----------------------------------------------------------------
+    function openEditNicknameModal() {
+      const overlay = Modal.open(`
+        <h2>Изменить никнейм</h2>
+        <div class="error-text" id="nickErr"></div>
+        <div class="field"><label>Никнейм</label><input class="input" id="nickInput" value="${escAttr(user.nickname)}" maxlength="60"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-modal-close>Отмена</button>
+          <button type="button" class="btn btn-primary" id="saveNickBtn">Сохранить</button>
+        </div>`);
+
+      const input = overlay.querySelector('#nickInput');
+      input.focus();
+      input.select();
+
+      overlay.querySelector('#saveNickBtn').addEventListener('click', async () => {
+        const nickname = input.value.trim();
+        const err = overlay.querySelector('#nickErr');
+        if (!nickname) { err.textContent = 'Введите никнейм.'; return; }
+        try {
+          const { user: updated } = await api.put('/api/auth/me/nickname', { nickname });
+          Auth.currentUser = updated;
+          user = updated;
+          Modal.close();
+          // Никнейм показывается ещё в сайдбаре и в виджете аккаунта наверху —
+          // обновляем их точечно, не перестраивая всю страницу.
+          document.querySelectorAll('.sidebar-user-name').forEach((el) => { el.textContent = updated.nickname; });
+          document.querySelectorAll('#accountWidget .name').forEach((el) => { el.textContent = updated.nickname; });
+          window.Sections.profile.render(container);
+        } catch (e) { err.textContent = e.message; }
+      });
+    }
   },
 };

@@ -33,7 +33,7 @@ window.Sections.roster = {
     }
 
     function paint() {
-      const admin = Auth.isAdmin();
+      const admin = Auth.hasRoleIn(Auth.ROLE_GROUPS.edit);
 
       // Кандидаты (одобренные заявки, ждущие обзвона) — отдельная категория:
       // у них тоже нет role_id, но их не показываем во вкладке "Без ролей",

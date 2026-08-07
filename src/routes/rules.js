@@ -2,10 +2,12 @@ const express = require('express');
 const pool = require('../db/pool');
 const upload = require('../middleware/upload');
 const { saveImage } = require('../db/images');
-const { requireAdmin, requireAnyRole } = require('../middleware/auth');
+const { requireAnyRole, requireRoleIn } = require('../middleware/auth');
+const { EDIT_ROLES } = require('../utils/roleAccess');
 
 const router = express.Router();
 
+// Виден только сотрудникам с назначенной ролью (см. requireAnyRole).
 router.get('/', requireAnyRole, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
@@ -18,7 +20,7 @@ router.get('/', requireAnyRole, async (req, res, next) => {
   }
 });
 
-router.post('/', requireAdmin, async (req, res, next) => {
+router.post('/', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
   try {
     const title = (req.body.title || '').trim();
     const body = req.body.body || '';
@@ -34,7 +36,7 @@ router.post('/', requireAdmin, async (req, res, next) => {
   }
 });
 
-router.put('/reorder', requireAdmin, express.json(), async (req, res, next) => {
+router.put('/reorder', requireRoleIn(EDIT_ROLES), express.json(), async (req, res, next) => {
   // не используется UI, но оставлено для удобства (перетаскивание порядка)
   try {
     const { order } = req.body || {};
@@ -48,7 +50,7 @@ router.put('/reorder', requireAdmin, express.json(), async (req, res, next) => {
   }
 });
 
-router.put('/:id', requireAdmin, async (req, res, next) => {
+router.put('/:id', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
   try {
     const title = (req.body.title || '').trim();
     const body = req.body.body || '';
@@ -63,7 +65,7 @@ router.put('/:id', requireAdmin, async (req, res, next) => {
   }
 });
 
-router.post('/:id/image', requireAdmin, upload.single('image'), async (req, res, next) => {
+router.post('/:id/image', requireRoleIn(EDIT_ROLES), upload.single('image'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Файл не получен.' });
     const imageId = await saveImage(req.file);
@@ -74,7 +76,7 @@ router.post('/:id/image', requireAdmin, upload.single('image'), async (req, res,
   }
 });
 
-router.delete('/:id/image', requireAdmin, async (req, res, next) => {
+router.delete('/:id/image', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
   try {
     await pool.query('UPDATE rules SET image_id = NULL, updated_at = now() WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
@@ -83,7 +85,7 @@ router.delete('/:id/image', requireAdmin, async (req, res, next) => {
   }
 });
 
-router.delete('/:id', requireAdmin, async (req, res, next) => {
+router.delete('/:id', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
   try {
     await pool.query('DELETE FROM rules WHERE id = $1', [req.params.id]);
     res.json({ ok: true });

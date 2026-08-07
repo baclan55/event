@@ -2,7 +2,8 @@ const express = require('express');
 const pool = require('../db/pool');
 const upload = require('../middleware/upload');
 const { saveImage } = require('../db/images');
-const { requireAdmin, requireAnyRole } = require('../middleware/auth');
+const { requireAnyRole, requireRoleIn } = require('../middleware/auth');
+const { EDIT_ROLES } = require('../utils/roleAccess');
 
 const router = express.Router();
 
@@ -18,6 +19,7 @@ function checkSection(req, res, next) {
 
 // Возвращает все блоки раздела (обе аудитории для faq/regulations,
 // одну "general" для first_steps), в виде { helper: {...}, administrator: {...} }
+// Виден только сотрудникам с назначенной ролью (см. requireAnyRole).
 router.get('/:section', checkSection, requireAnyRole, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
@@ -42,7 +44,7 @@ router.get('/:section', checkSection, requireAnyRole, async (req, res, next) => 
   }
 });
 
-router.put('/:section', checkSection, requireAdmin, async (req, res, next) => {
+router.put('/:section', checkSection, requireRoleIn(EDIT_ROLES), async (req, res, next) => {
   try {
     const audience = ALLOWED_AUDIENCE.has(req.body.audience) ? req.body.audience : 'general';
     const body = typeof req.body.body === 'string' ? req.body.body : '';
@@ -59,7 +61,7 @@ router.put('/:section', checkSection, requireAdmin, async (req, res, next) => {
   }
 });
 
-router.post('/:section/image', checkSection, requireAdmin, upload.single('image'), async (req, res, next) => {
+router.post('/:section/image', checkSection, requireRoleIn(EDIT_ROLES), upload.single('image'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Файл не получен.' });
     const audience = ALLOWED_AUDIENCE.has(req.body.audience) ? req.body.audience : 'general';
@@ -77,7 +79,7 @@ router.post('/:section/image', checkSection, requireAdmin, upload.single('image'
   }
 });
 
-router.delete('/:section/image', checkSection, requireAdmin, async (req, res, next) => {
+router.delete('/:section/image', checkSection, requireRoleIn(EDIT_ROLES), async (req, res, next) => {
   try {
     const audience = ALLOWED_AUDIENCE.has(req.query.audience) ? req.query.audience : 'general';
     await pool.query(

@@ -2,13 +2,15 @@ const express = require('express');
 const pool = require('../db/pool');
 const upload = require('../middleware/upload');
 const { saveImage } = require('../db/images');
-const { requireAdmin, requireAnyRole } = require('../middleware/auth');
+const { requireAnyRole, requireRoleIn } = require('../middleware/auth');
+const { EDIT_ROLES } = require('../utils/roleAccess');
 const { tierForPriority } = require('../utils/tier');
 
 const router = express.Router();
 
 const TARGET = parseInt(process.env.WEEKLY_EVENTS_TARGET, 10) || 5;
 
+// Виден только сотрудникам с назначенной ролью (см. requireAnyRole).
 router.get('/', requireAnyRole, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
@@ -35,7 +37,7 @@ router.get('/roles', requireAnyRole, async (req, res, next) => {
   }
 });
 
-router.post('/', requireAdmin, async (req, res, next) => {
+router.post('/', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
   try {
     const nickname = (req.body.nickname || '').trim();
     if (!nickname) return res.status(400).json({ error: 'Укажите никнейм участника.' });
@@ -53,7 +55,7 @@ router.post('/', requireAdmin, async (req, res, next) => {
   }
 });
 
-router.put('/:id', requireAdmin, async (req, res, next) => {
+router.put('/:id', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
   try {
     const nickname = (req.body.nickname || '').trim();
     if (!nickname) return res.status(400).json({ error: 'Укажите никнейм участника.' });
@@ -75,7 +77,7 @@ router.put('/:id', requireAdmin, async (req, res, next) => {
   }
 });
 
-router.post('/:id/avatar', requireAdmin, upload.single('image'), async (req, res, next) => {
+router.post('/:id/avatar', requireRoleIn(EDIT_ROLES), upload.single('image'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Файл не получен.' });
     const imageId = await saveImage(req.file);
@@ -86,7 +88,7 @@ router.post('/:id/avatar', requireAdmin, upload.single('image'), async (req, res
   }
 });
 
-router.delete('/:id', requireAdmin, async (req, res, next) => {
+router.delete('/:id', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
   try {
     // Не даём удалить владельца случайно через этот роут
     const check = await pool.query('SELECT is_owner FROM users WHERE id = $1', [req.params.id]);

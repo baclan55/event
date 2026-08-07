@@ -2,6 +2,18 @@ const Auth = {
   currentUser: null,
   config: { appTitle: 'Events Denver', appSubtitle: 'Ивент-отдел сервера', weeklyEventsTarget: 5, discordEnabled: false },
 
+  // Настройка доступа к узким разделам личного кабинета по названию роли —
+  // должна буквально совпадать с src/utils/roleAccess.js на бэкенде (это
+  // лишь для UI: сайдбар/переходы, реальная проверка всегда на сервере).
+  ROLE_GROUPS: {
+    reprimands: ['Chief Event Helper', 'Dep.Chief Event Helper', 'Senior Event Helper', 'Chief Event', 'Dep.Chief Event'],
+    applications: ['Chief Event Helper', 'Dep.Chief Event Helper', 'Chief Event', 'Dep.Chief Event'],
+    owner: ['Chief Event', 'Dep.Chief Event'],
+    // Редактирование контента (FAQ/Регламент/Правила МП/Первые шаги/Состав) —
+    // совпадает с src/utils/roleAccess.js -> EDIT_ROLES на бэкенде.
+    edit: ['Chief Event', 'Dep.Chief Event'],
+  },
+
   async bootstrap() {
     try { Auth.config = await api.get('/api/config'); } catch (e) { /* используем значения по умолчанию */ }
     try {
@@ -14,6 +26,19 @@ const Auth = {
 
   isAdmin() { return !!(Auth.currentUser && (Auth.currentUser.isAdmin || Auth.currentUser.isOwner)); },
   isOwner() { return !!(Auth.currentUser && Auth.currentUser.isOwner); },
+
+  // Есть ли у пользователя хоть какая-то назначенная роль — от этого зависит,
+  // виден ли личный кабинет вообще (сотрудники "Без роли" не видят ничего,
+  // кроме публичного сайта, пока администратор не назначит роль в «Составе»).
+  hasRole() {
+    return !!(Auth.currentUser && (Auth.currentUser.roleId || Auth.currentUser.isOwner));
+  },
+
+  // Есть ли у пользователя одна из перечисленных ролей (владелец — всегда).
+  hasRoleIn(roles) {
+    return !!(Auth.currentUser && (Auth.currentUser.isOwner ||
+      (Auth.currentUser.roleName && roles.includes(Auth.currentUser.roleName))));
+  },
 
   // Вход в личный кабинет — только через Discord. Первый вход одновременно
   // является регистрацией аккаунта, поэтому согласие на обработку

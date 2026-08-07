@@ -24,7 +24,7 @@ const ContentSection = {
         <div class="card card-pad">
           <div class="card-header">
             ${opts.hasToggle ? segmentedHTML(audience) : `<h3>${esc(opts.heading || '')}</h3>`}
-            ${Auth.isAdmin() ? `<button type="button" class="btn btn-ghost btn-sm" id="editBtn">${ICONS.edit()} Редактировать</button>` : ''}
+            ${Auth.hasRoleIn(Auth.ROLE_GROUPS.edit) ? `<button type="button" class="btn btn-ghost btn-sm" id="editBtn">${ICONS.edit()} Редактировать</button>` : ''}
           </div>
           <div class="pre-wrap">${block.body ? esc(block.body) : '<span style="color:var(--text-faint)">Текст пока не добавлен.</span>'}</div>
           ${block.imageId ? `<div class="section-image"><img src="/media/${block.imageId}" alt=""></div>` : ''}

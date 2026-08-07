@@ -12,7 +12,7 @@ window.Sections.rules = {
     paint();
 
     function paint() {
-      const admin = Auth.isAdmin();
+      const admin = Auth.hasRoleIn(Auth.ROLE_GROUPS.edit);
       const listHTML = rules.length ? rules.map((r) => `
         <div class="rule-card" data-id="${r.id}">
           <div class="rule-body">

@@ -1,5 +1,6 @@
 const express = require('express');
 const pool = require('../db/pool');
+const { requireAnyRole } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -20,6 +21,31 @@ function publicUser(u) {
 
 router.get('/me', (req, res) => {
   res.json({ user: publicUser(req.user) });
+});
+
+// Самостоятельная смена ника — доступна любому сотруднику с ролью (та же
+// граница, что и у остального личного кабинета, см. requireAnyRole). Меняет
+// только свой собственный nickname, не роль/права/счётчики — для этого
+// по-прежнему нужен доступ к «Составу» (EDIT_ROLES).
+router.put('/me/nickname', requireAnyRole, async (req, res, next) => {
+  try {
+    const nickname = (req.body.nickname || '').trim();
+    if (!nickname) return res.status(400).json({ error: 'Введите никнейм.' });
+    if (nickname.length > 60) return res.status(400).json({ error: 'Никнейм слишком длинный (максимум 60 символов).' });
+
+    const { rows } = await pool.query(
+      `UPDATE users SET nickname = $1 WHERE id = $2
+       RETURNING id, nickname, discord_username, avatar_image_id, is_owner, is_admin,
+                 weekly_events, role_id`,
+      [nickname, req.user.id]
+    );
+    const updated = rows[0];
+    // role_name у UPDATE ... RETURNING не подтянется джойном, поэтому берём
+    // его из уже загруженного req.user (сама роль этим запросом не менялась).
+    res.json({ user: publicUser({ ...updated, role_name: req.user.role_name }) });
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post('/logout', (req, res) => {

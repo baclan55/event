@@ -1,7 +1,7 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { requireRole } = require('../middleware/auth');
-const { APPLICATIONS_ROLES } = require('../utils/access');
+const { requireRoleIn } = require('../middleware/auth');
+const { APPLICATIONS_ROLES } = require('../utils/roleAccess');
 
 const router = express.Router();
 
@@ -93,9 +93,9 @@ async function releaseCandidate(userId) {
   }
 }
 
-// Список заявок виден только ролям из APPLICATIONS_ROLES (см.
-// src/utils/access.js) — те же роли ведут их рассмотрение.
-router.get('/', requireRole(APPLICATIONS_ROLES), async (req, res, next) => {
+// Список заявок виден только сотрудникам с определёнными ролями (см.
+// src/utils/roleAccess.js -> APPLICATIONS_ROLES) — это раздел рассмотрения.
+router.get('/', requireRoleIn(APPLICATIONS_ROLES), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT a.id, a.discord, a.nickname_static, a.age, a.avg_online, a.time_period,
@@ -170,7 +170,7 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.put('/:id', requireRole(APPLICATIONS_ROLES), async (req, res, next) => {
+router.put('/:id', requireRoleIn(APPLICATIONS_ROLES), async (req, res, next) => {
   try {
     const status = req.body.status;
     if (!['pending', 'approved', 'rejected'].includes(status)) {
@@ -235,7 +235,7 @@ router.put('/:id', requireRole(APPLICATIONS_ROLES), async (req, res, next) => {
 // Результат обзвона кандидата (вкладка "Кандидаты" в заявках):
 // прошёл — получает роль Mini Event Helper и становится обычным
 // сотрудником; не прошёл — кандидат снимается (см. releaseCandidate).
-router.post('/:id/call', requireRole(APPLICATIONS_ROLES), async (req, res, next) => {
+router.post('/:id/call', requireRoleIn(APPLICATIONS_ROLES), async (req, res, next) => {
   try {
     const passed = req.body.passed === true || req.body.passed === 'true';
 
@@ -270,7 +270,7 @@ router.post('/:id/call', requireRole(APPLICATIONS_ROLES), async (req, res, next)
   }
 });
 
-router.delete('/:id', requireRole(APPLICATIONS_ROLES), async (req, res, next) => {
+router.delete('/:id', requireRoleIn(APPLICATIONS_ROLES), async (req, res, next) => {
   try {
     const { rows } = await pool.query('SELECT status, candidate_user_id FROM applications WHERE id = $1', [req.params.id]);
     if (rows.length && rows[0].status === 'approved' && rows[0].candidate_user_id) {

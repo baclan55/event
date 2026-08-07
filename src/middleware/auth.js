@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const { userHasAnyRole, userHasRoleIn } = require('../utils/roleAccess');
 
 // Подгружает текущего пользователя (если есть активная сессия) в req.user.
 // Вызывается на каждый запрос — до роутов.
@@ -43,26 +44,28 @@ function requireOwner(req, res, next) {
   next();
 }
 
-// Раздел доступен только сотрудникам с назначенной ролью — сотрудники
-// "без роли" (кандидаты, только что вошедшие через Discord и ещё не
-// назначенные) не видят в личном кабинете вообще ничего.
+// Личный кабинет целиком закрыт для сотрудников без роли (см.
+// src/utils/roleAccess.js) — им доступ откроется, как только администратор
+// назначит роль в «Составе».
 function requireAnyRole(req, res, next) {
-  if (!req.user || !req.user.role_id) {
-    return res.status(403).json({ error: 'Раздел доступен только сотрудникам с назначенной ролью.' });
+  if (!req.user) return res.status(401).json({ error: 'Требуется вход в личный кабинет.' });
+  if (!userHasAnyRole(req.user)) {
+    return res.status(403).json({ error: 'Личный кабинет станет доступен после того, как вам назначат роль.' });
   }
   next();
 }
 
-// Раздел доступен только сотрудникам с одной из перечисленных ролей
-// (см. src/utils/access.js) — используется для разделов, доступ к которым
-// настроен по конкретным должностям, а не флагам is_admin/is_owner.
-function requireRole(allowedRoleNames) {
+// Раздел доступен только сотрудникам с одной из перечисленных ролей (плюс
+// владельцу — см. userHasRoleIn). Используется для узких разделов вроде
+// выговоров, заявок и панели владельца.
+function requireRoleIn(roles) {
   return function (req, res, next) {
-    if (!req.user || !req.user.role_name || !allowedRoleNames.includes(req.user.role_name)) {
-      return res.status(403).json({ error: 'Недостаточно прав для этого раздела.' });
+    if (!req.user) return res.status(401).json({ error: 'Требуется вход в личный кабинет.' });
+    if (!userHasRoleIn(req.user, roles)) {
+      return res.status(403).json({ error: 'Недостаточно прав для доступа к этому разделу.' });
     }
     next();
   };
 }
 
-module.exports = { attachUser, requireAuth, requireAdmin, requireOwner, requireAnyRole, requireRole };
+module.exports = { attachUser, requireAuth, requireAdmin, requireOwner, requireAnyRole, requireRoleIn };

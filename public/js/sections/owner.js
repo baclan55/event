@@ -1,8 +1,8 @@
 window.Sections = window.Sections || {};
 window.Sections.owner = {
   async render(container) {
-    if (!App.hasRole(ACCESS.OWNER_PANEL_ROLES)) {
-      container.innerHTML = `<div class="empty-state"><h3>Доступ ограничен</h3><p>Панель видна только Chief Event и Dep.Chief Event.</p></div>`;
+    if (!Auth.hasRoleIn(Auth.ROLE_GROUPS.owner)) {
+      container.innerHTML = `<div class="empty-state"><h3>Доступ ограничен</h3><p>Раздел виден только ролям Chief Event и Dep.Chief Event.</p></div>`;
       return;
     }
 
