@@ -15,6 +15,34 @@
 // форматирования.
 // ============================================================================
 
+// ============================================================================
+// Проверка ссылки на канал/сервер Discord — используется только для того,
+// чтобы форма сразу подсказала пользователю, если ссылка не похожа на
+// дискордовую, ДО отправки на сервер. Настоящая (и единственная надёжная)
+// проверка — на бэкенде, см. isDiscordChannelUrl в src/utils/richText.js;
+// логика здесь продублирована и должна совпадать с ней. Если меняете
+// правило в одном месте — поменяйте и в другом.
+// ============================================================================
+const DISCORD_HOST_RE = /^(?:www\.)?(?:canary\.|ptb\.)?discord(?:app)?\.com$/i;
+
+function isDiscordChannelUrl(rawUrl) {
+  let u;
+  try {
+    u = new URL(String(rawUrl || '').trim());
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'https:') return false;
+  const host = u.hostname.toLowerCase();
+  if (DISCORD_HOST_RE.test(host)) {
+    return /^\/channels\/\d+\/\d+(?:\/\d+)?\/?$/.test(u.pathname);
+  }
+  if (host === 'discord.gg' || host === 'www.discord.gg') {
+    return /^\/[a-zA-Z0-9-]{2,40}\/?$/.test(u.pathname);
+  }
+  return false;
+}
+
 const RichEditor = {
   FONT_SIZES: [12, 14, 16, 18, 20, 24, 28, 32, 40],
   FONT_FAMILIES: [
@@ -50,6 +78,23 @@ const RichEditor = {
           </select>
           <span class="rte-sep"></span>
           <button type="button" class="rte-btn rte-btn-clear" data-cmd="clear" title="Очистить форматирование">${ICONS.eraser()}</button>
+          <span class="rte-sep"></span>
+          <button type="button" class="rte-btn rte-btn-discord" title="Вставить ссылку на канал Discord">${ICONS.discord()}</button>
+        </div>
+        <div class="rte-discord-pop" data-role="discordPop" hidden>
+          <div class="field">
+            <label>Ссылка на канал Discord</label>
+            <input type="text" class="input" data-role="discordUrl" placeholder="https://discord.com/channels/…">
+          </div>
+          <div class="field">
+            <label>Название канала</label>
+            <input type="text" class="input" data-role="discordLabel" placeholder="например: 🏆・победители">
+          </div>
+          <div class="error-text" data-role="discordErr"></div>
+          <div class="rte-discord-pop-actions">
+            <button type="button" class="btn btn-ghost btn-sm" data-role="discordCancel">Отмена</button>
+            <button type="button" class="btn btn-primary btn-sm" data-role="discordInsert">Вставить</button>
+          </div>
         </div>
         <div class="rte-editor input" contenteditable="true" data-role="editor"></div>
       </div>`;
@@ -57,6 +102,10 @@ const RichEditor = {
     const root = container.querySelector(`#${uid}`);
     const editorEl = root.querySelector('[data-role="editor"]');
     editorEl.innerHTML = initialHTML || '';
+    // Ссылки-чипы, загруженные из уже сохранённого текста, тоже делаем
+    // "неделимыми" при редактировании — см. пояснение у contentEditable
+    // ниже, у только что вставленной ссылки.
+    editorEl.querySelectorAll('a.discord-chip').forEach((a) => { a.setAttribute('contenteditable', 'false'); });
 
     let savedRange = null;
 
@@ -89,6 +138,17 @@ const RichEditor = {
       sel.removeAllRanges();
       sel.addRange(savedRange);
       return true;
+    }
+
+    // В отличие от currentSelectionRange() (нужна для кнопок форматирования,
+    // где действие имеет смысл только над выделенным текстом), для вставки
+    // ссылки достаточно места, куда её вставить — обычного схлопнутого
+    // курсора. Поэтому здесь допускаем и sel.isCollapsed === true.
+    function currentCaretOrSelectionRange() {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return null;
+      if (!inEditor(sel.anchorNode) || !inEditor(sel.focusNode)) return null;
+      return sel.getRangeAt(0);
     }
 
     function notifyChange() {
@@ -151,6 +211,109 @@ const RichEditor = {
       if (!restoreSelection()) return;
       applyStyleToSelection('fontFamily', family);
       notifyChange();
+    });
+
+    // --- Ссылка на канал Discord ("чип") --------------------------------
+    // Кнопка открывает небольшую панель прямо под тулбаром (не всплывающее
+    // модальное окно поверх — этот редактор сам обычно уже находится внутри
+    // модалки Modal, а она умеет показывать только одно окно за раз, второе
+    // просто закрыло бы первое вместе с несохранёнными правками).
+    const discordBtn = root.querySelector('.rte-btn-discord');
+    const discordPop = root.querySelector('[data-role="discordPop"]');
+    const discordUrlInput = root.querySelector('[data-role="discordUrl"]');
+    const discordLabelInput = root.querySelector('[data-role="discordLabel"]');
+    const discordErr = root.querySelector('[data-role="discordErr"]');
+    let discordInsertRange = null;
+
+    function closeDiscordPop() {
+      discordPop.hidden = true;
+      discordErr.textContent = '';
+    }
+
+    discordBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // не терять фокус/выделение раньше времени
+      const range = currentCaretOrSelectionRange();
+      discordInsertRange = range ? range.cloneRange() : null;
+      discordUrlInput.value = '';
+      discordLabelInput.value = range && !range.collapsed ? range.toString() : '';
+      discordErr.textContent = '';
+      discordPop.hidden = false;
+      discordUrlInput.focus();
+    });
+
+    root.querySelector('[data-role="discordCancel"]').addEventListener('click', closeDiscordPop);
+
+    root.querySelector('[data-role="discordInsert"]').addEventListener('click', () => {
+      const url = discordUrlInput.value.trim();
+      const label = discordLabelInput.value.trim();
+
+      if (!isDiscordChannelUrl(url)) {
+        discordErr.textContent = 'Это не похоже на ссылку канала Discord. Пример: https://discord.com/channels/…';
+        return;
+      }
+      if (!label) {
+        discordErr.textContent = 'Укажите название канала — оно будет показано вместо ссылки.';
+        return;
+      }
+      if (!discordInsertRange) {
+        discordErr.textContent = 'Не удалось определить место вставки — поставьте курсор в текст и попробуйте снова.';
+        return;
+      }
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer nofollow';
+      link.className = 'discord-chip';
+      link.textContent = label;
+      // Ссылка ведёт себя как единый "чип": курсор заходит только до/после
+      // неё, а не внутрь по буквам, и Backspace удаляет её целиком — то же
+      // поведение, что у упоминаний каналов в самом Discord. Через
+      // setAttribute, а не через свойство .contentEditable — так надёжнее
+      // работает во всех браузерах.
+      link.setAttribute('contenteditable', 'false');
+
+      editorEl.focus();
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(discordInsertRange);
+      discordInsertRange.deleteContents();
+      discordInsertRange.insertNode(link);
+
+      // Ставим курсор сразу после вставленного чипа (через неразрывный
+      // пробел — обычный пробел браузер иногда "теряет" на границе с
+      // contenteditable=false узлом), чтобы можно было сразу продолжить
+      // печатать текст дальше, а не оказаться "внутри" ссылки.
+      const spacer = document.createTextNode('\u00A0');
+      link.after(spacer);
+      const afterRange = document.createRange();
+      afterRange.setStartAfter(spacer);
+      afterRange.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(afterRange);
+
+      closeDiscordPop();
+      notifyChange();
+    });
+
+    [discordUrlInput, discordLabelInput].forEach((input) => {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          root.querySelector('[data-role="discordInsert"]').click();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          closeDiscordPop();
+        }
+      });
+    });
+
+    // Пока идёт редактирование, чип не должен никуда переходить по клику —
+    // иначе вместо того, чтобы поставить курсор рядом с ним, человек
+    // случайно уходил бы на канал Discord. На самой странице (вне
+    // редактора) этот обработчик не висит, там ссылка работает как обычно.
+    editorEl.addEventListener('click', (e) => {
+      if (e.target.closest('a.discord-chip')) e.preventDefault();
     });
 
     // --- Enter — всегда просто перенос строки, без <div>/<p> -----------

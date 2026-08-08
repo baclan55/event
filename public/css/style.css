@@ -320,6 +320,36 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
    font-size/font-family (от самого редактора) — это ожидаемо и не
    переопределяется здесь. */
 
+.rte-btn-discord{ color:#8b93f8; }
+.rte-btn-discord:hover{ color:#fff; background:#5865f2; }
+
+/* Панель вставки ссылки на канал Discord (см. richEditor.js) — раскрывается
+   прямо в теле редактора между тулбаром и полем ввода, а не в отдельном
+   модальном окне (RichEditor обычно и так открыт внутри Modal, а тот умеет
+   показывать только одно окно за раз). */
+.rte-discord-pop{
+  padding:14px 14px 2px; background:var(--bg-card-2); border-bottom:1px solid var(--border);
+}
+.rte-discord-pop .field{ margin-bottom:12px; }
+.rte-discord-pop-actions{ display:flex; justify-content:flex-end; gap:8px; margin-bottom:14px; }
+
+/* "Чип" ссылки на канал Discord — то, что реально попадает в сохранённый
+   текст (см. .discord-chip в src/utils/richText.js на бэке). Оформлен по
+   образцу упоминания канала в самом Discord: приглушённый блёрпл-фон,
+   "#" перед названием, при наведении — сплошная заливка. Класс общий и для
+   редактора, и для готовой страницы — стиль совпадает в обоих местах. */
+.discord-chip{
+  display:inline-flex; align-items:center;
+  padding:1px 7px 1px 5px; border-radius:5px; margin:0 1px;
+  background:rgba(88,101,242,.3); color:#c9cdfb;
+  font-weight:600; text-decoration:none; white-space:nowrap; cursor:pointer;
+}
+.discord-chip::before{
+  content:"#"; margin-right:2px; color:#9aa1f5; font-weight:700;
+}
+.discord-chip:hover, .discord-chip:focus-visible{ background:#5865f2; color:#fff; }
+.discord-chip:hover::before, .discord-chip:focus-visible::before{ color:#fff; }
+
 .form-row-2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 @media (max-width:560px){ .form-row-2{ grid-template-columns:1fr; } }
 

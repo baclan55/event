@@ -10,12 +10,79 @@ const sanitizeHtml = require('sanitize-html');
 // для форматирования текста — никаких скриптов, ссылок, картинок и т.п.
 // ============================================================================
 
-const ALLOWED_TAGS = ['b', 'strong', 'i', 'em', 'span', 'br'];
+const ALLOWED_TAGS = ['b', 'strong', 'i', 'em', 'span', 'br', 'a'];
+
+// ============================================================================
+// Ссылки на каналы Discord ("чипы", см. .discord-chip в style.css и кнопку
+// со значком Discord в public/js/richEditor.js). Разрешаем тег <a>, но
+// ТОЛЬКО когда его href и правда указывает на канал/сервер Discord — любая
+// другая ссылка при сохранении превращается обратно в обычный текст (span
+// без href). Из присланных атрибутов ничего не берём "как есть": href
+// нормализуем и проверяем, а target/rel/class всегда проставляем сами —
+// так итоговая ссылка всегда открывается в новой вкладке безопасным
+// способом и всегда выглядит как чип, даже если запрос к API пришёл в обход
+// самого редактора.
+// Тот же список доменов и та же проверка продублированы на фронте, в
+// public/js/richEditor.js (isDiscordChannelUrl) — чтобы форма подсказывала
+// пользователю ровно то, что реально примет сервер. Если меняете правило
+// здесь, поменяйте и там.
+// ============================================================================
+const DISCORD_HOST_RE = /^(?:www\.)?(?:canary\.|ptb\.)?discord(?:app)?\.com$/i;
+
+function isDiscordChannelUrl(rawUrl) {
+  let u;
+  try {
+    u = new URL(String(rawUrl == null ? '' : rawUrl).trim());
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'https:') return false;
+  const host = u.hostname.toLowerCase();
+  if (DISCORD_HOST_RE.test(host)) {
+    // /channels/<guildId>/<channelId>[/<messageId>] — ссылка на конкретный
+    // канал сервера. Ссылки на личные сообщения (/channels/@me/...)
+    // намеренно не поддерживаются: это не то, что вставляют в регламент.
+    return /^\/channels\/\d+\/\d+(?:\/\d+)?\/?$/.test(u.pathname);
+  }
+  if (host === 'discord.gg' || host === 'www.discord.gg') {
+    // Инвайт-ссылка на сервер.
+    return /^\/[a-zA-Z0-9-]{2,40}\/?$/.test(u.pathname);
+  }
+  return false;
+}
+
+// Приводит присланный <a> к безопасному виду или превращает его в обычный
+// span (текст внутри остаётся, просто перестаёт быть ссылкой), если href —
+// не ссылка на Discord.
+function transformDiscordAnchor(tagName, attribs) {
+  if (isDiscordChannelUrl(attribs.href)) {
+    return {
+      tagName: 'a',
+      attribs: {
+        href: String(attribs.href).trim(),
+        target: '_blank',
+        rel: 'noopener noreferrer nofollow',
+        class: 'discord-chip',
+      },
+    };
+  }
+  return { tagName: 'span', attribs: {} };
+}
 
 const SANITIZE_OPTIONS = {
   allowedTags: ALLOWED_TAGS,
   allowedAttributes: {
     span: ['style'],
+    a: ['href', 'target', 'rel', 'class'],
+  },
+  allowedClasses: {
+    a: ['discord-chip'],
+  },
+  // Ссылки допускаем только по https — этого достаточно и для discord.com,
+  // и для discord.gg, а заодно исключает javascript:/data: и т.п.
+  allowedSchemes: ['https'],
+  transformTags: {
+    a: transformDiscordAnchor,
   },
   allowedStyles: {
     span: {
