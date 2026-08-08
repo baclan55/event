@@ -211,7 +211,7 @@ const App = {
               <span class="site-brand-name">EVENTS DENVER</span>
             </a>
             <nav class="site-nav">
-              <a href="#/home" class="site-nav-link ${key === 'home' ? 'active' : ''}">Главная</a>
+              ${key !== 'home' ? `<a href="#/home" class="site-nav-link">Главная</a>` : ''}
               <a href="#/apply" class="site-nav-link ${key === 'apply' ? 'active' : ''}">Оставить заявку</a>
               <button type="button" class="btn btn-primary btn-sm" id="siteAccountBtn">
                 ${loggedIn ? esc(Auth.currentUser.nickname) : 'Личный кабинет'}

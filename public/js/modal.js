@@ -13,7 +13,13 @@ const Modal = {
       `</div>`;
     document.body.appendChild(overlay);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) Modal.close(); });
-    overlay.querySelector('[data-modal-close]').addEventListener('click', Modal.close);
+    // querySelectorAll — не querySelector: у модалки есть встроенная кнопка-
+    // крестик (первая с data-modal-close), но многие модалки добавляют в
+    // свой innerHTML ещё и кнопку "Отмена"/"Понятно" с тем же атрибутом —
+    // все они должны закрывать модалку, а не только первая найденная.
+    overlay.querySelectorAll('[data-modal-close]').forEach((btn) => {
+      btn.addEventListener('click', Modal.close);
+    });
     document.addEventListener('keydown', Modal._escHandler);
     Modal._overlay = overlay;
     return overlay;
