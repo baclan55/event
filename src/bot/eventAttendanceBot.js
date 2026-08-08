@@ -48,8 +48,27 @@ function collectStrings(node, out) {
     return;
   }
   if (typeof node === 'object') {
-    for (const key of ['content', 'description', 'title', 'text', 'value', 'name', 'label']) {
-      if (typeof node[key] === 'string') collectStrings(node[key], out);
+    // Поле embed'а (и опция select-меню) имеет форму { name, value } /
+    // { label, value }, где value — это СОДЕРЖИМОЕ, а name/label — его
+    // ЗАГОЛОВОК перед ним. Раньше здесь был единый порядок ключей
+    // ['content', ..., 'value', 'name', 'label'], в котором 'value' стоял
+    // РАНЬШЕ 'name' — из-за этого для каждого embed-поля сначала попадало
+    // в текст его значение, а заголовок ("Администратор:", "Участники:")
+    // приклеивался уже ПОСЛЕ него. Итоговый текст получался перепутанным
+    // (значение одного поля — заголовок этого же поля — значение
+    // следующего поля — ...), а extractAdminId/extractParticipantIds ищут
+    // ID сразу ПОСЛЕ заголовка секции — в перепутанном тексте они находили
+    // либо не тот ID (ID первого участника вместо администратора), либо
+    // вообще ничего (участники считались пустым списком). Поэтому здесь
+    // заголовок обязательно кладём ПЕРЕД значением.
+    const heading = typeof node.name === 'string' ? node.name : (typeof node.label === 'string' ? node.label : null);
+    if (heading != null && typeof node.value === 'string') {
+      collectStrings(heading, out);
+      collectStrings(node.value, out);
+    } else {
+      for (const key of ['content', 'description', 'title', 'text', 'value', 'name', 'label']) {
+        if (typeof node[key] === 'string') collectStrings(node[key], out);
+      }
     }
     if (node.footer && typeof node.footer.text === 'string') collectStrings(node.footer.text, out);
     if (Array.isArray(node.fields)) collectStrings(node.fields, out);
