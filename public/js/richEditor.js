@@ -241,6 +241,27 @@ const RichEditor = {
       discordUrlInput.focus();
     });
 
+    // БАГФИКС: discordInsertRange раньше запоминался только один раз — в
+    // момент клика по иконке Discord (открытие попапа). Если в этот момент
+    // курсор ещё не стоял в тексте (или стоял не там), место вставки
+    // навсегда оставалось "не определено": попытка поставить курсор в
+    // тексте ПОСЛЕ открытия попапа никак на discordInsertRange не влияла —
+    // клик по "Вставить" читал всё ту же пустую переменную и снова выдавал
+    // "поставьте курсор", как ни старайся. Поэтому, пока попап открыт,
+    // обновляем discordInsertRange при каждой перестановке курсора в
+    // редакторе (клик или клавиши со стрелками) — тогда повторная попытка
+    // после ошибки действительно подхватывает новое место.
+    function refreshInsertRangeIfPopupOpen() {
+      if (discordPop.hidden) return;
+      const range = currentCaretOrSelectionRange();
+      if (range) {
+        discordInsertRange = range.cloneRange();
+        discordErr.textContent = '';
+      }
+    }
+    editorEl.addEventListener('mouseup', refreshInsertRangeIfPopupOpen);
+    editorEl.addEventListener('keyup', refreshInsertRangeIfPopupOpen);
+
     root.querySelector('[data-role="discordCancel"]').addEventListener('click', closeDiscordPop);
 
     root.querySelector('[data-role="discordInsert"]').addEventListener('click', () => {
