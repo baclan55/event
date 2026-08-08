@@ -170,3 +170,18 @@ CREATE INDEX IF NOT EXISTS idx_session_expire ON "session" (expire);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role_id);
 CREATE INDEX IF NOT EXISTS idx_reprimands_user ON reprimands(user_id);
 CREATE INDEX IF NOT EXISTS idx_rules_position ON rules(position);
+
+-- Журнал сообщений о сборах на мероприятия (Discord), уже обработанных ботом
+-- учёта посещаемости (см. src/bot/eventAttendanceBot.js). message_id — ID
+-- самого сообщения в Discord (у одного мероприятия сообщение одно, оно
+-- редактируется при закрытии сбора, а не пересоздаётся) — используется как
+-- защита от повторного начисления +1 к weekly_events, если бот увидит
+-- закрытый сбор несколько раз (повторный messageUpdate, перезапуск бота и
+-- т.п.).
+CREATE TABLE IF NOT EXISTS event_bot_processed_messages (
+  message_id        TEXT PRIMARY KEY,
+  event_label       TEXT,
+  participant_count INTEGER NOT NULL DEFAULT 0,
+  credited_count    INTEGER NOT NULL DEFAULT 0,
+  processed_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);

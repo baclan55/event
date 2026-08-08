@@ -44,3 +44,14 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
+      # Бот учёта посещаемости мероприятий (см. README.md, раздел «Discord-бот
+      # учёта посещаемости»). Без DISCORD_BOT_TOKEN бот просто не запускается,
+      # остальной сайт продолжает работать как обычно.
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: DISCORD_EVENTS_CHANNEL_ID
+        value: "1446581838100430878"
+      - key: DISCORD_EVENTS_SOURCE_BOT_ID
+        value: "1468289401795903690"
+      - key: EVENT_BOT_CATCHUP_LIMIT
+        value: "50"

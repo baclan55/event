@@ -6,6 +6,7 @@ const pgSession = require('connect-pg-simple')(session);
 
 const pool = require('./db/pool');
 const { attachUser } = require('./middleware/auth');
+const { startEventAttendanceBot } = require('./bot/eventAttendanceBot');
 
 const authRoutes = require('./routes/auth');
 const contentRoutes = require('./routes/content');
@@ -100,4 +101,8 @@ applySchema().then(() => {
   app.listen(PORT, () => {
     console.log(`[server] Event Department Portal запущен на порту ${PORT}`);
   });
+  // Бот учёта посещаемости мероприятий (см. src/bot/eventAttendanceBot.js).
+  // Запускается в этом же процессе; если DISCORD_BOT_TOKEN не задан — просто
+  // ничего не делает.
+  startEventAttendanceBot(pool);
 });
