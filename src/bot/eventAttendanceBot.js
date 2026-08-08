@@ -112,33 +112,45 @@ function extractParticipantIds(text) {
 }
 
 // --- Начисление в базу ----------------------------------------------------
-
+//
+// Идемпотентно на уровне КАЖДОГО участника (через таблицу-леджер
+// event_bot_credits), а не всего сообщения разом. Это специально: если
+// маркер "закрыт" (см. CLOSED_MARKERS) сработает раньше времени — например,
+// когда в сообщении виден только администратор, а участники ещё дописываются
+// — тем, кто уже в леджере для этого message_id, лишний +1 не прилетит, а
+// тем, кто появится в "Участники:" при следующем редактировании сообщения,
+// начисление всё равно придёт при следующем вызове. Раньше всё сообщение
+// целиком помечалось обработанным после первого же срабатывания, поэтому
+// опоздавших участников бот больше никогда не видел.
 async function creditParticipants(pool, { messageId, eventLabel, discordIds }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const already = await client.query(
-      'SELECT 1 FROM event_bot_processed_messages WHERE message_id = $1',
-      [messageId]
-    );
-    if (already.rowCount > 0) {
-      await client.query('ROLLBACK');
-      return { skipped: true };
+    let newIds = [];
+    if (discordIds.length > 0) {
+      const linked = await client.query(
+        `INSERT INTO event_bot_credits (message_id, discord_id)
+         SELECT $1, x FROM UNNEST($2::text[]) AS x
+         ON CONFLICT (message_id, discord_id) DO NOTHING
+         RETURNING discord_id`,
+        [messageId, discordIds]
+      );
+      newIds = linked.rows.map((r) => r.discord_id);
     }
 
-    let creditedCount = 0;
-    if (discordIds.length > 0) {
+    let creditedRows = [];
+    if (newIds.length > 0) {
       const { rows } = await client.query(
         `UPDATE users SET weekly_events = weekly_events + 1
          WHERE discord_id = ANY($1::text[])
          RETURNING discord_id, nickname`,
-        [discordIds]
+        [newIds]
       );
-      creditedCount = rows.length;
+      creditedRows = rows;
 
       const creditedIds = new Set(rows.map((r) => r.discord_id));
-      const missing = discordIds.filter((id) => !creditedIds.has(id));
+      const missing = newIds.filter((id) => !creditedIds.has(id));
       if (missing.length) {
         console.log(`[event-bot] Не найдены в "Составе" по discord_id (пропущены): ${missing.join(', ')}`);
       }
@@ -147,19 +159,22 @@ async function creditParticipants(pool, { messageId, eventLabel, discordIds }) {
       }
     }
 
+    // Сводка по сообщению — информационная, не гейт (см. schema.sql).
     await client.query(
       `INSERT INTO event_bot_processed_messages (message_id, event_label, participant_count, credited_count)
-       VALUES ($1, $2, $3, $4)`,
-      [messageId, eventLabel, discordIds.length, creditedCount]
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (message_id) DO UPDATE SET
+         event_label = EXCLUDED.event_label,
+         participant_count = GREATEST(event_bot_processed_messages.participant_count, EXCLUDED.participant_count),
+         credited_count = event_bot_processed_messages.credited_count + EXCLUDED.credited_count,
+         processed_at = now()`,
+      [messageId, eventLabel, discordIds.length, creditedRows.length]
     );
 
     await client.query('COMMIT');
-    return { skipped: false, creditedCount, participantCount: discordIds.length };
+    return { newlyCredited: creditedRows, newlyLinked: newIds.length, totalInMessage: discordIds.length };
   } catch (err) {
     await client.query('ROLLBACK');
-    // Уникальный конфликт по message_id — значит это же сообщение уже
-    // успела обработать другая (почти одновременная) попытка. Не ошибка.
-    if (err.code === '23505') return { skipped: true };
     throw err;
   } finally {
     client.release();
@@ -192,12 +207,16 @@ async function handleMessage(pool, rawMessage, { channelId, sourceBotId }) {
       discordIds,
     });
 
-    if (result.skipped) {
-      console.log(`[event-bot] Сбор "${eventLabel}" (сообщение ${message.id}) уже был обработан ранее — пропускаю.`);
+    if (result.newlyCredited.length === 0) {
+      console.log(
+        `[event-bot] Сбор "${eventLabel}" (сообщение ${message.id}): новых начислений нет ` +
+        `(все ${result.totalInMessage} уже учтены за это сообщение ранее).`
+      );
     } else {
       console.log(
         `[event-bot] Сбор "${eventLabel}" закрыт: участников ${participantIds.length}` +
-        `${adminId ? ' + администратор' : ''}, всего к начислению ${result.participantCount}, начислено ${result.creditedCount}.`
+        `${adminId ? ' + администратор' : ''}, в списке всего ${result.totalInMessage}, ` +
+        `новых начислений ${result.newlyCredited.length}.`
       );
     }
   } catch (err) {
@@ -232,8 +251,11 @@ function startEventAttendanceBot(pool) {
     // "Догоняющая" проверка при старте: если сайт/бот были офлайн (например,
     // Render "усыпил" бесплатный сервис) и за это время сбор успели закрыть,
     // это событие всё равно будет учтено — просматриваем последние сообщения
-    // канала от бота-источника и обрабатываем те, что уже закрыты, но ещё не
-    // записаны в event_bot_processed_messages.
+    // канала от бота-источника и прогоняем через ту же идемпотентную логику
+    // (см. creditParticipants выше). Безопасно даже для уже виденных
+    // сообщений: начисление получат только те, кто ещё не в леджере для
+    // этого message_id — это же попутно "долечивает" сборы, которые раньше
+    // были зачтены не полностью (см. README).
     try {
       const channel = await c.channels.fetch(channelId);
       if (channel && channel.isTextBased()) {
@@ -264,6 +286,9 @@ function startEventAttendanceBot(pool) {
 
 module.exports = {
   startEventAttendanceBot,
+  // handleMessage экспортируется отдельно, чтобы им же (а не копией логики)
+  // пользовался разовый скрипт backfillEventCredits.js.
+  handleMessage,
   // Экспортируется дополнительно для юнит-тестов / отладки в консоли.
   _internal: { extractText, isClosedEventMessage, extractEventLabel, extractParticipantIds, extractAdminId },
 };

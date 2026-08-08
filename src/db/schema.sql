@@ -171,13 +171,33 @@ CREATE INDEX IF NOT EXISTS idx_users_role ON users(role_id);
 CREATE INDEX IF NOT EXISTS idx_reprimands_user ON reprimands(user_id);
 CREATE INDEX IF NOT EXISTS idx_rules_position ON rules(position);
 
--- Журнал сообщений о сборах на мероприятия (Discord), уже обработанных ботом
--- учёта посещаемости (см. src/bot/eventAttendanceBot.js). message_id — ID
--- самого сообщения в Discord (у одного мероприятия сообщение одно, оно
--- редактируется при закрытии сбора, а не пересоздаётся) — используется как
--- защита от повторного начисления +1 к weekly_events, если бот увидит
--- закрытый сбор несколько раз (повторный messageUpdate, перезапуск бота и
--- т.п.).
+-- Леджер начислений бота учёта посещаемости: кому (discord_id) за какое
+-- сообщение (message_id) уже начислен +1 к weekly_events. Это и есть
+-- защита от повторного начисления — на уровне ОТДЕЛЬНОГО участника, а не
+-- всего сообщения целиком. Поэтому сообщение можно безопасно обрабатывать
+-- повторно (при каждом редактировании, при перезапуске бота, при ручном
+-- backfill) сколько угодно раз: тем, кто уже в этой таблице для данного
+-- message_id, +1 не начислится снова, а тем, кто появился в списке
+-- участников позже (список пополняется, пока сбор закрывают), начислится
+-- при следующей же обработке. Раньше защита была по ЦЕЛОМУ сообщению
+-- (обработали один раз — и всё, даже если участников в тексте потом стало
+-- больше) — из-за этого при срабатывании маркера "закрыт" раньше времени
+-- (например, только с администратором) остальные, кто вписывался в список
+-- позже, никогда не засчитывались. См. историю изменений в README.
+CREATE TABLE IF NOT EXISTS event_bot_credits (
+  message_id  TEXT NOT NULL,
+  discord_id  TEXT NOT NULL,
+  credited_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (message_id, discord_id)
+);
+CREATE INDEX IF NOT EXISTS idx_event_bot_credits_message ON event_bot_credits(message_id);
+
+-- Сводка по каждому обработанному сообщению-сбору — теперь чисто
+-- информационная (для логов/отладки), а не защита от повторной обработки
+-- (эту роль теперь выполняет event_bot_credits выше). При каждой
+-- обработке строка обновляется (UPSERT): credited_count накапливается
+-- (сколько всего человек когда-либо получили +1 за это сообщение),
+-- processed_at — время последней обработки.
 CREATE TABLE IF NOT EXISTS event_bot_processed_messages (
   message_id        TEXT PRIMARY KEY,
   event_label       TEXT,
