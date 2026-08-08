@@ -192,6 +192,20 @@ CREATE TABLE IF NOT EXISTS event_bot_credits (
 );
 CREATE INDEX IF NOT EXISTS idx_event_bot_credits_message ON event_bot_credits(message_id);
 
+-- Состояние еженедельного сброса счётчика "МП в неделю" (users.weekly_events).
+-- Одна-единственная строка (id всегда 1) хранит момент последнего сброса.
+-- Нужна, чтобы после перезапуска сервера (или пробуждения после простоя —
+-- актуально для бесплатного тарифа Render, где сервис засыпает без трафика)
+-- не сбросить счётчик повторно в течение уже начавшейся недели и не
+-- пропустить сброс, если в момент границы недели (понедельник 00:00)
+-- сервис был выключен — при следующем старте/проверке сброс просто
+-- выполнится с небольшим опозданием. См. src/utils/weeklyReset.js.
+CREATE TABLE IF NOT EXISTS weekly_reset_state (
+  id            INTEGER PRIMARY KEY DEFAULT 1,
+  last_reset_at TIMESTAMPTZ,
+  CONSTRAINT weekly_reset_state_single_row CHECK (id = 1)
+);
+
 -- Сводка по каждому обработанному сообщению-сбору — теперь чисто
 -- информационная (для логов/отладки), а не защита от повторной обработки
 -- (эту роль теперь выполняет event_bot_credits выше). При каждой

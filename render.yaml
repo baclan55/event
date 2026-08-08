@@ -26,6 +26,11 @@ services:
         value: Ивент-отдел сервера
       - key: WEEKLY_EVENTS_TARGET
         value: "5"
+      # Часовой пояс, по которому считается граница недели (понедельник
+      # 00:00) для еженедельного сброса "МП в неделю" — см. README.md,
+      # раздел «Переменные окружения».
+      - key: WEEKLY_RESET_TZ
+        value: Europe/Moscow
       - key: DISCORD_CLIENT_ID
         sync: false
       - key: DISCORD_CLIENT_SECRET

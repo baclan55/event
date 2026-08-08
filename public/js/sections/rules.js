@@ -33,7 +33,7 @@ window.Sections.rules = {
           </div>
           <div class="rules-panel">
             <div class="rules-panel-inner">
-              <div class="rules-panel-text">${r.body ? esc(r.body) : '<span style="color:var(--text-faint)">Описание не добавлено.</span>'}</div>
+              <div class="rules-panel-text">${r.body ? r.body : '<span style="color:var(--text-faint)">Описание не добавлено.</span>'}</div>
             </div>
           </div>
         </div>`;
@@ -90,7 +90,7 @@ window.Sections.rules = {
         <h2>${isNew ? 'Новое правило' : 'Редактирование правила'}</h2>
         <div class="error-text" id="ruleErr"></div>
         <div class="field"><label>Заголовок</label><input class="input" id="ruleTitle" value="${escAttr(rule ? rule.title : '')}"></div>
-        <div class="field"><label>Текст (суть правила)</label><textarea class="input" id="ruleBody" rows="6">${esc(rule ? rule.body : '')}</textarea></div>
+        <div class="field"><label>Текст (суть правила)</label><div id="ruleBodyMount"></div></div>
         <div class="field">
           <label>Картинка</label>
           ${rule && rule.image_id ? `<div class="section-image" style="margin-bottom:10px;max-width:220px;"><img src="/media/${rule.image_id}" alt=""></div>` : ''}
@@ -102,9 +102,11 @@ window.Sections.rules = {
           <button type="button" class="btn btn-primary" id="saveRuleBtn">Сохранить</button>
         </div>`, { wide: true });
 
+      const editor = RichEditor.mount(overlay.querySelector('#ruleBodyMount'), rule ? rule.body : '');
+
       overlay.querySelector('#saveRuleBtn').addEventListener('click', async () => {
         const title = overlay.querySelector('#ruleTitle').value.trim();
-        const body = overlay.querySelector('#ruleBody').value;
+        const body = editor.getHTML();
         const err = overlay.querySelector('#ruleErr');
         try {
           let id = rule ? rule.id : null;

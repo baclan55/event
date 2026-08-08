@@ -33,6 +33,8 @@ const ICONS = {
     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.4" y2="16.4"/></svg>`,
   close: () =>
     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>`,
+  eraser: () =>
+    `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H10L4.5 14.5a2 2 0 0 1 0-2.8l7.8-7.8a2 2 0 0 1 2.8 0l5.4 5.4a2 2 0 0 1 0 2.8L14 18"/><path d="M7.5 12.5 13 18"/></svg>`,
   discord: () =>
     `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20.3 5.3A17.6 17.6 0 0 0 15.9 4l-.3.6a12.9 12.9 0 0 1 3.8 1.7 15.6 15.6 0 0 0-15 0 12.9 12.9 0 0 1 3.8-1.7L8 4a17.6 17.6 0 0 0-4.4 1.3C1.4 9 .8 12.6 1 16.2a15.6 15.6 0 0 0 4.6 2.3l.6-1a10.4 10.4 0 0 1-1.7-.8l.4-.3a12 12 0 0 0 10.2 0l.4.3a10.4 10.4 0 0 1-1.7.8l.6 1a15.6 15.6 0 0 0 4.6-2.3c.3-4.1-.6-7.6-2.7-10.9ZM8.9 13.8c-.9 0-1.6-.8-1.6-1.8s.7-1.8 1.6-1.8 1.6.8 1.6 1.8-.7 1.8-1.6 1.8Zm6.2 0c-.9 0-1.6-.8-1.6-1.8s.7-1.8 1.6-1.8 1.6.8 1.6 1.8-.7 1.8-1.6 1.8Z"/></svg>`,
   menu: () =>

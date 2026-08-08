@@ -7,6 +7,7 @@ const pgSession = require('connect-pg-simple')(session);
 const pool = require('./db/pool');
 const { attachUser } = require('./middleware/auth');
 const { startEventAttendanceBot } = require('./bot/eventAttendanceBot');
+const { startWeeklyResetScheduler } = require('./utils/weeklyReset');
 
 const authRoutes = require('./routes/auth');
 const contentRoutes = require('./routes/content');
@@ -105,4 +106,7 @@ applySchema().then(() => {
   // Запускается в этом же процессе; если DISCORD_BOT_TOKEN не задан — просто
   // ничего не делает.
   startEventAttendanceBot(pool);
+  // Еженедельный сброс счётчика "МП в неделю" по понедельникам в 00:00
+  // (см. src/utils/weeklyReset.js).
+  startWeeklyResetScheduler(pool);
 });
