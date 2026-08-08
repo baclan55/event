@@ -63,6 +63,7 @@ window.Sections.roster = {
             `<button type="button" class="icon-btn danger" data-del="${m.id}" title="Удалить">${ICONS.trash()}</button>` +
           '</div>'
         ) : '';
+        const blockedBadge = m.is_blocked ? `<span class="badge badge-red">${ICONS.lock()}Заблокирован</span>` : '';
         return `
           <div class="roster-row" data-id="${m.id}">
             <div class="who">
@@ -72,6 +73,7 @@ window.Sections.roster = {
                 <div class="role-tag">${esc(m.role_name || 'Без роли')}${m.discord_username ? ' · ' + esc(m.discord_username) : ''}</div>
               </div>
             </div>
+            ${blockedBadge}
             ${eventsBadge(m.weekly_events)}
             ${actions}
           </div>`;

@@ -20,6 +20,8 @@ function publicUser(u) {
     weeklyEvents: u.weekly_events,
     roleId: u.role_id,
     roleName: u.role_name,
+    isBlocked: !!u.is_blocked,
+    blockedAt: u.blocked_at || null,
   };
 }
 

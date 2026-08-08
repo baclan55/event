@@ -46,6 +46,19 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'member';
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 
+-- Блокировка учётной записи — выставляется автоматически системой выговоров
+-- (см. src/utils/reprimandRules.js), когда у сотрудника набирается
+-- максимум баллов для его тира. Заблокированный аккаунт НЕ удаляется и не
+-- теряет данные — вся история (выговоры и т.п.) сохраняется как есть,
+-- блокируется только доступ в личный кабинет (см. requireAuth и т.п. в
+-- src/middleware/auth.js). Снимается вручную (POST
+-- /api/reprimands/users/:id/unblock) либо автоматически, если баллы
+-- пересчитываются ниже порога (актуально для баллов администраторов,
+-- которые сгорают через ADMIN_POINT_DECAY_DAYS дней).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_users_is_blocked ON users(is_blocked);
+
 -- Аватар через Cloudinary (опционально, см. src/utils/cloudinary.js). Если
 -- задан avatar_url — используется он (отдаётся напрямую с CDN Cloudinary),
 -- иначе фронтенд показывает старый avatar_image_id (картинка из таблицы
@@ -80,10 +93,16 @@ CREATE TABLE IF NOT EXISTS rules (
 );
 
 -- Система выговоров. Разделена на два тира по роли сотрудника (см.
--- src/utils/tier.js): у хелперов type = 'verbal' (устный, максимум 4) или
--- 'strict' (строгий, максимум 2) — не снимаются по времени; у
--- администраторов type всегда 'point' (балл, максимум 3) — каждый балл
--- автоматически перестаёт учитываться через 10 дней после выдачи.
+-- src/utils/tier.js и src/utils/reprimandRules.js):
+--  — у хелперов type = 'verbal' (устный = 1 балл) или 'strict' (строгий =
+--    2 балла); при достижении 4 баллов аккаунт блокируется автоматически
+--    (см. users.is_blocked выше). Как только у сотрудника набирается 2
+--    непогашенных устных, они автоматически объединяются в 1 строгий —
+--    устные при этом остаются в истории (converted=TRUE), просто больше не
+--    учитываются в баллах отдельно;
+--  — у администраторов type всегда 'point' (балл, максимум 3, тоже ведёт к
+--    блокировке при достижении) — каждый балл автоматически перестаёт
+--    учитываться через 10 дней после выдачи (запись не удаляется).
 CREATE TABLE IF NOT EXISTS reprimands (
   id         SERIAL PRIMARY KEY,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -93,6 +112,19 @@ CREATE TABLE IF NOT EXISTS reprimands (
 );
 ALTER TABLE reprimands ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'verbal';
 CREATE INDEX IF NOT EXISTS idx_reprimands_type ON reprimands(type);
+
+-- converted=TRUE у устного выговора хелпера — объединён вместе с ещё одним
+-- устным в автоматический строгий (см. merged_into), но остаётся в истории.
+-- auto_generated=TRUE у строгого — создан автоматически таким объединением
+-- (ТОЛЬКО у хелперов; у администраторов не используется).
+-- merged_into — на какой именно строгий выговор были объединены 2 устных;
+-- ON DELETE SET NULL — если этот строгий потом удалят (отменят объединение
+-- вручную), устные автоматически отвязываются и код возвращает им
+-- converted=FALSE, снова делая их активными (см. DELETE в
+-- src/routes/reprimands.js).
+ALTER TABLE reprimands ADD COLUMN IF NOT EXISTS converted BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE reprimands ADD COLUMN IF NOT EXISTS auto_generated BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE reprimands ADD COLUMN IF NOT EXISTS merged_into INTEGER REFERENCES reprimands(id) ON DELETE SET NULL;
 
 -- Заявки на роль Event Helper (публичная форма на главной странице, без входа).
 -- contact/message оставлены для обратной совместимости со старыми записями,

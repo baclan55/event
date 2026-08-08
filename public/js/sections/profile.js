@@ -11,7 +11,10 @@ window.Sections.profile = {
     let tier = 'helper';
     // Дефолтные лимиты — на случай, если запрос ещё не вернулся; реальные
     // значения приходят с бэкенда вместе со списком (см. /api/reprimands/me).
-    let limits = { helper: { verbal: 4, strict: 2 }, admin: { points: 3, decayDays: 10 } };
+    let limits = {
+      helper: { verbalPoints: 1, strictPoints: 2, blockPoints: 4, verbalToStrict: 2 },
+      admin: { points: 3, decayDays: 10 },
+    };
 
     try {
       // Подтягиваем свежие данные о себе (счётчик мероприятий мог измениться
@@ -36,8 +39,16 @@ window.Sections.profile = {
     const onTarget = events >= target;
 
     function typeBadge(e) {
-      if (e.type === 'verbal') return `<span class="badge badge-purple">Устный</span>`;
-      if (e.type === 'strict') return `<span class="badge badge-red">Строгий</span>`;
+      if (e.type === 'verbal') {
+        return e.converted
+          ? `<span class="badge badge-muted">Устный · объединён</span>`
+          : `<span class="badge badge-purple">Устный</span>`;
+      }
+      if (e.type === 'strict') {
+        return e.auto_generated
+          ? `<span class="badge badge-red">Строгий · авто</span>`
+          : `<span class="badge badge-red">Строгий</span>`;
+      }
       return e.active
         ? `<span class="badge badge-amber">Балл</span>`
         : `<span class="badge badge-muted">Балл · списан</span>`;
@@ -50,8 +61,9 @@ window.Sections.profile = {
           ? ` · спишется ${formatDateOnly(e.expires_at)}`
           : ` · списан ${formatDateOnly(e.expires_at)}`;
       }
+      const dimmed = (e.type === 'point' && !e.active) || (e.type === 'verbal' && e.converted);
       return `
-        <div class="roster-row rp-entry ${e.type === 'point' && !e.active ? 'rp-expired' : ''}">
+        <div class="roster-row rp-entry ${dimmed ? 'rp-expired' : ''}">
           <div class="who">
             <div>
               <div class="nickname" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:600;">
@@ -74,12 +86,16 @@ window.Sections.profile = {
       const nextExpiry = active.reduce((min, e) => (!min || e.expires_at < min ? e.expires_at : min), null);
       summaryBadgesHTML = limitBadge(active.length, limits.admin.points, 'Баллов') +
         (nextExpiry ? `<span class="badge badge-muted">ближайший спишется ${formatDateOnly(nextExpiry)}</span>` : '');
-      legendHTML = `<div class="rp-legend">Максимум <b>${limits.admin.points} баллов</b>. Каждый балл автоматически перестаёт учитываться через <b>${limits.admin.decayDays} дней</b> после выдачи.</div>`;
+      legendHTML = `<div class="rp-legend">Максимум <b>${limits.admin.points} баллов</b> — при достижении учётная запись блокируется автоматически. Каждый балл автоматически перестаёт учитываться через <b>${limits.admin.decayDays} дней</b> после выдачи.</div>`;
     } else {
-      const verbal = reprimands.filter((e) => e.type === 'verbal').length;
+      const verbalActive = reprimands.filter((e) => e.type === 'verbal' && !e.converted).length;
+      const verbalConverted = reprimands.filter((e) => e.type === 'verbal' && e.converted).length;
       const strict = reprimands.filter((e) => e.type === 'strict').length;
-      summaryBadgesHTML = limitBadge(verbal, limits.helper.verbal, 'Устных') + limitBadge(strict, limits.helper.strict, 'Строгих');
-      legendHTML = `<div class="rp-legend">Максимум <b>${limits.helper.strict} строгих</b> и <b>${limits.helper.verbal} устных</b> выговора. Они <b>не снимаются</b> по времени.</div>`;
+      const points = verbalActive * limits.helper.verbalPoints + strict * limits.helper.strictPoints;
+      summaryBadgesHTML = limitBadge(points, limits.helper.blockPoints, 'Баллы') +
+        `<span class="badge badge-muted">Устных: ${verbalActive}${verbalConverted ? ` (+${verbalConverted} объединено)` : ''}</span>` +
+        `<span class="badge badge-muted">Строгих: ${strict}</span>`;
+      legendHTML = `<div class="rp-legend">Устный = <b>${limits.helper.verbalPoints} балл</b>, строгий = <b>${limits.helper.strictPoints} балла</b>. При <b>${limits.helper.blockPoints} баллах</b> учётная запись блокируется автоматически (не удаляется, история сохраняется). Каждые <b>${limits.helper.verbalToStrict} непогашенных устных</b> автоматически объединяются в 1 строгий.</div>`;
     }
 
     const entriesHTML = reprimands.length

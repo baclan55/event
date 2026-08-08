@@ -3,21 +3,35 @@ const pool = require('../db/pool');
 const { requireAnyRole, requireRoleIn } = require('../middleware/auth');
 const { tierForPriority } = require('../utils/tier');
 const { REPRIMANDS_ROLES } = require('../utils/roleAccess');
+const {
+  HELPER_POINT_VALUES,
+  HELPER_BLOCK_POINTS,
+  HELPER_VERBAL_TO_STRICT,
+  ADMIN_POINT_LIMIT,
+  ADMIN_POINT_DECAY_DAYS,
+  helperActivePoints,
+  syncBlockStatus,
+  maybeConvertVerbalToStrict,
+} = require('../utils/reprimandRules');
 
 const router = express.Router();
 
-// Правила системы выговоров:
-//  — Хелперы: максимум 2 строгих ('strict') и 4 устных ('verbal') выговора.
-//    Они НЕ снимаются по времени — учитываются все, что когда-либо выданы.
-//  — Администраторы: максимум 3 балла ('point'). Каждый балл автоматически
-//    перестаёт учитываться через 10 дней после выдачи (список записей при
-//    этом не удаляется — старые баллы просто помечаются как списанные).
-const HELPER_LIMITS = { verbal: 4, strict: 2 };
-const ADMIN_POINT_LIMIT = 3;
-const ADMIN_POINT_DECAY_DAYS = 10;
-
+// Правила системы выговоров (см. src/utils/reprimandRules.js для деталей):
+//  — Хелперы: устный = 1 балл, строгий = 2 балла, максимум 4 балла — при
+//    достижении учётная запись блокируется автоматически (не удаляется,
+//    история сохраняется). 2 непогашенных устных автоматически объединяются
+//    в 1 строгий.
+//  — Администраторы: максимум 3 балла ('point'), тоже ведёт к блокировке.
+//    Каждый балл автоматически перестаёт учитываться через 10 дней после
+//    выдачи (список записей при этом не удаляется — старые баллы просто
+//    помечаются как списанные).
 const LIMITS_PAYLOAD = {
-  helper: { verbal: HELPER_LIMITS.verbal, strict: HELPER_LIMITS.strict },
+  helper: {
+    verbalPoints: HELPER_POINT_VALUES.verbal,
+    strictPoints: HELPER_POINT_VALUES.strict,
+    blockPoints: HELPER_BLOCK_POINTS,
+    verbalToStrict: HELPER_VERBAL_TO_STRICT,
+  },
   admin: { points: ADMIN_POINT_LIMIT, decayDays: ADMIN_POINT_DECAY_DAYS },
 };
 
@@ -25,13 +39,16 @@ const LIMITS_PAYLOAD = {
 // src/utils/roleAccess.js -> REPRIMANDS_ROLES) — это раздел внутренней
 // дисциплины отдела. К каждой записи добавляем tier (тир сотрудника на
 // сегодня, по его текущей роли) и active — для баллов админов это значит
-// "ещё не списан" (моложе ADMIN_POINT_DECAY_DAYS дней), для устных/строгих
-// выговоров хелперов active всегда true, так как они не сгорают.
+// "ещё не списан" (моложе ADMIN_POINT_DECAY_DAYS дней), для устных хелпера,
+// объединённого в строгий (converted), active=false (запись видна в
+// истории, но в баллах больше не участвует); для строгих и непогашенных
+// устных active всегда true.
 router.get('/', requireRoleIn(REPRIMANDS_ROLES), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT rp.id, rp.reason, rp.type, rp.created_at,
+      `SELECT rp.id, rp.reason, rp.type, rp.created_at, rp.converted, rp.auto_generated,
               u.id AS user_id, u.nickname AS user_nickname, u.avatar_image_id, u.avatar_url,
+              u.is_blocked, u.blocked_at,
               r.name AS role_name, r.priority AS role_priority,
               iu.nickname AS issued_by_nickname
        FROM reprimands rp
@@ -49,6 +66,8 @@ router.get('/', requireRoleIn(REPRIMANDS_ROLES), async (req, res, next) => {
       if (r.type === 'point') {
         expiresAt = new Date(new Date(r.created_at).getTime() + decayMs).toISOString();
         active = new Date(expiresAt).getTime() > Date.now();
+      } else if (r.type === 'verbal' && r.converted) {
+        active = false;
       }
       return { ...r, tier, active, expires_at: expiresAt };
     });
@@ -67,7 +86,7 @@ router.get('/', requireRoleIn(REPRIMANDS_ROLES), async (req, res, next) => {
 router.get('/me', requireAnyRole, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT rp.id, rp.reason, rp.type, rp.created_at,
+      `SELECT rp.id, rp.reason, rp.type, rp.created_at, rp.converted, rp.auto_generated,
               iu.nickname AS issued_by_nickname
        FROM reprimands rp
        LEFT JOIN users iu ON iu.id = rp.issued_by
@@ -83,12 +102,20 @@ router.get('/me', requireAnyRole, async (req, res, next) => {
       if (r.type === 'point') {
         expiresAt = new Date(new Date(r.created_at).getTime() + decayMs).toISOString();
         active = new Date(expiresAt).getTime() > Date.now();
+      } else if (r.type === 'verbal' && r.converted) {
+        active = false;
       }
       return { ...r, active, expires_at: expiresAt };
     });
 
     const tier = tierForPriority(req.user.role_priority);
-    res.json({ reprimands, limits: LIMITS_PAYLOAD, tier });
+    res.json({
+      reprimands,
+      limits: LIMITS_PAYLOAD,
+      tier,
+      isBlocked: !!req.user.is_blocked,
+      blockedAt: req.user.blocked_at || null,
+    });
   } catch (err) {
     next(err);
   }
@@ -103,11 +130,16 @@ router.post('/', requireRoleIn(REPRIMANDS_ROLES), async (req, res, next) => {
     }
 
     const { rows: userRows } = await pool.query(
-      `SELECT u.id, r.priority AS role_priority FROM users u
+      `SELECT u.id, u.is_blocked, r.priority AS role_priority FROM users u
        LEFT JOIN roles r ON r.id = u.role_id WHERE u.id = $1`,
       [userId]
     );
     if (!userRows.length) return res.status(404).json({ error: 'Участник не найден.' });
+    if (userRows[0].is_blocked) {
+      return res.status(400).json({
+        error: 'Учётная запись сотрудника заблокирована за превышение лимита выговоров. Новые выговоры недоступны, пока блокировка не будет снята.',
+      });
+    }
     const tier = tierForPriority(userRows[0].role_priority);
 
     // Роли, в названии которых есть слово "Helper" (Chief Event Helper,
@@ -141,27 +173,58 @@ router.post('/', requireRoleIn(REPRIMANDS_ROLES), async (req, res, next) => {
           error: `У администратора уже максимум баллов (${ADMIN_POINT_LIMIT} из ${ADMIN_POINT_LIMIT}). Баллы снимаются автоматически через ${ADMIN_POINT_DECAY_DAYS} дней после выдачи — новый можно будет добавить после этого.`,
         });
       }
+
+      await pool.query(
+        `INSERT INTO reprimands (user_id, reason, type, issued_by) VALUES ($1, $2, $3, $4)`,
+        [userId, reason, type, req.user.id]
+      );
     } else {
       type = (req.body.type || '').trim();
       if (type !== 'strict' && type !== 'verbal') {
         return res.status(400).json({ error: 'Укажите тип выговора: устный или строгий.' });
       }
-      const limit = HELPER_LIMITS[type];
-      const { rows: cntRows } = await pool.query(
-        `SELECT COUNT(*)::int AS c FROM reprimands WHERE user_id = $1 AND type = $2`,
-        [userId, type]
+
+      // Подстраховка на случай гонки запросов — is_blocked уже проверен
+      // выше, но пересчитываем баллы ещё раз прямо перед вставкой.
+      const { rows: hRows } = await pool.query(
+        `SELECT type, converted FROM reprimands WHERE user_id = $1`,
+        [userId]
       );
-      if (cntRows[0].c >= limit) {
-        const label = type === 'strict' ? 'строгих' : 'устных';
+      if (helperActivePoints(hRows) >= HELPER_BLOCK_POINTS) {
         return res.status(400).json({
-          error: `У сотрудника уже максимум ${label} выговоров (${limit} из ${limit}). Они не снимаются по времени.`,
+          error: `У сотрудника уже максимум баллов (${HELPER_BLOCK_POINTS} из ${HELPER_BLOCK_POINTS}). Учётная запись будет заблокирована.`,
         });
+      }
+
+      await pool.query(
+        `INSERT INTO reprimands (user_id, reason, type, issued_by) VALUES ($1, $2, $3, $4)`,
+        [userId, reason, type, req.user.id]
+      );
+
+      // Только у хелперов: 2 непогашенных устных автоматически сливаются в
+      // 1 строгий (см. src/utils/reprimandRules.js).
+      if (type === 'verbal') {
+        await maybeConvertVerbalToStrict(userId, req.user.id);
       }
     }
 
+    const status = await syncBlockStatus(userId);
+    res.json({ ok: true, blocked: !!(status && status.blocked) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Ручная разблокировка — доступна тем же ролям, что управляют выговорами.
+// НЕ трогает историю выговоров, снимает только флаг блокировки (например,
+// при восстановлении сотрудника по решению руководства).
+router.post('/users/:userId/unblock', requireRoleIn(REPRIMANDS_ROLES), async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('SELECT id FROM users WHERE id = $1', [req.params.userId]);
+    if (!rows.length) return res.status(404).json({ error: 'Участник не найден.' });
     await pool.query(
-      `INSERT INTO reprimands (user_id, reason, type, issued_by) VALUES ($1, $2, $3, $4)`,
-      [userId, reason, type, req.user.id]
+      'UPDATE users SET is_blocked = FALSE, blocked_at = NULL WHERE id = $1',
+      [req.params.userId]
     );
     res.json({ ok: true });
   } catch (err) {
@@ -171,7 +234,25 @@ router.post('/', requireRoleIn(REPRIMANDS_ROLES), async (req, res, next) => {
 
 router.delete('/:id', requireRoleIn(REPRIMANDS_ROLES), async (req, res, next) => {
   try {
+    const { rows } = await pool.query(
+      'SELECT user_id, type, auto_generated FROM reprimands WHERE id = $1',
+      [req.params.id]
+    );
+    const target = rows[0];
+
+    // Если удаляют автоматически созданный строгий (результат объединения
+    // 2 устных) — отменяем объединение: устные, из которых он был собран,
+    // возвращаются в активное (не объединённое) состояние вместо того,
+    // чтобы навсегда остаться учтёнными в удалённой записи.
+    if (target && target.auto_generated && target.type === 'strict') {
+      await pool.query(
+        `UPDATE reprimands SET converted = FALSE WHERE merged_into = $1`,
+        [req.params.id]
+      );
+    }
+
     await pool.query('DELETE FROM reprimands WHERE id = $1', [req.params.id]);
+    if (target) await syncBlockStatus(target.user_id);
     res.json({ ok: true });
   } catch (err) {
     next(err);

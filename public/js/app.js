@@ -72,6 +72,16 @@ const App = {
       return;
     }
 
+    // Заблокированная учётная запись (см. система выговоров) не видит ни
+    // одного раздела личного кабинета — сам аккаунт и вся история выговоров
+    // при этом никуда не деваются, просто вход в кабинет закрыт до
+    // разблокировки руководством отдела.
+    if (Auth.currentUser.isBlocked) {
+      App.currentKey = 'blocked';
+      App.renderBlockedAccess();
+      return;
+    }
+
     // Сотрудники без роли не видят в личном кабинете ни одного раздела —
     // показываем отдельный экран "доступ появится после назначения роли"
     // вместо сайдбара с разделами.
@@ -131,6 +141,38 @@ const App = {
         </main>
       </div>`;
     document.getElementById('pendingLogoutBtn')?.addEventListener('click', Auth.logout);
+  },
+
+  // Экран для заблокированных сотрудников (см. система выговоров — учётная
+  // запись блокируется автоматически при достижении максимума баллов).
+  // Аккаунт и история выговоров сохраняются, просто личный кабинет закрыт
+  // до разблокировки руководством отдела.
+  renderBlockedAccess() {
+    const app = document.getElementById('app');
+    const blockedAt = Auth.currentUser.blockedAt ? formatDate(Auth.currentUser.blockedAt) : null;
+    app.innerHTML = `
+      <div class="site">
+        <header class="site-header">
+          <div class="site-header-inner">
+            <a href="#/home" class="site-brand">
+              <span class="site-brand-mark">ED</span>
+              <span class="site-brand-name">EVENTS DENVER</span>
+            </a>
+            <nav class="site-nav">
+              <a href="#/home" class="site-nav-link">Главная</a>
+              <button type="button" class="btn btn-ghost btn-sm" id="blockedLogoutBtn">Выйти</button>
+            </nav>
+          </div>
+        </header>
+        <main class="site-main">
+          <div class="empty-state" style="max-width:480px;margin:64px auto;">
+            <div class="blocked-icon">${ICONS.lock()}</div>
+            <h3>Учётная запись заблокирована</h3>
+            <p>Личный кабинет закрыт — по системе выговоров у вас набран максимум баллов${blockedAt ? ` (блокировка с ${esc(blockedAt)})` : ''}. Аккаунт и вся история выговоров сохранены. Обратитесь к руководству отдела для разблокировки.</p>
+          </div>
+        </main>
+      </div>`;
+    document.getElementById('blockedLogoutBtn')?.addEventListener('click', Auth.logout);
   },
 
   highlightNav(key) {
@@ -265,6 +307,46 @@ const App = {
 
     App.wireAccountWidget();
     App.highlightNav(App.currentKey);
+    App.initTopbarAutoHide();
+  },
+
+  // ---------------------------------------------------------------------
+  // Шапка раздела (.topbar) приклеена к верху (position:sticky), но при
+  // прокрутке контента вниз уезжает наверх и освобождает место, а при
+  // прокрутке вверх — даже на пару пикселей — мгновенно возвращается.
+  // Рядом с самым верхом страницы всегда показывается, чтобы не дёргалась
+  // от мелкого дрожания скролла. Слушатель вешаем один раз на renderShell
+  // (сайдбар/топбар пересоздаются только при входе в кабинет заново — см.
+  // комментарий в router()), поэтому сперва снимаем предыдущий, если он был.
+  // -----------------------------------------------------------------------
+  _lastScrollY: 0,
+  _onTopbarScroll: null,
+  initTopbarAutoHide() {
+    if (App._onTopbarScroll) window.removeEventListener('scroll', App._onTopbarScroll);
+    App._lastScrollY = window.scrollY || 0;
+    let ticking = false;
+    const REVEAL_ZONE = 80; // px от самого верха, где шапка всегда видна
+
+    App._onTopbarScroll = function () {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const topbar = document.getElementById('topbar');
+        if (topbar) {
+          const y = window.scrollY || 0;
+          const goingDown = y > App._lastScrollY;
+          if (y <= REVEAL_ZONE || !goingDown) {
+            topbar.classList.remove('topbar-hidden');
+          } else {
+            topbar.classList.add('topbar-hidden');
+          }
+          topbar.classList.toggle('topbar-scrolled', y > REVEAL_ZONE);
+          App._lastScrollY = y;
+        }
+        ticking = false;
+      });
+    };
+    window.addEventListener('scroll', App._onTopbarScroll, { passive: true });
   },
 
   accountWidgetHTML() {

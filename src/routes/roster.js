@@ -16,7 +16,7 @@ router.get('/', requireAnyRole, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT u.id, u.nickname, u.discord_username, u.avatar_image_id, u.avatar_url,
-              u.weekly_events, u.note, u.role_id, u.status,
+              u.weekly_events, u.note, u.role_id, u.status, u.is_blocked, u.blocked_at,
               r.name AS role_name, r.priority AS role_priority
        FROM users u
        LEFT JOIN roles r ON r.id = u.role_id

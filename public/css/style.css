@@ -172,7 +172,16 @@ img{ max-width:100%; display:block; }
   position:sticky; top:0; z-index:5;
   display:flex; align-items:flex-end; justify-content:space-between; gap:16px;
   padding:26px 32px 20px;
+  background:var(--bg-page);
+  transition:transform .28s ease, box-shadow .28s ease;
+  will-change:transform;
 }
+/* Шапка раздела остаётся приклеенной к верху (sticky), но при прокрутке
+   вниз уезжает наверх, освобождая место под контент, и мгновенно
+   возвращается, как только пользователь начинает листать вверх — см.
+   App.initTopbarAutoHide() в public/js/app.js. */
+.topbar.topbar-hidden{ transform:translateY(-100%); }
+.topbar.topbar-scrolled{ box-shadow:0 8px 20px rgba(0,0,0,.28); }
 .topbar-titles h1{ font-size:24px; font-weight:800; margin-bottom:4px; }
 .topbar-titles .sub{ font-size:13px; color:var(--text-muted); }
 .topbar-titles .sub b{ color:var(--text-muted); font-weight:600; }
@@ -348,6 +357,8 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
 }
 .empty-state h3{ color:var(--text-heading); margin-bottom:6px; font-size:15px; }
 .empty-state p{ font-size:13px; }
+.empty-state .blocked-icon{ display:inline-flex; color:var(--red); margin-bottom:12px; }
+.empty-state .blocked-icon svg{ width:34px; height:34px; }
 
 .section-image{
   margin-top:18px; border-radius:var(--radius-md); overflow:hidden;
