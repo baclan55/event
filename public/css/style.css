@@ -600,8 +600,41 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
 .qform-label{ display:block; font-size:14.5px; font-weight:700; color:var(--text-heading); margin-bottom:5px; }
 .qform-required{ color:var(--accent-light); margin-left:3px; }
 .qform-hint{ font-size:12px; color:var(--text-muted); margin-bottom:10px; }
+.qform-hint-row{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+.qform-hint-row .qform-hint{ margin-bottom:0; }
 .qform-card .input{ margin-top:2px; }
 .qform .error-text{ text-align:center; }
+
+/* --- ссылка "Как найти свой Discord ID?" рядом с полем Discord в заявке --- */
+.qform-hint-link{
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:12px; font-weight:600; color:var(--accent-light);
+  background:none; border:none; padding:0; cursor:pointer; white-space:nowrap;
+}
+.qform-hint-link:hover{ color:var(--text-heading); text-decoration:underline; }
+
+/* --- гайд "Как найти свой Discord ID" (модалка) --- */
+.dc-guide-steps{ display:flex; flex-direction:column; }
+.dc-guide-step{
+  display:flex; align-items:flex-start; gap:14px;
+  padding:14px 2px; border-bottom:1px solid var(--border-soft);
+}
+.dc-guide-step:last-child{ border-bottom:none; padding-bottom:2px; }
+.dc-guide-num{
+  flex-shrink:0; width:28px; height:28px; border-radius:50%;
+  background:var(--accent); color:#fff; font-weight:800; font-size:13px;
+  display:flex; align-items:center; justify-content:center;
+}
+.dc-guide-text{ padding-top:3px; font-size:13.5px; color:var(--text-body); line-height:1.55; }
+.dc-guide-text b{ color:var(--text-heading); }
+.dc-guide-done{
+  display:flex; align-items:center; gap:12px; margin-top:16px;
+  padding:14px 16px; border-radius:var(--radius-md);
+  background:var(--green-soft); border:1px solid rgba(52,211,153,.25);
+}
+.dc-guide-done svg{ flex-shrink:0; color:var(--green); }
+.dc-guide-done-text{ font-size:13px; color:var(--text-body); line-height:1.5; }
+.dc-guide-done-text b{ color:var(--green); }
 
 /* --- чекбокс согласия на обработку персональных данных (заявка + вход) --- */
 .qform-check-label{

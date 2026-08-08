@@ -51,6 +51,35 @@ const Site = {
       </footer>`;
   },
 
+  // Пошаговый гайд "Как найти свой Discord ID" — открывается модалкой рядом
+  // с полем Discord в заявке, чтобы заявитель не гадал, где взять ID.
+  openDiscordIdGuide() {
+    Modal.open(`
+      <h2>Как узнать свой Discord ID</h2>
+      <div class="modal-sub">3 шага в приложении Discord</div>
+      <div class="dc-guide-steps">
+        <div class="dc-guide-step">
+          <div class="dc-guide-num">1</div>
+          <div class="dc-guide-text">В нижнем левом углу Discord нажмите на <b>шестерёнку</b> рядом с вашим никнеймом.</div>
+        </div>
+        <div class="dc-guide-step">
+          <div class="dc-guide-num">2</div>
+          <div class="dc-guide-text">Пролистайте левое меню вниз до раздела <b>«Разработчик»</b> и включите <b>«Режим разработчика»</b>.</div>
+        </div>
+        <div class="dc-guide-step">
+          <div class="dc-guide-num">3</div>
+          <div class="dc-guide-text">Кликните на своё имя внизу слева → нажмите <b>«Копировать ID пользователя»</b>.</div>
+        </div>
+      </div>
+      <div class="dc-guide-done">
+        ${ICONS.checkCircle()}
+        <div class="dc-guide-done-text"><b>Готово!</b> Ваш Discord ID скопирован — вставьте его сочетанием <b>Ctrl+V</b> в поле формы.</div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-primary" data-modal-close>Понятно</button>
+      </div>`);
+  },
+
   renderApply(container) {
     const QUESTIONS = [
       {
@@ -58,6 +87,7 @@ const Site = {
         label: 'Ваш Discord',
         hint: 'Укажите Discord ID — тогда в уведомлении будет кликабельное упоминание',
         placeholder: '000000000000000000',
+        guide: true,
       },
       { id: 'nicknameStatic', label: 'Ваш игровой Nickname и StaticID' },
       { id: 'age', label: 'Ваш возраст' },
@@ -77,7 +107,11 @@ const Site = {
         ${QUESTIONS.map((q) => `
           <div class="qform-card">
             <label class="qform-label" for="q_${q.id}">${esc(q.label)}<span class="qform-required">*</span></label>
-            ${q.hint ? `<div class="qform-hint">${esc(q.hint)}</div>` : ''}
+            ${q.hint ? `
+              <div class="qform-hint-row">
+                <div class="qform-hint">${esc(q.hint)}</div>
+                ${q.guide ? `<button type="button" class="qform-hint-link" data-guide="${q.id}">${ICONS.discord()} Как найти?</button>` : ''}
+              </div>` : ''}
             ${q.area
               ? `<textarea class="input" id="q_${q.id}" rows="4" placeholder="Ваш ответ"></textarea>`
               : `<input class="input" id="q_${q.id}" placeholder="${q.placeholder ? escAttr(q.placeholder) : 'Ваш ответ'}">`}
@@ -93,6 +127,9 @@ const Site = {
       </form>`;
 
     const form = container.querySelector('#applyForm');
+    container.querySelectorAll('[data-guide]').forEach((btn) => {
+      btn.addEventListener('click', () => Site.openDiscordIdGuide());
+    });
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const errEl = container.querySelector('#applyErr');

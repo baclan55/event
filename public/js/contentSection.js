@@ -9,6 +9,13 @@ const ContentSection = {
       return;
     }
 
+    // Сотрудники тира "хелперы" не видят вкладку/содержимое "Event
+    // Administrator" — тот же тир, что решает доступ к системе выговоров
+    // (см. src/utils/tier.js), и то же самое уже отфильтровано на бэкенде
+    // (см. src/routes/content.js — блок 'administrator' туда просто не
+    // приходит для этого тира). Здесь только UI: показываем переключатель
+    // вкладок, только если пользователю есть между чем переключаться.
+    const showToggle = opts.hasToggle && Auth.isAdminTier();
     let audience = opts.hasToggle ? 'helper' : 'general';
 
     function segmentedHTML(active) {
@@ -23,7 +30,7 @@ const ContentSection = {
       container.innerHTML = `
         <div class="card card-pad">
           <div class="card-header">
-            ${opts.hasToggle ? segmentedHTML(audience) : `<h3>${esc(opts.heading || '')}</h3>`}
+            ${showToggle ? segmentedHTML(audience) : `<h3>${esc(opts.hasToggle ? 'Event Helper' : (opts.heading || ''))}</h3>`}
             ${Auth.hasRoleIn(Auth.ROLE_GROUPS.edit) ? `<button type="button" class="btn btn-ghost btn-sm" id="editBtn">${ICONS.edit()} Редактировать</button>` : ''}
           </div>
           <div class="pre-wrap">${block.body ? esc(block.body) : '<span style="color:var(--text-faint)">Текст пока не добавлен.</span>'}</div>
@@ -31,7 +38,7 @@ const ContentSection = {
           ${block.updatedAt ? `<div class="meta-line">Обновлено ${formatDate(block.updatedAt)}${block.updatedBy ? ' · ' + esc(block.updatedBy) : ''}</div>` : ''}
         </div>`;
 
-      if (opts.hasToggle) {
+      if (showToggle) {
         container.querySelectorAll('[data-aud]').forEach((btn) => {
           btn.addEventListener('click', () => { audience = btn.dataset.aud; paint(); });
         });

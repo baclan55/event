@@ -4,6 +4,7 @@ const upload = require('../middleware/upload');
 const { saveImage } = require('../db/images');
 const { requireAnyRole, requireRoleIn } = require('../middleware/auth');
 const { EDIT_ROLES } = require('../utils/roleAccess');
+const { tierForPriority } = require('../utils/tier');
 
 const router = express.Router();
 
@@ -29,8 +30,16 @@ router.get('/:section', checkSection, requireAnyRole, async (req, res, next) => 
        WHERE c.section = $1`,
       [req.params.section]
     );
+    // Блок аудитории "administrator" (FAQ/Регламент) не отдаём сотрудникам
+    // тира "хелперы" — они не должны видеть содержимое, предназначенное
+    // администраторам, даже если на фронте вкладка переключения скрыта.
+    // Владелец и тир "admin" (см. src/utils/tier.js) видят оба блока.
+    const tier = tierForPriority(req.user.role_priority);
+    const canSeeAdministrator = req.user.is_owner || tier === 'admin';
+
     const result = {};
     for (const row of rows) {
+      if (row.audience === 'administrator' && !canSeeAdministrator) continue;
       result[row.audience] = {
         body: row.body,
         imageId: row.image_id,

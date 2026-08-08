@@ -27,6 +27,19 @@ const Auth = {
   isAdmin() { return !!(Auth.currentUser && (Auth.currentUser.isAdmin || Auth.currentUser.isOwner)); },
   isOwner() { return !!(Auth.currentUser && Auth.currentUser.isOwner); },
 
+  // Граница тира "администраторы" по priority роли — должна совпадать с
+  // ADMIN_TIER_MAX_PRIORITY в src/utils/tier.js на бэкенде. Используется
+  // только для UI (например, скрыть вкладку "Event Administrator" в
+  // FAQ/Регламенте для тира "хелперы") — реальная защита данных всегда на
+  // сервере (см. src/routes/content.js).
+  ADMIN_TIER_MAX_PRIORITY: 4,
+  isAdminTier() {
+    if (!Auth.currentUser) return false;
+    if (Auth.currentUser.isOwner) return true;
+    const p = Auth.currentUser.rolePriority;
+    return p != null && p <= Auth.ADMIN_TIER_MAX_PRIORITY;
+  },
+
   // Есть ли у пользователя хоть какая-то назначенная роль — от этого зависит,
   // виден ли личный кабинет вообще (сотрудники "Без роли" не видят ничего,
   // кроме публичного сайта, пока администратор не назначит роль в «Составе»).

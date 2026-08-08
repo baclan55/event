@@ -20,6 +20,7 @@ function publicUser(u) {
     weeklyEvents: u.weekly_events,
     roleId: u.role_id,
     roleName: u.role_name,
+    rolePriority: u.role_priority != null ? u.role_priority : null,
     isBlocked: !!u.is_blocked,
     blockedAt: u.blocked_at || null,
   };
@@ -46,9 +47,10 @@ router.put('/me/nickname', requireAnyRole, async (req, res, next) => {
       [nickname, req.user.id]
     );
     const updated = rows[0];
-    // role_name у UPDATE ... RETURNING не подтянется джойном, поэтому берём
-    // его из уже загруженного req.user (сама роль этим запросом не менялась).
-    res.json({ user: publicUser({ ...updated, role_name: req.user.role_name }) });
+    // role_name/role_priority у UPDATE ... RETURNING не подтянутся джойном,
+    // поэтому берём их из уже загруженного req.user (сама роль этим запросом
+    // не менялась).
+    res.json({ user: publicUser({ ...updated, role_name: req.user.role_name, role_priority: req.user.role_priority }) });
   } catch (err) {
     next(err);
   }
@@ -87,7 +89,7 @@ router.post('/me/avatar', requireAnyRole, upload.single('image'), async (req, re
       ));
     }
     const updated = rows[0];
-    res.json({ user: publicUser({ ...updated, role_name: req.user.role_name }) });
+    res.json({ user: publicUser({ ...updated, role_name: req.user.role_name, role_priority: req.user.role_priority }) });
   } catch (err) {
     next(err);
   }

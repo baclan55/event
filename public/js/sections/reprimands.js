@@ -28,13 +28,25 @@ window.Sections.reprimands = {
 
     let activeTab = 'helper'; // 'helper' | 'admin'
 
-    // Роли с "Helper" в названии не могут выдавать выговоры сотрудникам с
-    // ролью выше Chief Event Helper — то же самое проверяется на бэкенде в
-    // src/routes/reprimands.js. Дублируем на фронте только для UX: реальная
-    // защита — на сервере.
-    function isHelperRoleUser() {
-      return !!(Auth.currentUser && !Auth.currentUser.isOwner &&
-        Auth.currentUser.roleName && Auth.currentUser.roleName.includes('Helper'));
+    // Общее правило: нельзя выдать выговор сотруднику с ролью выше своей
+    // (число priority меньше — см. src/db/seed.js) — то же самое
+    // проверяется на бэкенде в src/routes/reprimands.js. Дублируем на
+    // фронте только для UX (скрыть недоступные цели/кнопку заранее);
+    // реальная защита — на сервере.
+    function myPriority() {
+      return Auth.currentUser ? Auth.currentUser.rolePriority : null;
+    }
+    function canIssueTo(m) {
+      if (Auth.currentUser && Auth.currentUser.isOwner) return true;
+      const mine = myPriority();
+      if (mine == null || m.role_priority == null) return true;
+      return m.role_priority >= mine;
+    }
+    // Есть ли хоть одна доступная цель среди сотрудников тира — используется,
+    // чтобы решить, показывать ли кнопку "Добавить выговор" активной на
+    // вкладке этого тира.
+    function tabHasEligibleTarget(tier) {
+      return members.some((m) => m.tier === tier && !m.is_blocked && canIssueTo(m));
     }
 
     paint();
@@ -178,18 +190,18 @@ window.Sections.reprimands = {
         ? groups.map((g) => groupHTML(g, activeTab)).join('')
         : `<div class="empty-state"><h3>Выговоров нет</h3><p>${activeTab === 'helper' ? 'У хелперов пока нет выговоров.' : 'У администраторов пока нет баллов.'}</p></div>`;
 
-      const addBlocked = activeTab === 'admin' && isHelperRoleUser();
+      const addBlocked = !tabHasEligibleTarget(activeTab);
       container.innerHTML = `
         <div class="toolbar">
           <div class="toolbar-left">${items.length} записей всего</div>
           <div class="toolbar-right">
             <button type="button" class="btn btn-primary btn-sm" id="addBtn" ${addBlocked ? 'disabled' : ''}
-              ${addBlocked ? 'title="Роли с \'Helper\' в названии не могут выдавать выговоры сотрудникам с ролью выше Chief Event Helper."' : ''}
+              ${addBlocked ? 'title="Нельзя выдать выговор сотруднику с ролью выше вашей."' : ''}
             >${ICONS.plus()} Добавить выговор</button>
           </div>
         </div>
         ${tabsHTML()}
-        ${addBlocked ? `<div class="rp-legend">Вашей роли недоступна выдача выговоров сотрудникам с ролью выше <b>Chief Event Helper</b>.</div>` : ''}
+        ${addBlocked ? `<div class="rp-legend">Вы не можете выдавать выговоры сотрудникам с ролью выше вашей — среди доступных на этой вкладке подходящих целей нет.</div>` : ''}
         ${legendHTML()}
         ${bodyHTML}`;
 
@@ -213,15 +225,9 @@ window.Sections.reprimands = {
     // блокировка не снята (см. кнопку "Разблокировать" в группе).
     // -----------------------------------------------------------------
     function openAddModal(tier) {
-      if (tier === 'admin' && isHelperRoleUser()) {
-        alert('Роли с "Helper" в названии не могут выдавать выговоры сотрудникам с ролью выше Chief Event Helper.');
-        return;
-      }
-      const tierMembers = members.filter((m) => m.tier === tier && !m.is_blocked);
+      const tierMembers = members.filter((m) => m.tier === tier && !m.is_blocked && canIssueTo(m));
       if (!tierMembers.length) {
-        alert(tier === 'helper'
-          ? 'В составе нет доступных сотрудников тира «Хелперы» (либо все заблокированы).'
-          : 'В составе нет доступных сотрудников тира «Администраторы» (либо все заблокированы).');
+        alert('Нет доступных целей: либо в составе нет сотрудников этого тира (или все заблокированы), либо у всех роль выше вашей.');
         return;
       }
 

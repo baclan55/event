@@ -142,18 +142,20 @@ router.post('/', requireRoleIn(REPRIMANDS_ROLES), async (req, res, next) => {
     }
     const tier = tierForPriority(userRows[0].role_priority);
 
-    // Роли, в названии которых есть слово "Helper" (Chief Event Helper,
-    // Dep.Chief Event Helper, Senior Event Helper — это единственные такие
-    // роли, у которых вообще есть доступ к этому роуту, см. REPRIMANDS_ROLES),
-    // не могут выдавать выговоры сотрудникам с ролью ВЫШЕ Chief Event Helper.
-    // Тир "admin" по построению (см. ADMIN_TIER_MAX_PRIORITY в src/utils/tier.js)
-    // — это как раз все роли строго выше Chief Event Helper по priority
-    // (Curator Event, Event Administrator, Dep.Chief Event, Chief Event).
-    const issuerIsHelperRole = !req.user.is_owner &&
-      !!(req.user.role_name && req.user.role_name.includes('Helper'));
-    if (issuerIsHelperRole && tier === 'admin') {
+    // Общее правило: сотрудник не может выдать выговор тому, чья роль выше
+    // по иерархии (число priority меньше — см. порядок в src/db/seed.js),
+    // чем его собственная. Сравнение идёт по точному priority, а не по
+    // тиру helper/admin — это распространяется и на равные роли внутри
+    // одного тира (например, Dep.Chief Event Helper не может выдать выговор
+    // Chief Event Helper), и на роли внутри тира "admin" (Dep.Chief Event не
+    // может выдать выговор Chief Event). Не распространяется на владельца
+    // (is_owner) — тот может выдавать выговор кому угодно.
+    const issuerPriority = req.user.role_priority;
+    const targetPriority = userRows[0].role_priority;
+    if (!req.user.is_owner && issuerPriority != null && targetPriority != null &&
+        targetPriority < issuerPriority) {
       return res.status(403).json({
-        error: 'Роли с "Helper" в названии не могут выдавать выговоры сотрудникам с ролью выше Chief Event Helper.',
+        error: 'Нельзя выдать выговор сотруднику с ролью выше вашей.',
       });
     }
 
