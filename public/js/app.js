@@ -13,6 +13,7 @@ const App = {
     { key: 'firstSteps', label: 'Первые шаги', icon: 'firstSteps', title: 'Первые шаги', sub: 'С чего начать новому сотруднику' },
     { key: 'reprimands', label: 'Система выговоров', icon: 'reprimands', title: 'Система выговоров', sub: 'Учёт дисциплинарных взысканий', roles: Auth.ROLE_GROUPS.reprimands },
     { key: 'applications', label: 'Заявки', icon: 'applications', title: 'Заявки', sub: 'Заявки на роль Event Helper', roles: Auth.ROLE_GROUPS.applications },
+    { key: 'candidates', label: 'Кандидаты', icon: 'candidates', title: 'Кандидаты', sub: 'Кандидаты, ожидающие результата обзвона', roles: Auth.ROLE_GROUPS.candidates },
   ],
   ownerItem: { key: 'owner', label: 'Панель владельца', icon: 'owner', title: 'Панель владельца', sub: 'Управление пользователями и правами', roles: Auth.ROLE_GROUPS.owner },
   // Вкладка "Главная" в личном кабинете — самая верхняя, сразу после ссылки

@@ -28,6 +28,21 @@ const APPLICATIONS_ROLES = [
   'Dep.Chief Event',
 ];
 
+// Кандидаты, ожидающие результата обзвона (вкладка/раздел "Кандидаты") —
+// более узкий срез "Заявок": Senior Event Helper видит и обзванивает
+// кандидатов (может отметить прошёл/не прошёл обзвон), но саму заявку
+// (анкету с личными данными, кнопки одобрить/отклонить/удалить) не видит —
+// см. GET /api/applications/candidates и POST /api/applications/:id/call
+// в src/routes/applications.js. Все роли из APPLICATIONS_ROLES тоже сюда
+// входят — им доступно всё, что доступно этому списку, и даже больше.
+const CANDIDATES_ROLES = [
+  'Chief Event Helper',
+  'Dep.Chief Event Helper',
+  'Senior Event Helper',
+  'Chief Event',
+  'Dep.Chief Event',
+];
+
 const OWNER_PANEL_ROLES = ['Chief Event', 'Dep.Chief Event'];
 
 // Редактирование контента (FAQ, Регламент, Правила МП, Первые шаги, Состав)
@@ -54,6 +69,7 @@ function userHasRoleIn(user, roles) {
 module.exports = {
   REPRIMANDS_ROLES,
   APPLICATIONS_ROLES,
+  CANDIDATES_ROLES,
   OWNER_PANEL_ROLES,
   EDIT_ROLES,
   userHasAnyRole,

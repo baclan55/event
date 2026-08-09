@@ -8,6 +8,11 @@ const Auth = {
   ROLE_GROUPS: {
     reprimands: ['Chief Event Helper', 'Dep.Chief Event Helper', 'Senior Event Helper', 'Chief Event', 'Dep.Chief Event'],
     applications: ['Chief Event Helper', 'Dep.Chief Event Helper', 'Chief Event', 'Dep.Chief Event'],
+    // Кандидаты, ожидающие обзвона — более узкий раздел, чем «Заявки»:
+    // сюда дополнительно входит Senior Event Helper, но саму анкету заявки
+    // (личные данные, одобрение/отклонение) он не видит — см.
+    // src/utils/roleAccess.js -> CANDIDATES_ROLES на бэкенде.
+    candidates: ['Chief Event Helper', 'Dep.Chief Event Helper', 'Senior Event Helper', 'Chief Event', 'Dep.Chief Event'],
     owner: ['Chief Event', 'Dep.Chief Event'],
     // Редактирование контента (FAQ/Регламент/Правила МП/Первые шаги/Состав) —
     // совпадает с src/utils/roleAccess.js -> EDIT_ROLES на бэкенде.

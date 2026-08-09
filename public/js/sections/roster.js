@@ -80,8 +80,8 @@ window.Sections.roster = {
       }
 
       // Кандидаты пока ничего не решают в "Составе" — статус (прошёл/не
-      // прошёл обзвон) выставляется в разделе "Заявки" → вкладка
-      // "Кандидаты", отсюда просто ссылка-подсказка.
+      // прошёл обзвон) выставляется в отдельном разделе "Кандидаты",
+      // отсюда просто ссылка-подсказка.
       function candidateRowHTML(m) {
         return `
           <div class="roster-row" data-id="${m.id}">
@@ -109,7 +109,7 @@ window.Sections.roster = {
           : `<div class="empty-state"><h3>Здесь никого нет</h3><p>Все участники состава уже с ролью.</p></div>`;
       } else if (activeTab === 'candidates') {
         bodyHTML = candidates.length
-          ? `<div class="rp-legend">Решение по обзвону — в разделе «Заявки» → вкладка «Кандидаты».</div>${candidates.map(candidateRowHTML).join('')}`
+          ? `<div class="rp-legend">Решение по обзвону — в разделе «Кандидаты».</div>${candidates.map(candidateRowHTML).join('')}`
           : `<div class="empty-state"><h3>Кандидатов нет</h3><p>Они появляются здесь после одобрения заявки в разделе «Заявки».</p></div>`;
       } else {
         bodyHTML = groups.length
@@ -130,7 +130,23 @@ window.Sections.roster = {
         btn.addEventListener('click', () => { activeTab = btn.dataset.tab; paint(); });
       });
       container.querySelectorAll('[data-edit]').forEach((btn) => {
-        btn.addEventListener('click', () => openEditModal(members.find((m) => String(m.id) === btn.dataset.edit)));
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.edit;
+          // Подтягиваем свежие данные перед открытием формы редактирования.
+          // Если вкладка "Состав" была открыта давно (например, ещё до
+          // последнего деплоя, или пока бот успел начислить новые МП),
+          // members в памяти браузера мог устареть. Сохранение формы с
+          // устаревшим числом в поле "Мероприятий за неделю" затёрло бы
+          // актуальный счётчик в базе (см. PUT /api/roster/:id) — то есть
+          // выглядело бы как "счётчик МП сбросился" после самого обычного
+          // редактирования, например смены роли или исправления ника.
+          try {
+            const data = await api.get('/api/roster');
+            members = data.members;
+            target = data.target;
+          } catch (e) { /* сеть подвела — откроем форму с тем, что уже есть */ }
+          openEditModal(members.find((m) => String(m.id) === id));
+        });
       });
       container.querySelectorAll('[data-del]').forEach((btn) => {
         btn.addEventListener('click', () => removeMember(btn.dataset.del));

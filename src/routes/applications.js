@@ -1,7 +1,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const { requireRoleIn } = require('../middleware/auth');
-const { APPLICATIONS_ROLES } = require('../utils/roleAccess');
+const { APPLICATIONS_ROLES, CANDIDATES_ROLES } = require('../utils/roleAccess');
 
 const router = express.Router();
 
@@ -110,6 +110,32 @@ router.get('/', requireRoleIn(APPLICATIONS_ROLES), async (req, res, next) => {
        ORDER BY a.created_at DESC`
     );
     res.json({ applications: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Кандидаты, ожидающие результата обзвона (см. CANDIDATES_ROLES) — более
+// узкий раздел, чем полный список заявок выше. Senior Event Helper видит
+// только эту выборку и только эти поля: саму заявку (анкету с личными
+// данными вроде возраста/опыта/идей, а также заявки в других статусах —
+// на рассмотрении/отклонённые) он не должен видеть, ему нужны только
+// данные, достаточные для звонка кандидату.
+router.get('/candidates', requireRoleIn(CANDIDATES_ROLES), async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.id, a.discord, a.nickname_static, a.status, a.created_at,
+              a.candidate_user_id,
+              r.nickname AS reviewed_by_nickname,
+              cu.nickname AS candidate_nickname, cu.avatar_image_id AS candidate_avatar_image_id,
+              cu.avatar_url AS candidate_avatar_url
+       FROM applications a
+       LEFT JOIN users r ON r.id = a.reviewed_by
+       LEFT JOIN users cu ON cu.id = a.candidate_user_id
+       WHERE a.status = 'approved'
+       ORDER BY a.created_at DESC`
+    );
+    res.json({ candidates: rows });
   } catch (err) {
     next(err);
   }
@@ -233,10 +259,13 @@ router.put('/:id', requireRoleIn(APPLICATIONS_ROLES), async (req, res, next) => 
   }
 });
 
-// Результат обзвона кандидата (вкладка "Кандидаты" в заявках):
+// Результат обзвона кандидата (раздел "Кандидаты"):
 // прошёл — получает роль Mini Event Helper и становится обычным
 // сотрудником; не прошёл — кандидат снимается (см. releaseCandidate).
-router.post('/:id/call', requireRoleIn(APPLICATIONS_ROLES), async (req, res, next) => {
+// Доступно CANDIDATES_ROLES (включая Senior Event Helper) — это и есть
+// собственно "обзвон", в отличие от одобрения/отклонения самой заявки
+// (PUT /:id ниже), которое по-прежнему только у APPLICATIONS_ROLES.
+router.post('/:id/call', requireRoleIn(CANDIDATES_ROLES), async (req, res, next) => {
   try {
     const passed = req.body.passed === true || req.body.passed === 'true';
 

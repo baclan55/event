@@ -61,13 +61,23 @@ router.put('/:id', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
     const nickname = (req.body.nickname || '').trim();
     if (!nickname) return res.status(400).json({ error: 'Укажите никнейм участника.' });
     const roleId = req.body.roleId || null;
-    const weeklyEvents = parseInt(req.body.weeklyEvents, 10) || 0;
+    // Если поле не пришло вовсе / пришло пустым / нечисловым — НЕ обнуляем
+    // "Мероприятий за неделю" молча (COALESCE ниже оставит текущее значение
+    // в базе как есть). Раньше parseInt(...) || 0 тихо сбрасывал счётчик в 0
+    // при любой некорректной строке — в частности, если форму редактирования
+    // открывали со устаревшими данными (например, вкладка "Состав" была
+    // открыта ещё до того, как бот начислил новые МП) и сохраняли без
+    // изменений — см. также фикс на фронтенде: перед открытием формы
+    // редактирования теперь подтягиваются свежие данные из /api/roster.
+    const rawWeeklyEvents = parseInt(req.body.weeklyEvents, 10);
+    const weeklyEvents = Number.isFinite(rawWeeklyEvents) && rawWeeklyEvents >= 0 ? rawWeeklyEvents : null;
     const note = req.body.note || '';
     // Если роль назначают вручную (в том числе кандидату), он перестаёт
     // считаться кандидатом — иначе он бы завис одновременно и "с ролью", и
     // во вкладке "Кандидаты".
     await pool.query(
-      `UPDATE users SET nickname = $1, role_id = $2::integer, weekly_events = $3, note = $4,
+      `UPDATE users SET nickname = $1, role_id = $2::integer,
+              weekly_events = COALESCE($3::integer, weekly_events), note = $4,
               status = CASE WHEN $2::integer IS NOT NULL THEN 'member' ELSE status END
        WHERE id = $5`,
       [nickname, roleId, weeklyEvents, note, req.params.id]
