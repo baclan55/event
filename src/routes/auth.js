@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 const pool = require('../db/pool');
 const upload = require('../middleware/upload');
@@ -131,11 +132,18 @@ router.get('/discord', (req, res) => {
       'Необходимо подтвердить согласие на обработку персональных данных, отметив чекбокс в окне входа.'
     );
   }
+  // state защищает от CSRF-подделки колбэка: генерируем случайное значение,
+  // кладём в сессию пользователя и сверяем при возврате из Discord
+  // (см. /discord/callback) — колбэк с чужим/отсутствующим state отклоняется.
+  const state = crypto.randomBytes(24).toString('hex');
+  req.session.discordOAuthState = state;
+
   const url = new URL('https://discord.com/api/oauth2/authorize');
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', 'identify');
+  url.searchParams.set('state', state);
   res.redirect(url.toString());
 });
 
@@ -144,12 +152,22 @@ router.get('/discord/callback', async (req, res, next) => {
     const clientId = process.env.DISCORD_CLIENT_ID;
     const clientSecret = process.env.DISCORD_CLIENT_SECRET;
     const redirectUri = process.env.DISCORD_REDIRECT_URI;
-    const { code } = req.query;
+    const { code, state } = req.query;
     if (!clientId || !clientSecret || !redirectUri) {
       return res.status(400).send('Вход через Discord не настроен на сервере.');
     }
     if (!code) {
       return res.status(400).send('Discord не передал код авторизации.');
+    }
+
+    // Сверяем state с тем, что был сохранён в сессии при переходе на
+    // /discord — защита от CSRF (подсунутого чужого кода авторизации).
+    // Значение из сессии одноразовое и удаляется сразу после проверки,
+    // независимо от результата.
+    const expectedState = req.session.discordOAuthState;
+    delete req.session.discordOAuthState;
+    if (!expectedState || !state || state !== expectedState) {
+      return res.status(400).send('Недействительный запрос авторизации (state не совпадает). Попробуйте войти ещё раз.');
     }
 
     const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
