@@ -497,6 +497,9 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
 .top-row:last-child{ border-bottom:none; }
 .top-rank{ width:28px; text-align:center; font-size:18px; flex-shrink:0; }
 
+.top-grid{ display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
+@media (max-width:700px){ .top-grid{ grid-template-columns:1fr; } }
+
 /* =============================================================================
    Модальные окна
    ============================================================================= */

@@ -18,24 +18,36 @@ window.Sections.dashboard = {
     // Топ-3 по присутствию на мероприятиях — считаем по счётчику
     // "мероприятий за неделю" (тот же показатель, что и в разделе «Состав»),
     // это единственная цифра присутствия, которую хранит портал.
-    const top3 = [...members]
-      .filter((m) => m.weekly_events > 0)
-      .sort((a, b) => b.weekly_events - a.weekly_events)
-      .slice(0, 3);
-
+    //
+    // Разбиваем на два отдельных рейтинга — администраторы и хелперы —
+    // по полю tier, которое отдаёт /api/roster (см. src/utils/tier.js,
+    // граница проходит по приоритету роли). Сравнивать эти две группы в
+    // одном общем топе не показательно: у них разная нагрузка по мероприятиям.
     const medal = ['🥇', '🥈', '🥉'];
 
-    const topHTML = top3.length ? top3.map((m, i) => `
-      <div class="top-row">
-        <div class="top-rank">${medal[i] || i + 1}</div>
-        ${avatarHTML(m.avatar_url || m.avatar_image_id, m.nickname, 38)}
-        <div style="min-width:0;flex:1;">
-          <div class="nickname">${esc(m.nickname)}</div>
-          <div class="role-tag">${esc(m.role_name || 'Без роли')}</div>
-        </div>
-        <span class="badge ${m.weekly_events >= target ? 'badge-green' : 'badge-amber'}">${m.weekly_events} мп / нед.</span>
-      </div>`).join('')
-      : `<div class="empty-state"><h3>Пока нет данных</h3><p>Как только у сотрудников появятся мероприятия за неделю в «Составе», здесь будет рейтинг.</p></div>`;
+    function top3For(tier) {
+      return [...members]
+        .filter((m) => m.tier === tier && m.weekly_events > 0)
+        .sort((a, b) => b.weekly_events - a.weekly_events)
+        .slice(0, 3);
+    }
+
+    function topRowsHTML(list, emptyText) {
+      return list.length ? list.map((m, i) => `
+        <div class="top-row">
+          <div class="top-rank">${medal[i] || i + 1}</div>
+          ${avatarHTML(m.avatar_url || m.avatar_image_id, m.nickname, 38)}
+          <div style="min-width:0;flex:1;">
+            <div class="nickname">${esc(m.nickname)}</div>
+            <div class="role-tag">${esc(m.role_name || 'Без роли')}</div>
+          </div>
+          <span class="badge ${m.weekly_events >= target ? 'badge-green' : 'badge-amber'}">${m.weekly_events} мп / нед.</span>
+        </div>`).join('')
+        : `<div class="empty-state"><h3>Пока нет данных</h3><p>${esc(emptyText)}</p></div>`;
+    }
+
+    const top3Admins = top3For('admin');
+    const top3Helpers = top3For('helper');
 
     container.innerHTML = `
       <div class="stat-grid stat-grid-4">
@@ -57,9 +69,15 @@ window.Sections.dashboard = {
         </div>
       </div>
 
-      <div class="card card-pad" style="margin-top:20px;">
-        <div class="card-header"><h3>Топ-3 по мероприятиям за неделю</h3></div>
-        ${topHTML}
+      <div class="top-grid" style="margin-top:20px;">
+        <div class="card card-pad">
+          <div class="card-header"><h3>Топ-3 администраторов за неделю</h3></div>
+          ${topRowsHTML(top3Admins, 'Как только у администраторов появятся мероприятия за неделю в «Составе», здесь будет рейтинг.')}
+        </div>
+        <div class="card card-pad">
+          <div class="card-header"><h3>Топ-3 хелперов за неделю</h3></div>
+          ${topRowsHTML(top3Helpers, 'Как только у хелперов появятся мероприятия за неделю в «Составе», здесь будет рейтинг.')}
+        </div>
       </div>`;
   },
 };
