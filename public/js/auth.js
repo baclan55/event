@@ -6,17 +6,17 @@ const Auth = {
   // должна буквально совпадать с src/utils/roleAccess.js на бэкенде (это
   // лишь для UI: сайдбар/переходы, реальная проверка всегда на сервере).
   ROLE_GROUPS: {
-    reprimands: ['Chief Event Helper', 'Dep.Chief Event Helper', 'Senior Event Helper', 'Chief Event', 'Dep.Chief Event'],
-    applications: ['Chief Event Helper', 'Dep.Chief Event Helper', 'Chief Event', 'Dep.Chief Event'],
+    reprimands: ['Chief Event Helper', 'Dep.Chief Event Helper', 'Senior Event Helper', 'Chief Event', 'Dep.Chief Event', 'Technical Administrator'],
+    applications: ['Chief Event Helper', 'Dep.Chief Event Helper', 'Chief Event', 'Dep.Chief Event', 'Technical Administrator'],
     // Кандидаты, ожидающие обзвона — более узкий раздел, чем «Заявки»:
     // сюда дополнительно входит Senior Event Helper, но саму анкету заявки
     // (личные данные, одобрение/отклонение) он не видит — см.
     // src/utils/roleAccess.js -> CANDIDATES_ROLES на бэкенде.
-    candidates: ['Chief Event Helper', 'Dep.Chief Event Helper', 'Senior Event Helper', 'Chief Event', 'Dep.Chief Event'],
-    owner: ['Chief Event', 'Dep.Chief Event'],
+    candidates: ['Chief Event Helper', 'Dep.Chief Event Helper', 'Senior Event Helper', 'Chief Event', 'Dep.Chief Event', 'Technical Administrator'],
+    owner: ['Chief Event', 'Dep.Chief Event', 'Technical Administrator'],
     // Редактирование контента (FAQ/Регламент/Правила МП/Первые шаги/Состав) —
     // совпадает с src/utils/roleAccess.js -> EDIT_ROLES на бэкенде.
-    edit: ['Chief Event', 'Dep.Chief Event'],
+    edit: ['Chief Event', 'Dep.Chief Event', 'Technical Administrator'],
   },
 
   async bootstrap() {
@@ -37,7 +37,7 @@ const Auth = {
   // только для UI (например, скрыть вкладку "Event Administrator" в
   // FAQ/Регламенте для тира "хелперы") — реальная защита данных всегда на
   // сервере (см. src/routes/content.js).
-  ADMIN_TIER_MAX_PRIORITY: 4,
+  ADMIN_TIER_MAX_PRIORITY: 5,
   isAdminTier() {
     if (!Auth.currentUser) return false;
     if (Auth.currentUser.isOwner) return true;
@@ -53,9 +53,15 @@ const Auth = {
   },
 
   // Есть ли у пользователя одна из перечисленных ролей (владелец — всегда).
+  // Сотрудник может иметь сразу несколько ролей (см. user_roles на
+  // бэкенде) — доступ даёт ЛЮБАЯ из них, попавшая в список.
   hasRoleIn(roles) {
-    return !!(Auth.currentUser && (Auth.currentUser.isOwner ||
-      (Auth.currentUser.roleName && roles.includes(Auth.currentUser.roleName))));
+    if (!Auth.currentUser) return false;
+    if (Auth.currentUser.isOwner) return true;
+    const names = Auth.currentUser.roles && Auth.currentUser.roles.length
+      ? Auth.currentUser.roles
+      : (Auth.currentUser.roleName ? [Auth.currentUser.roleName] : []);
+    return names.some((n) => roles.includes(n));
   },
 
   // Вход в личный кабинет — только через Discord. Первый вход одновременно

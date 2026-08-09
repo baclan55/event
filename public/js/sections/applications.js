@@ -13,9 +13,14 @@ window.Sections.applications = {
     }
 
     let items = [];
+    let isOpen = true;
     try {
-      const data = await api.get('/api/applications');
+      const [data, statusData] = await Promise.all([
+        api.get('/api/applications'),
+        api.get('/api/applications/status'),
+      ]);
       items = data.applications;
+      isOpen = statusData.isOpen;
     } catch (e) {
       container.innerHTML = `<div class="empty-state"><h3>Не удалось загрузить заявки</h3><p>${esc(e.message)}</p></div>`;
       return;
@@ -68,12 +73,31 @@ window.Sections.applications = {
         : `<div class="empty-state"><h3>Заявок нет</h3><p>Здесь появятся заявки на роль Event Helper с публичной формы сайта.</p></div>`;
 
       container.innerHTML = `
-        <div class="toolbar"><div class="toolbar-left">${items.length} заявок всего</div></div>
+        <div class="toolbar">
+          <div class="toolbar-left">${items.length} заявок всего</div>
+          <div class="toolbar-right">
+            <span class="badge ${isOpen ? 'badge-green' : 'badge-red'}">${isOpen ? 'Набор открыт' : 'Набор закрыт'}</span>
+            <button type="button" class="btn btn-ghost btn-sm" id="toggleRecruitmentBtn">${isOpen ? 'Закрыть набор' : 'Открыть набор'}</button>
+          </div>
+        </div>
         ${bodyHTML}`;
 
+      container.querySelector('#toggleRecruitmentBtn').addEventListener('click', toggleRecruitment);
       container.querySelectorAll('[data-approve]').forEach((btn) => btn.addEventListener('click', () => setStatus(btn.dataset.approve, 'approved')));
       container.querySelectorAll('[data-reject]').forEach((btn) => btn.addEventListener('click', () => setStatus(btn.dataset.reject, 'rejected')));
       container.querySelectorAll('[data-del]').forEach((btn) => btn.addEventListener('click', () => removeItem(btn.dataset.del)));
+    }
+
+    // Открывает/закрывает публичную форму подачи заявки (см.
+    // public/js/site.js -> Site.renderApply и GET/PUT /api/applications/status).
+    async function toggleRecruitment() {
+      try {
+        const res = await api.put('/api/applications/status', { isOpen: !isOpen });
+        isOpen = res.isOpen;
+        paint();
+      } catch (e) {
+        alert(e.message);
+      }
     }
 
     async function setStatus(id, status) {

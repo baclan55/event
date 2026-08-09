@@ -70,7 +70,7 @@ window.Sections.roster = {
               ${avatarHTML(m.avatar_url || m.avatar_image_id, m.nickname, 38)}
               <div>
                 <div class="nickname">${esc(m.nickname)}</div>
-                <div class="role-tag">${esc(m.role_name || 'Без роли')}${m.discord_username ? ' · ' + esc(m.discord_username) : ''}</div>
+                <div class="role-tag">${esc(m.roles && m.roles.length ? m.roles.map((r) => r.name).join(' · ') : 'Без роли')}${m.discord_username ? ' · ' + esc(m.discord_username) : ''}</div>
               </div>
             </div>
             ${blockedBadge}
@@ -153,9 +153,13 @@ window.Sections.roster = {
       });
     }
 
-    function roleOptionsHTML(selectedId) {
-      return `<option value="">Без роли</option>` + roles.map((r) =>
-        `<option value="${r.id}" ${String(r.id) === String(selectedId) ? 'selected' : ''}>${esc(r.name)}</option>`
+    function roleCheckboxesHTML(selectedIds) {
+      const selected = new Set((selectedIds || []).map(String));
+      return roles.map((r) =>
+        `<label class="role-check-item">
+          <input type="checkbox" value="${r.id}" ${selected.has(String(r.id)) ? 'checked' : ''}>
+          <span>${esc(r.name)}</span>
+        </label>`
       ).join('');
     }
 
@@ -166,8 +170,8 @@ window.Sections.roster = {
         <div class="error-text" id="memberErr"></div>
         <div class="field"><label>Никнейм</label><input class="input" id="mNickname" value="${escAttr(member ? member.nickname : '')}"></div>
         <div class="form-row-2">
-          <div class="field"><label>Роль</label>
-            <select class="input" id="mRole">${roleOptionsHTML(member ? member.role_id : '')}</select>
+          <div class="field"><label>Роли (можно выбрать несколько)</label>
+            <div class="role-checklist" id="mRoles">${roleCheckboxesHTML(member ? (member.roles || []).map((r) => r.id) : [])}</div>
           </div>
           <div class="field"><label>Мероприятий за неделю</label>
             <input class="input" type="number" min="0" id="mEvents" value="${member ? member.weekly_events : 0}">
@@ -186,17 +190,17 @@ window.Sections.roster = {
 
       overlay.querySelector('#saveMemberBtn').addEventListener('click', async () => {
         const nickname = overlay.querySelector('#mNickname').value.trim();
-        const roleId = overlay.querySelector('#mRole').value || null;
+        const roleIds = Array.from(overlay.querySelectorAll('#mRoles input[type="checkbox"]:checked')).map((cb) => cb.value);
         const weeklyEvents = overlay.querySelector('#mEvents').value;
         const note = overlay.querySelector('#mNote').value;
         const err = overlay.querySelector('#memberErr');
         try {
           let id = member ? member.id : null;
           if (isNew) {
-            const res = await api.post('/api/roster', { nickname, roleId, weeklyEvents, note });
+            const res = await api.post('/api/roster', { nickname, roleIds, weeklyEvents, note });
             id = res.id;
           } else {
-            await api.put(`/api/roster/${id}`, { nickname, roleId, weeklyEvents, note });
+            await api.put(`/api/roster/${id}`, { nickname, roleIds, weeklyEvents, note });
           }
           const file = overlay.querySelector('#mAvatar').files[0];
           if (file) {

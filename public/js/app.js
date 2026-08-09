@@ -258,7 +258,7 @@ const App = {
         ${avatarHTML(user.avatarUrl || user.avatarImageId, user.nickname, 34)}
         <div class="sidebar-user-info">
           <div class="sidebar-user-name">${esc(user.nickname)}</div>
-          <div class="sidebar-user-role">${esc(user.roleName || 'Без роли')}</div>
+          <div class="sidebar-user-role">${esc(user.roles && user.roles.length ? user.roles.join(' · ') : 'Без роли')}</div>
         </div>
         <button type="button" class="icon-btn" id="logoutBtn" title="Выйти">${ICONS.logout()}</button>
       </div>` : `

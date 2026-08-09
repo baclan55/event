@@ -156,6 +156,20 @@ ALTER TABLE applications ADD COLUMN IF NOT EXISTS experience       TEXT NOT NULL
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS ideas            TEXT NOT NULL DEFAULT '';
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS motivation       TEXT NOT NULL DEFAULT '';
 
+-- Открыт ли сейчас приём заявок на Event Helper — одна строка (id всегда 1,
+-- по тому же принципу, что и weekly_reset_state ниже). Переключается из
+-- раздела «Заявки» (см. src/routes/applications.js -> PUT /status), читается
+-- публичной формой подачи заявки без входа (GET /status) — см.
+-- public/js/site.js -> Site.renderApply.
+CREATE TABLE IF NOT EXISTS applications_settings (
+  id         INTEGER PRIMARY KEY DEFAULT 1,
+  is_open    BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT applications_settings_single_row CHECK (id = 1)
+);
+INSERT INTO applications_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
 -- Таблица сессий для connect-pg-simple (тем же способом её создаёт сама
 -- библиотека, но мы объявляем явно, чтобы миграция была самодостаточной).
 CREATE TABLE IF NOT EXISTS "session" (
@@ -170,6 +184,34 @@ CREATE INDEX IF NOT EXISTS idx_session_expire ON "session" (expire);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role_id);
 CREATE INDEX IF NOT EXISTS idx_reprimands_user ON reprimands(user_id);
 CREATE INDEX IF NOT EXISTS idx_rules_position ON rules(position);
+
+-- У сотрудника теперь может быть НЕСКОЛЬКО ролей одновременно (например,
+-- роль в RP-иерархии + техническая Technical Administrator). Это реальный
+-- список ролей пользователя; users.role_id остаётся кэшем "основной" (той,
+-- что выше по приоритету, см. roles.priority) роли из этого набора —
+-- пересчитывается при каждом изменении набора (см. src/db/roles.js) и
+-- по-прежнему используется для сортировки/группировки в «Составе» и
+-- определения тира (helper/admin, см. src/utils/tier.js). Проверки доступа
+-- к разделам (см. src/utils/roleAccess.js) сверяются со ВСЕМ набором.
+CREATE TABLE IF NOT EXISTS user_roles (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, role_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_roles_user ON user_roles(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role_id);
+
+-- Самовосстанавливающийся бэкафилл: переносит users.role_id в user_roles,
+-- если там ещё нет соответствующей записи. При первом деплое этой фичи на
+-- существующую базу переносит все ранее назначенные одиночные роли, чтобы
+-- никто не остался без роли. В дальнейшем безвреден и по сути не делает
+-- ничего (role_id всегда синхронизирован с user_roles приложением), но
+-- служит подстраховкой на случай рассинхронизации. ON CONFLICT DO NOTHING
+-- не создаёт дублей и не трогает тех, у кого уже явно назначено несколько
+-- ролей.
+INSERT INTO user_roles (user_id, role_id)
+SELECT id, role_id FROM users WHERE role_id IS NOT NULL
+ON CONFLICT DO NOTHING;
 
 -- Леджер начислений бота учёта посещаемости: кому (discord_id) за какое
 -- сообщение (message_id) уже начислен +1 к weekly_events. Это и есть

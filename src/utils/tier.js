@@ -2,17 +2,20 @@
 // (см. src/routes/reprimands.js), чтобы применять разные правила к хелперам
 // и администраторам.
 //
-// Иерархия ролей (см. src/db/seed.js), priority 1 — самая высокая:
+// Иерархия ролей (см. src/db/seed.js), priority 1 — самая высокая. Сотрудник
+// может иметь несколько ролей одновременно (см. user_roles в схеме БД) —
+// тир считается по ЛУЧШЕЙ (наивысшей по приоритету) из его ролей:
 //   1 Chief Event
 //   2 Dep.Chief Event
-//   3 Curator Event
-//   4 Event Administrator      <- нижняя граница тира "администраторы"
-//   5 Chief Event Helper       <- верхняя граница тира "хелперы"
-//   6 Dep.Chief Event Helper
-//   7 Senior Event Helper
-//   8 Event Helper
-//   9 Mini Event Helper
-const ADMIN_TIER_MAX_PRIORITY = 4;
+//   3 Technical Administrator
+//   4 Curator Event
+//   5 Event Administrator      <- нижняя граница тира "администраторы"
+//   6 Chief Event Helper       <- верхняя граница тира "хелперы"
+//   7 Dep.Chief Event Helper
+//   8 Senior Event Helper
+//   9 Event Helper
+//   10 Mini Event Helper
+const ADMIN_TIER_MAX_PRIORITY = 5;
 
 // priority === null (сотрудник без роли) считаем хелпером — это самый
 // мягкий вариант по умолчанию, пока владелец/администратор не назначит роль.

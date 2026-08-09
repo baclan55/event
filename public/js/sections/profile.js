@@ -114,7 +114,7 @@ window.Sections.profile = {
             <div style="font-size:19px;font-weight:800;color:var(--text-heading);">${esc(user.nickname)}</div>
             <button type="button" class="icon-btn" id="editNicknameBtn" title="Изменить никнейм">${ICONS.edit()}</button>
           </div>
-          <div class="role-tag" style="font-size:12.5px;margin-top:2px;">${esc(user.roleName || 'Без роли')}${user.discordUsername ? ' · ' + esc(user.discordUsername) : ''}</div>
+          <div class="role-tag" style="font-size:12.5px;margin-top:2px;">${esc(user.roles && user.roles.length ? user.roles.join(' · ') : 'Без роли')}${user.discordUsername ? ' · ' + esc(user.discordUsername) : ''}</div>
         </div>
         <div style="text-align:right;">
           <div class="stat-value" style="font-size:28px;">${events}</div>

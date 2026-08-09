@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db/pool');
 const { requireRoleIn } = require('../middleware/auth');
 const { OWNER_PANEL_ROLES } = require('../utils/roleAccess');
+const { replaceUserRoles, getRolesForUsers } = require('../db/roles');
 
 const router = express.Router();
 
@@ -18,7 +19,9 @@ router.get('/users', async (req, res, next) => {
        LEFT JOIN roles r ON r.id = u.role_id
        ORDER BY u.created_at ASC`
     );
-    res.json({ users: rows });
+    const rolesMap = await getRolesForUsers(rows.map((u) => u.id));
+    const users = rows.map((u) => ({ ...u, roles: rolesMap.get(u.id) || [] }));
+    res.json({ users });
   } catch (err) {
     next(err);
   }
@@ -26,7 +29,7 @@ router.get('/users', async (req, res, next) => {
 
 router.put('/users/:id', async (req, res, next) => {
   try {
-    const { nickname, roleId, isAdmin, isOwner } = req.body || {};
+    const { nickname, roleIds, isAdmin, isOwner } = req.body || {};
     const fields = [];
     const values = [];
     let i = 1;
@@ -34,10 +37,6 @@ router.put('/users/:id', async (req, res, next) => {
     if (typeof nickname === 'string' && nickname.trim()) {
       fields.push(`nickname = $${i++}`);
       values.push(nickname.trim());
-    }
-    if (roleId !== undefined) {
-      fields.push(`role_id = $${i++}`);
-      values.push(roleId || null);
     }
     if (typeof isAdmin === 'boolean') {
       fields.push(`is_admin = $${i++}`);
@@ -47,10 +46,17 @@ router.put('/users/:id', async (req, res, next) => {
       fields.push(`is_owner = $${i++}`);
       values.push(isOwner);
     }
-    if (!fields.length) return res.json({ ok: true });
-
-    values.push(req.params.id);
-    await pool.query(`UPDATE users SET ${fields.join(', ')} WHERE id = $${i}`, values);
+    if (fields.length) {
+      values.push(req.params.id);
+      await pool.query(`UPDATE users SET ${fields.join(', ')} WHERE id = $${i}`, values);
+    }
+    // Роли — отдельно (сотрудник может иметь несколько сразу, см.
+    // src/db/roles.js), т.к. это не единичное поле users, а весь набор в
+    // user_roles. Приходит только когда форма редактирования реально её
+    // меняла (массив, даже пустой — значит "снять все роли").
+    if (Array.isArray(roleIds)) {
+      await replaceUserRoles(req.params.id, roleIds);
+    }
     res.json({ ok: true });
   } catch (err) {
     next(err);

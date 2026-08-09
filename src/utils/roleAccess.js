@@ -19,6 +19,7 @@ const REPRIMANDS_ROLES = [
   'Senior Event Helper',
   'Chief Event',
   'Dep.Chief Event',
+  'Technical Administrator',
 ];
 
 const APPLICATIONS_ROLES = [
@@ -26,6 +27,7 @@ const APPLICATIONS_ROLES = [
   'Dep.Chief Event Helper',
   'Chief Event',
   'Dep.Chief Event',
+  'Technical Administrator',
 ];
 
 // Кандидаты, ожидающие результата обзвона (вкладка/раздел "Кандидаты") —
@@ -41,16 +43,17 @@ const CANDIDATES_ROLES = [
   'Senior Event Helper',
   'Chief Event',
   'Dep.Chief Event',
+  'Technical Administrator',
 ];
 
-const OWNER_PANEL_ROLES = ['Chief Event', 'Dep.Chief Event'];
+const OWNER_PANEL_ROLES = ['Chief Event', 'Dep.Chief Event', 'Technical Administrator'];
 
 // Редактирование контента (FAQ, Регламент, Правила МП, Первые шаги, Состав)
 // — только у самых старших ролей. Флаг is_admin для этого больше не
 // используется (он остаётся в БД/Панели владельца, но ни на что не влияет
 // в проверках доступа ниже — владелец всё равно имеет доступ всегда, см.
 // userHasRoleIn).
-const EDIT_ROLES = ['Chief Event', 'Dep.Chief Event'];
+const EDIT_ROLES = ['Chief Event', 'Dep.Chief Event', 'Technical Administrator'];
 
 // Владелец (is_owner) видит всё всегда, независимо от списков выше — это
 // подстраховка на случай, если у аккаунта почему-то не проставлена нужная
@@ -60,9 +63,18 @@ function userHasAnyRole(user) {
   return !!(user && (user.role_id != null || user.is_owner));
 }
 
+// Сотрудник может иметь сразу несколько ролей (см. user_roles в схеме БД) —
+// доступ даёт ЛЮБАЯ из них, попавшая в список. req.user.roleNames — полный
+// набор имён ролей пользователя (заполняется в attachUser, см.
+// src/middleware/auth.js). role_name (единственная, "основная"/высшая по
+// приоритету роль) — запасной вариант на случай, если roleNames почему-то
+// не подгружен.
 function userHasRoleIn(user, roles) {
   if (!user) return false;
   if (user.is_owner) return true;
+  if (Array.isArray(user.roleNames)) {
+    return user.roleNames.some((name) => roles.includes(name));
+  }
   return !!(user.role_name && roles.includes(user.role_name));
 }
 

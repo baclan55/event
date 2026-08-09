@@ -51,44 +51,85 @@ const Site = {
       </footer>`;
   },
 
-  // Пошаговый гайд "Как найти свой Discord ID" — открывается модалкой рядом
-  // с полем Discord в заявке, чтобы заявитель не гадал, где взять ID.
-  openDiscordIdGuide() {
-    Modal.open(`
-      <h2>Как узнать свой Discord ID</h2>
-      <div class="modal-sub">3 шага в приложении Discord</div>
-      <div class="dc-guide-steps">
-        <div class="dc-guide-step">
-          <div class="dc-guide-num">1</div>
-          <div class="dc-guide-text">В нижнем левом углу Discord нажмите на <b>шестерёнку</b> рядом с вашим никнеймом.</div>
-        </div>
-        <div class="dc-guide-step">
-          <div class="dc-guide-num">2</div>
-          <div class="dc-guide-text">Пролистайте левое меню вниз до раздела <b>«Разработчик»</b> и включите <b>«Режим разработчика»</b>.</div>
-        </div>
-        <div class="dc-guide-step">
-          <div class="dc-guide-num">3</div>
-          <div class="dc-guide-text">Кликните на своё имя внизу слева → нажмите <b>«Копировать ID пользователя»</b>.</div>
-        </div>
+  // Экран предварительной авторизации перед подачей заявки: показывается
+  // вместо формы, пока заявитель не вошёл через Discord (см. renderApply
+  // ниже). Использует тот же OAuth-флоу, что и вход в личный кабинет
+  // (см. Auth.openLoginModal), но с returnTo=apply, чтобы после Discord
+  // вернуться обратно на форму заявки, а не в личный кабинет.
+  renderApplyAuthGate(container) {
+    container.innerHTML = `
+      <div class="site-page-head">
+        <h1>Заявка на Event Helper</h1>
+        <p>Сначала авторизуйтесь через Discord — так к заявке автоматически прикрепится ваш настоящий Discord ID, без необходимости вводить его вручную.</p>
       </div>
-      <div class="dc-guide-done">
-        ${ICONS.checkCircle()}
-        <div class="dc-guide-done-text"><b>Готово!</b> Ваш Discord ID скопирован — вставьте его сочетанием <b>Ctrl+V</b> в поле формы.</div>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-primary" data-modal-close>Понятно</button>
-      </div>`);
+      <div class="qform" style="max-width:440px;">
+        <div class="qform-card" style="text-align:center;">
+          <label class="qform-check-label" for="applyConsentCheck" style="text-align:left;">
+            <input type="checkbox" id="applyConsentCheck">
+            <span>Я даю согласие на обработку моих персональных данных (Discord ID, никнейм, аватар), указанных при авторизации, в соответствии с законодательством РФ, Украины, Казахстана и Беларуси о персональных данных.<span class="qform-required">*</span></span>
+          </label>
+          ${Auth.config.discordEnabled
+            ? `<button type="button" class="btn btn-discord" id="applyDiscordBtn" disabled>${ICONS.discord()} Войти через Discord</button>`
+            : `<button type="button" class="btn btn-discord" id="applyDiscordBtn" style="opacity:.55;cursor:not-allowed;">${ICONS.discord()} Войти через Discord</button>`}
+          <div id="applyDiscordNote" class="field-hint" style="text-align:center;margin-top:12px;"></div>
+        </div>
+      </div>`;
+
+    const consentEl = container.querySelector('#applyConsentCheck');
+    const discordBtn = container.querySelector('#applyDiscordBtn');
+
+    if (Auth.config.discordEnabled) {
+      consentEl.addEventListener('change', () => { discordBtn.disabled = !consentEl.checked; });
+    }
+
+    discordBtn.addEventListener('click', () => {
+      if (!Auth.config.discordEnabled) {
+        container.querySelector('#applyDiscordNote').textContent =
+          'Вход через Discord не настроен администратором сайта (см. README.md).';
+        return;
+      }
+      if (!consentEl.checked) return;
+      window.location.href = '/api/auth/discord?consent=1&returnTo=apply';
+    });
   },
 
-  renderApply(container) {
+  async renderApply(container) {
+    // Проверяем статус набора ДО отрисовки формы — если закрыт, форму вообще
+    // не показываем (см. GET /api/applications/status). Сервер также
+    // перепроверяет это при самой отправке (POST /api/applications), так что
+    // ошибка сети здесь не даёт обойти закрытие набора — при неудаче просто
+    // по умолчанию считаем набор открытым и показываем форму как обычно.
+    let isOpen = true;
+    try {
+      const status = await api.get('/api/applications/status');
+      isOpen = status.isOpen;
+    } catch (e) { /* см. комментарий выше — не блокируем показ формы */ }
+
+    if (!isOpen) {
+      container.innerHTML = `
+        <div class="site-page-head">
+          <h1>Заявка на Event Helper</h1>
+        </div>
+        <div class="empty-state" style="padding-top:24px;">
+          <h3>Набор закрыт</h3>
+          <p>Информация об открытии набора будет в наших новостях.</p>
+          <a href="#/home" class="btn btn-ghost" style="margin-top:16px;">На главную</a>
+        </div>`;
+      return;
+    }
+
+    // Раньше заявитель вписывал свой Discord ID вручную текстовым полем
+    // (можно было ошибиться или указать чужой ID). Теперь вместо этого —
+    // предварительная авторизация через Discord (см. ниже): её результат
+    // (Auth.currentUser, обновляется в Auth.bootstrap при загрузке страницы)
+    // и даёт нам настоящий Discord ID, поэтому отдельное поле для него в
+    // форме больше не нужно.
+    if (!Auth.currentUser) {
+      Site.renderApplyAuthGate(container);
+      return;
+    }
+
     const QUESTIONS = [
-      {
-        id: 'discord',
-        label: 'Ваш Discord',
-        hint: 'Укажите Discord ID — тогда в уведомлении будет кликабельное упоминание',
-        placeholder: '000000000000000000',
-        guide: true,
-      },
       { id: 'nicknameStatic', label: 'Ваш игровой Nickname и StaticID' },
       { id: 'age', label: 'Ваш возраст' },
       { id: 'avgOnline', label: 'Какой у Вас среднесуточный онлайн?' },
@@ -103,18 +144,25 @@ const Site = {
         <h1>Заявка на Event Helper</h1>
         <p>Заполните все поля формы — мы рассмотрим заявку и свяжемся с вами в Discord.</p>
       </div>
+      <div class="qform" style="padding-bottom:0;">
+        <div class="qform-card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+            <span style="color:#8b93f8;display:flex;">${ICONS.discord()}</span>
+            <div style="min-width:0;">
+              <div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;">Авторизованы как ${esc(Auth.currentUser.discordUsername || Auth.currentUser.nickname)}</div>
+              <div class="field-hint" style="margin-top:2px;">Ваш Discord ID автоматически прикрепится к заявке — вводить его вручную не нужно.</div>
+            </div>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" id="applySwitchAccountBtn" style="flex-shrink:0;">Не вы?</button>
+        </div>
+      </div>
       <form class="qform" id="applyForm" novalidate>
         ${QUESTIONS.map((q) => `
           <div class="qform-card">
             <label class="qform-label" for="q_${q.id}">${esc(q.label)}<span class="qform-required">*</span></label>
-            ${q.hint ? `
-              <div class="qform-hint-row">
-                <div class="qform-hint">${esc(q.hint)}</div>
-                ${q.guide ? `<button type="button" class="qform-hint-link" data-guide="${q.id}">${ICONS.discord()} Как найти?</button>` : ''}
-              </div>` : ''}
             ${q.area
               ? `<textarea class="input" id="q_${q.id}" rows="4" placeholder="Ваш ответ"></textarea>`
-              : `<input class="input" id="q_${q.id}" placeholder="${q.placeholder ? escAttr(q.placeholder) : 'Ваш ответ'}">`}
+              : `<input class="input" id="q_${q.id}" placeholder="Ваш ответ">`}
           </div>`).join('')}
         <div class="qform-card">
           <label class="qform-check-label" for="q_consent">
@@ -127,8 +175,10 @@ const Site = {
       </form>`;
 
     const form = container.querySelector('#applyForm');
-    container.querySelectorAll('[data-guide]').forEach((btn) => {
-      btn.addEventListener('click', () => Site.openDiscordIdGuide());
+    container.querySelector('#applySwitchAccountBtn').addEventListener('click', async () => {
+      try { await api.post('/api/auth/logout'); } catch (e) { /* игнорируем — всё равно сбрасываем локально */ }
+      Auth.currentUser = null;
+      App.renderSite('apply');
     });
     form.addEventListener('submit', async (e) => {
       e.preventDefault();

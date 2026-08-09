@@ -26,6 +26,21 @@ async function attachUser(req, res, next) {
     );
     req.user = rows[0] || null;
 
+    // Полный набор ролей (сотрудник может иметь несколько одновременно —
+    // см. user_roles в схеме БД). role_id/role_name/role_priority выше
+    // остаются "основной" (высшей по приоритету) ролью — для сортировки,
+    // тира и т.п.; roles/roleNames — реальный набор для проверки доступа
+    // (см. userHasRoleIn в src/utils/roleAccess.js).
+    if (req.user) {
+      const { rows: roleRows } = await pool.query(
+        `SELECT r.id, r.name, r.priority FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+         WHERE ur.user_id = $1 ORDER BY r.priority ASC`,
+        [req.user.id]
+      );
+      req.user.roles = roleRows;
+      req.user.roleNames = roleRows.map((r) => r.name);
+    }
+
     // Уже заблокированного пользователя лениво пере-проверяем при каждом
     // входе — актуально для баллов администраторов, которые сгорают через
     // ADMIN_POINT_DECAY_DAYS дней и могут снять блокировку автоматически

@@ -6,6 +6,7 @@ const cloudinary = require('../utils/cloudinary');
 const { requireAnyRole, requireRoleIn } = require('../middleware/auth');
 const { EDIT_ROLES } = require('../utils/roleAccess');
 const { tierForPriority } = require('../utils/tier');
+const { replaceUserRoles, getRolesForUsers } = require('../db/roles');
 
 const router = express.Router();
 
@@ -22,7 +23,16 @@ router.get('/', requireAnyRole, async (req, res, next) => {
        LEFT JOIN roles r ON r.id = u.role_id
        ORDER BY COALESCE(r.priority, 999) ASC, u.nickname ASC`
     );
-    const members = rows.map((m) => ({ ...m, tier: tierForPriority(m.role_priority) }));
+    // Полный набор ролей на каждого (сотрудник может иметь несколько сразу)
+    // — одним запросом на всех, чтобы не дёргать базу в цикле. role_name/
+    // role_priority выше остаются "основной" (высшей по приоритету) ролью
+    // — используются для группировки/сортировки/тира, как и раньше.
+    const rolesMap = await getRolesForUsers(rows.map((m) => m.id));
+    const members = rows.map((m) => ({
+      ...m,
+      tier: tierForPriority(m.role_priority),
+      roles: rolesMap.get(m.id) || [],
+    }));
     res.json({ members, target: TARGET });
   } catch (err) {
     next(err);
@@ -42,15 +52,18 @@ router.post('/', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
   try {
     const nickname = (req.body.nickname || '').trim();
     if (!nickname) return res.status(400).json({ error: 'Укажите никнейм участника.' });
-    const roleId = req.body.roleId || null;
+    // roleIds — новый формат (массив, можно выбрать несколько ролей сразу).
+    // roleId — старый формат в один айди, оставлен для обратной совместимости.
+    const roleIds = Array.isArray(req.body.roleIds) ? req.body.roleIds : (req.body.roleId ? [req.body.roleId] : []);
     const weeklyEvents = parseInt(req.body.weeklyEvents, 10) || 0;
     const note = req.body.note || '';
     const { rows } = await pool.query(
-      `INSERT INTO users (nickname, role_id, weekly_events, note)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
-      [nickname, roleId, weeklyEvents, note]
+      `INSERT INTO users (nickname, weekly_events, note) VALUES ($1, $2, $3) RETURNING id`,
+      [nickname, weeklyEvents, note]
     );
-    res.json({ ok: true, id: rows[0].id });
+    const id = rows[0].id;
+    if (roleIds.length) await replaceUserRoles(id, roleIds);
+    res.json({ ok: true, id });
   } catch (err) {
     next(err);
   }
@@ -60,7 +73,9 @@ router.put('/:id', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
   try {
     const nickname = (req.body.nickname || '').trim();
     if (!nickname) return res.status(400).json({ error: 'Укажите никнейм участника.' });
-    const roleId = req.body.roleId || null;
+    // roleIds — новый формат (массив, можно назначить несколько ролей сразу).
+    // roleId — старый формат в один айди, оставлен для обратной совместимости.
+    const roleIds = Array.isArray(req.body.roleIds) ? req.body.roleIds : (req.body.roleId ? [req.body.roleId] : []);
     // Если поле не пришло вовсе / пришло пустым / нечисловым — НЕ обнуляем
     // "Мероприятий за неделю" молча (COALESCE ниже оставит текущее значение
     // в базе как есть). Раньше parseInt(...) || 0 тихо сбрасывал счётчик в 0
@@ -72,16 +87,19 @@ router.put('/:id', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
     const rawWeeklyEvents = parseInt(req.body.weeklyEvents, 10);
     const weeklyEvents = Number.isFinite(rawWeeklyEvents) && rawWeeklyEvents >= 0 ? rawWeeklyEvents : null;
     const note = req.body.note || '';
-    // Если роль назначают вручную (в том числе кандидату), он перестаёт
+    // Если роль(и) назначают вручную (в том числе кандидату), он перестаёт
     // считаться кандидатом — иначе он бы завис одновременно и "с ролью", и
-    // во вкладке "Кандидаты".
+    // во вкладке "Кандидаты". role_id пересчитывается отдельно, внутри
+    // replaceUserRoles (см. src/db/roles.js), чтобы оставаться синхронным
+    // с реальным набором ролей в user_roles.
     await pool.query(
-      `UPDATE users SET nickname = $1, role_id = $2::integer,
-              weekly_events = COALESCE($3::integer, weekly_events), note = $4,
-              status = CASE WHEN $2::integer IS NOT NULL THEN 'member' ELSE status END
+      `UPDATE users SET nickname = $1,
+              weekly_events = COALESCE($2::integer, weekly_events), note = $3,
+              status = CASE WHEN $4::boolean THEN 'member' ELSE status END
        WHERE id = $5`,
-      [nickname, roleId, weeklyEvents, note, req.params.id]
+      [nickname, weeklyEvents, note, roleIds.length > 0, req.params.id]
     );
+    await replaceUserRoles(req.params.id, roleIds);
     res.json({ ok: true });
   } catch (err) {
     next(err);

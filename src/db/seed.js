@@ -9,6 +9,7 @@ const pool = require('./pool');
 const ROLES = [
   'Chief Event',
   'Dep.Chief Event',
+  'Technical Administrator',
   'Curator Event',
   'Event Administrator',
   'Chief Event Helper',

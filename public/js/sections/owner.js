@@ -2,7 +2,7 @@ window.Sections = window.Sections || {};
 window.Sections.owner = {
   async render(container) {
     if (!Auth.hasRoleIn(Auth.ROLE_GROUPS.owner)) {
-      container.innerHTML = `<div class="empty-state"><h3>Доступ ограничен</h3><p>Раздел виден только ролям Chief Event и Dep.Chief Event.</p></div>`;
+      container.innerHTML = `<div class="empty-state"><h3>Доступ ограничен</h3><p>Раздел виден только ролям Chief Event, Dep.Chief Event и Technical Administrator.</p></div>`;
       return;
     }
 
@@ -27,7 +27,7 @@ window.Sections.owner = {
             ${avatarHTML(null, u.nickname, 38)}
             <div>
               <div class="nickname">${esc(u.nickname)} ${u.is_owner ? '<span class="badge badge-purple">Владелец</span>' : ''} ${u.is_admin && !u.is_owner ? '<span class="badge badge-purple">Админ</span>' : ''}</div>
-              <div class="role-tag">${esc(u.role_name || 'Без роли')}${u.discord_username ? ' · Discord: ' + esc(u.discord_username) : ''}</div>
+              <div class="role-tag">${esc(u.roles && u.roles.length ? u.roles.map((r) => r.name).join(' · ') : 'Без роли')}${u.discord_username ? ' · Discord: ' + esc(u.discord_username) : ''}</div>
             </div>
           </div>
           <div class="row-actions">
@@ -48,9 +48,13 @@ window.Sections.owner = {
       });
     }
 
-    function roleOptionsHTML(selectedId) {
-      return `<option value="">Без роли</option>` + roles.map((r) =>
-        `<option value="${r.id}" ${String(r.id) === String(selectedId) ? 'selected' : ''}>${esc(r.name)}</option>`
+    function roleCheckboxesHTML(selectedIds) {
+      const selected = new Set((selectedIds || []).map(String));
+      return roles.map((r) =>
+        `<label class="role-check-item">
+          <input type="checkbox" value="${r.id}" ${selected.has(String(r.id)) ? 'checked' : ''}>
+          <span>${esc(r.name)}</span>
+        </label>`
       ).join('');
     }
 
@@ -59,7 +63,9 @@ window.Sections.owner = {
         <h2>Редактирование пользователя</h2>
         <div class="error-text" id="uErr"></div>
         <div class="field"><label>Никнейм</label><input class="input" id="uNickname" value="${escAttr(user.nickname)}"></div>
-        <div class="field"><label>Роль</label><select class="input" id="uRole">${roleOptionsHTML(user.role_id)}</select></div>
+        <div class="field"><label>Роли (можно выбрать несколько)</label>
+          <div class="role-checklist" id="uRoles">${roleCheckboxesHTML((user.roles || []).map((r) => r.id))}</div>
+        </div>
         <div class="field" style="display:flex;gap:20px;">
           <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:13px;color:var(--text-body);">
             <input type="checkbox" id="uIsAdmin" ${user.is_admin ? 'checked' : ''}> Администратор (может редактировать разделы)
@@ -77,12 +83,12 @@ window.Sections.owner = {
 
       overlay.querySelector('#saveUserBtn').addEventListener('click', async () => {
         const nickname = overlay.querySelector('#uNickname').value.trim();
-        const roleId = overlay.querySelector('#uRole').value || null;
+        const roleIds = Array.from(overlay.querySelectorAll('#uRoles input[type="checkbox"]:checked')).map((cb) => cb.value);
         const isAdmin = overlay.querySelector('#uIsAdmin').checked;
         const isOwner = overlay.querySelector('#uIsOwner').checked;
         const err = overlay.querySelector('#uErr');
         try {
-          await api.put(`/api/owner/users/${user.id}`, { nickname, roleId, isAdmin, isOwner });
+          await api.put(`/api/owner/users/${user.id}`, { nickname, roleIds, isAdmin, isOwner });
           Modal.close();
           reload();
         } catch (e) { err.textContent = e.message; }

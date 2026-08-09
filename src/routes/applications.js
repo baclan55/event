@@ -2,14 +2,19 @@ const express = require('express');
 const pool = require('../db/pool');
 const { requireRoleIn } = require('../middleware/auth');
 const { APPLICATIONS_ROLES, CANDIDATES_ROLES } = require('../utils/roleAccess');
+const { addUserRole } = require('../db/roles');
 
 const router = express.Router();
 
 // Поля формы заявки (см. public/js/site.js). Ключи — то, что присылает
 // фронтенд в теле запроса; их же используем как имена колонок в БД
 // (nicknameStatic -> nickname_static и т.п. приводятся ниже).
+// "discord" сюда больше не входит: раньше заявитель вписывал свой Discord ID
+// вручную текстом, теперь вместо этого поля — предварительная авторизация
+// через Discord (см. POST / ниже и public/js/site.js -> Site.renderApply),
+// и discord ID берётся из уже подтверждённой сессии (req.user.discord_id),
+// а не из тела запроса — так его нельзя подделать и не нужно вводить самому.
 const FIELDS = [
-  ['discord', 'discord'],
   ['nicknameStatic', 'nickname_static'],
   ['age', 'age'],
   ['avgOnline', 'avg_online'],
@@ -141,10 +146,28 @@ router.get('/candidates', requireRoleIn(CANDIDATES_ROLES), async (req, res, next
   }
 });
 
-// Подать заявку может кто угодно — форма на главной странице сайта,
-// вход в личный кабинет для этого не требуется.
+// Подать заявку может любой сотрудник, авторизованный через Discord —
+// полноценный вход в личный кабинет (с ролью) для этого не требуется, но
+// сама авторизация через Discord обязательна (см. attachUser в
+// src/middleware/auth.js, а также public/js/site.js -> Site.renderApply,
+// где перед показом формы заявителя сначала отправляют на /api/auth/discord).
+// Это заменяет собой ручной ввод Discord ID текстом: теперь ID берётся из
+// уже подтверждённой Discord-сессии (req.user.discord_id) — его невозможно
+// подделать или ошибиться при вводе, и заявителю не нужно самому искать
+// свой числовой ID.
 router.post('/', async (req, res, next) => {
   try {
+    if (!req.user || !req.user.discord_id) {
+      return res.status(401).json({ error: 'Сначала авторизуйтесь через Discord, чтобы подать заявку.' });
+    }
+
+    // Проверяем на сервере, а не только на фронтенде — иначе форму можно
+    // было бы обойти прямым запросом к API, пока набор закрыт.
+    const { rows: settingsRows } = await pool.query('SELECT is_open FROM applications_settings WHERE id = 1');
+    if (settingsRows.length && settingsRows[0].is_open === false) {
+      return res.status(400).json({ error: 'Приём заявок сейчас закрыт.' });
+    }
+
     const body = req.body || {};
     const data = {};
     for (const [key] of FIELDS) data[key] = String(body[key] || '').trim();
@@ -158,16 +181,19 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'Необходимо дать согласие на обработку персональных данных.' });
     }
 
-    // Один и тот же человек (по указанному Discord) не может подать вторую
-    // заявку, пока первая ещё "на рассмотрении" — после решения по ней
-    // (одобрили/отклонили/прошёл-не прошёл обзвон) подать новую снова можно.
+    const discordId = req.user.discord_id;
+
+    // Один и тот же человек (по авторизованному Discord ID) не может подать
+    // вторую заявку, пока первая ещё "на рассмотрении" — после решения по
+    // ней (одобрили/отклонили/прошёл-не прошёл обзвон) подать новую снова
+    // можно.
     const { rows: pendingRows } = await pool.query(
-      `SELECT id FROM applications WHERE status = 'pending' AND LOWER(discord) = LOWER($1) LIMIT 1`,
-      [data.discord]
+      `SELECT id FROM applications WHERE status = 'pending' AND discord = $1 LIMIT 1`,
+      [discordId]
     );
     if (pendingRows.length) {
       return res.status(400).json({
-        error: 'Заявка с этим Discord уже подана и находится на рассмотрении. Дождитесь решения по ней, прежде чем подавать новую.',
+        error: 'Заявка с этим Discord-аккаунтом уже подана и находится на рассмотрении. Дождитесь решения по ней, прежде чем подавать новую.',
       });
     }
 
@@ -177,9 +203,9 @@ router.post('/', async (req, res, next) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id, discord, nickname_static, age, avg_online, time_period, experience, ideas, motivation`,
       [
-        req.user ? req.user.id : null,
-        data.nicknameStatic || data.discord,
-        data.discord,
+        req.user.id,
+        data.nicknameStatic || req.user.discord_username || discordId,
+        discordId,
         data.nicknameStatic,
         data.age,
         data.avgOnline,
@@ -192,6 +218,34 @@ router.post('/', async (req, res, next) => {
 
     notifyDiscord(rows[0]);
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Открыт ли сейчас приём заявок — публичный статус, доступен без входа
+// (нужен на странице подачи заявки, чтобы решить, показывать форму или
+// сообщение "набор закрыт", см. public/js/site.js).
+router.get('/status', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('SELECT is_open FROM applications_settings WHERE id = 1');
+    res.json({ isOpen: rows.length ? rows[0].is_open : true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Открыть/закрыть приём заявок — тем же ролям, что рассматривают заявки
+// (APPLICATIONS_ROLES). Важно: этот роут должен идти РАНЬШЕ 'PUT /:id' ниже
+// — иначе Express примет "status" за :id и заявка с таким id не найдётся.
+router.put('/status', requireRoleIn(APPLICATIONS_ROLES), async (req, res, next) => {
+  try {
+    const isOpen = req.body.isOpen === true || req.body.isOpen === 'true';
+    await pool.query(
+      `UPDATE applications_settings SET is_open = $1, updated_by = $2, updated_at = now() WHERE id = 1`,
+      [isOpen, req.user.id]
+    );
+    res.json({ ok: true, isOpen });
   } catch (err) {
     next(err);
   }
@@ -281,10 +335,11 @@ router.post('/:id/call', requireRoleIn(CANDIDATES_ROLES), async (req, res, next)
         `SELECT id FROM roles WHERE name = 'Mini Event Helper' LIMIT 1`
       );
       const roleId = roleRows.length ? roleRows[0].id : null;
-      await pool.query(
-        `UPDATE users SET status = 'member', role_id = COALESCE($1, role_id) WHERE id = $2`,
-        [roleId, application.candidate_user_id]
-      );
+      await pool.query(`UPDATE users SET status = 'member' WHERE id = $1`, [application.candidate_user_id]);
+      // Добавляем роль, не трогая остальные, если у кандидата вдруг уже
+      // есть другие (см. src/db/roles.js) — раньше role_id перезаписывался
+      // целиком, что при нескольких ролях стёрло бы остальные.
+      if (roleId) await addUserRole(application.candidate_user_id, roleId);
       await pool.query(`UPDATE applications SET status = 'call_passed' WHERE id = $1`, [req.params.id]);
     } else {
       await releaseCandidate(application.candidate_user_id);

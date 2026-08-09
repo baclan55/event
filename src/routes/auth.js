@@ -22,6 +22,9 @@ function publicUser(u) {
     roleId: u.role_id,
     roleName: u.role_name,
     rolePriority: u.role_priority != null ? u.role_priority : null,
+    // Полный набор ролей (сотрудник может иметь несколько сразу) — имена,
+    // от высшей к низшей. roleName/roleId выше — только "основная" роль.
+    roles: (u.roles || []).map((r) => r.name),
     isBlocked: !!u.is_blocked,
     blockedAt: u.blocked_at || null,
   };
@@ -48,10 +51,10 @@ router.put('/me/nickname', requireAnyRole, async (req, res, next) => {
       [nickname, req.user.id]
     );
     const updated = rows[0];
-    // role_name/role_priority у UPDATE ... RETURNING не подтянутся джойном,
-    // поэтому берём их из уже загруженного req.user (сама роль этим запросом
-    // не менялась).
-    res.json({ user: publicUser({ ...updated, role_name: req.user.role_name, role_priority: req.user.role_priority }) });
+    // role_name/role_priority/roles у UPDATE ... RETURNING не подтянутся
+    // джойном, поэтому берём их из уже загруженного req.user (сам набор
+    // ролей этим запросом не менялся).
+    res.json({ user: publicUser({ ...updated, role_name: req.user.role_name, role_priority: req.user.role_priority, roles: req.user.roles }) });
   } catch (err) {
     next(err);
   }
@@ -90,7 +93,7 @@ router.post('/me/avatar', requireAnyRole, upload.single('image'), async (req, re
       ));
     }
     const updated = rows[0];
-    res.json({ user: publicUser({ ...updated, role_name: req.user.role_name, role_priority: req.user.role_priority }) });
+    res.json({ user: publicUser({ ...updated, role_name: req.user.role_name, role_priority: req.user.role_priority, roles: req.user.roles }) });
   } catch (err) {
     next(err);
   }
@@ -137,6 +140,15 @@ router.get('/discord', (req, res) => {
   // (см. /discord/callback) — колбэк с чужим/отсутствующим state отклоняется.
   const state = crypto.randomBytes(24).toString('hex');
   req.session.discordOAuthState = state;
+
+  // Куда вернуть пользователя после успешной авторизации. Помимо обычного
+  // входа в личный кабинет (по умолчанию -> #/faq), авторизация нужна ещё и
+  // как предварительный шаг перед подачей заявки на Event Helper (см.
+  // public/js/site.js -> Site.renderApply) — тогда возвращаем обратно на
+  // #/apply, чтобы заявитель сразу продолжил заполнение формы. Значение
+  // строго сверяется со списком разрешённых (белый список), чтобы этим
+  // параметром нельзя было увести пользователя на произвольный внешний URL.
+  req.session.discordOAuthReturnTo = req.query.returnTo === 'apply' ? 'apply' : null;
 
   const url = new URL('https://discord.com/api/oauth2/authorize');
   url.searchParams.set('client_id', clientId);
@@ -237,7 +249,12 @@ router.get('/discord/callback', async (req, res, next) => {
     }
 
     req.session.userId = userId;
-    res.redirect('/#/faq');
+
+    // См. комментарий в /discord выше — одноразовое значение, сразу удаляем
+    // из сессии независимо от результата.
+    const returnTo = req.session.discordOAuthReturnTo;
+    delete req.session.discordOAuthReturnTo;
+    res.redirect(returnTo === 'apply' ? '/#/apply' : '/#/faq');
   } catch (err) {
     next(err);
   }

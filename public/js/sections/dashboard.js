@@ -39,7 +39,7 @@ window.Sections.dashboard = {
           ${avatarHTML(m.avatar_url || m.avatar_image_id, m.nickname, 38)}
           <div style="min-width:0;flex:1;">
             <div class="nickname">${esc(m.nickname)}</div>
-            <div class="role-tag">${esc(m.role_name || 'Без роли')}</div>
+            <div class="role-tag">${esc(m.roles && m.roles.length ? m.roles.map((r) => r.name).join(' · ') : 'Без роли')}</div>
           </div>
           <span class="badge ${m.weekly_events >= target ? 'badge-green' : 'badge-amber'}">${m.weekly_events} мп / нед.</span>
         </div>`).join('')
