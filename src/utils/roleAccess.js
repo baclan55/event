@@ -48,6 +48,12 @@ const CANDIDATES_ROLES = [
 
 const OWNER_PANEL_ROLES = ['Chief Event', 'Dep.Chief Event', 'Technical Administrator'];
 
+// Рассмотрение заявок на отпуск (одобрить/отклонить) — только у этих трёх
+// ролей. Сам раздел "Отпуска" (календарь, подача своей заявки) при этом
+// общий — доступен любому сотруднику с назначенной ролью, как и "Состав"
+// (см. App.navItems в public/js/app.js, там для этого раздела нет `roles`).
+const VACATIONS_REVIEW_ROLES = ['Chief Event Helper', 'Chief Event', 'Dep.Chief Event'];
+
 // Редактирование контента (FAQ, Регламент, Правила МП, Первые шаги, Состав)
 // — только у самых старших ролей. Флаг is_admin для этого больше не
 // используется (он остаётся в БД/Панели владельца, но ни на что не влияет
@@ -84,6 +90,7 @@ module.exports = {
   CANDIDATES_ROLES,
   OWNER_PANEL_ROLES,
   EDIT_ROLES,
+  VACATIONS_REVIEW_ROLES,
   userHasAnyRole,
   userHasRoleIn,
 };

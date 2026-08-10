@@ -14,6 +14,11 @@ const Auth = {
     // src/utils/roleAccess.js -> CANDIDATES_ROLES на бэкенде.
     candidates: ['Chief Event Helper', 'Dep.Chief Event Helper', 'Senior Event Helper', 'Chief Event', 'Dep.Chief Event', 'Technical Administrator'],
     owner: ['Chief Event', 'Dep.Chief Event', 'Technical Administrator'],
+    // Рассмотрение заявок на отпуск (одобрить/отклонить) — только эти три
+    // роли; сам раздел "Отпуска" общий для всех с ролью (см. App.navItems в
+    // app.js — у пункта 'vacations' нет `roles`). Совпадает с
+    // src/utils/roleAccess.js -> VACATIONS_REVIEW_ROLES на бэкенде.
+    vacationsReview: ['Chief Event Helper', 'Chief Event', 'Dep.Chief Event'],
     // Редактирование контента (FAQ/Регламент/Правила МП/Первые шаги/Состав) —
     // совпадает с src/utils/roleAccess.js -> EDIT_ROLES на бэкенде.
     edit: ['Chief Event', 'Dep.Chief Event', 'Technical Administrator'],

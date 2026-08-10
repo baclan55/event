@@ -213,6 +213,30 @@ INSERT INTO user_roles (user_id, role_id)
 SELECT id, role_id FROM users WHERE role_id IS NOT NULL
 ON CONFLICT DO NOTHING;
 
+-- Отпуска сотрудников (раздел "Отпуска" личного кабинета). Единый тип
+-- отпуска — без деления на плановый/внеплановый, сотрудник просто указывает
+-- период дат и необязательную причину. Заявка проходит проверку у
+-- руководства (см. VACATIONS_REVIEW_ROLES в src/utils/roleAccess.js —
+-- Chief Event Helper, Chief Event, Dep.Chief Event).
+-- status: 'pending' -> 'approved' | 'rejected' (выставляет руководство);
+-- 'cancelled' может выставить сам автор заявки, пока она ещё не
+-- рассмотрена, либо руководство в любой момент (см. src/routes/vacations.js).
+CREATE TABLE IF NOT EXISTS vacations (
+  id          SERIAL PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  start_date  DATE NOT NULL,
+  end_date    DATE NOT NULL,
+  reason      TEXT NOT NULL DEFAULT '',
+  status      TEXT NOT NULL DEFAULT 'pending',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_at TIMESTAMPTZ,
+  CONSTRAINT vacations_dates_check CHECK (end_date >= start_date)
+);
+CREATE INDEX IF NOT EXISTS idx_vacations_user ON vacations(user_id);
+CREATE INDEX IF NOT EXISTS idx_vacations_status ON vacations(status);
+CREATE INDEX IF NOT EXISTS idx_vacations_dates ON vacations(start_date, end_date);
+
 -- Леджер начислений бота учёта посещаемости: кому (discord_id) за какое
 -- сообщение (message_id) уже начислен +1 к weekly_events. Это и есть
 -- защита от повторного начисления — на уровне ОТДЕЛЬНОГО участника, а не

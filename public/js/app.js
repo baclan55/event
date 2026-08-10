@@ -11,6 +11,7 @@ const App = {
     { key: 'rules', label: 'Правила МП', icon: 'rules', title: 'Правила МП', sub: 'Правила проведения мероприятий и их суть' },
     { key: 'regulations', label: 'Регламент', icon: 'regulations', title: 'Регламент', sub: 'Регламент работы по ролям' },
     { key: 'firstSteps', label: 'Первые шаги', icon: 'firstSteps', title: 'Первые шаги', sub: 'С чего начать новому сотруднику' },
+    { key: 'vacations', label: 'Отпуска', icon: 'vacations', title: 'Отпуска', sub: 'Календарь отпусков и подача заявки' },
     { key: 'reprimands', label: 'Система выговоров', icon: 'reprimands', title: 'Система выговоров', sub: 'Учёт дисциплинарных взысканий', roles: Auth.ROLE_GROUPS.reprimands },
     { key: 'applications', label: 'Заявки', icon: 'applications', title: 'Заявки', sub: 'Заявки на роль Event Helper', roles: Auth.ROLE_GROUPS.applications },
     { key: 'candidates', label: 'Кандидаты', icon: 'candidates', title: 'Кандидаты', sub: 'Кандидаты, ожидающие результата обзвона', roles: Auth.ROLE_GROUPS.candidates },

@@ -594,6 +594,120 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
 @media (max-width:700px){ .top-grid{ grid-template-columns:1fr; } }
 
 /* =============================================================================
+   Личный кабинет: вкладка "Отпуска" — календарь на месяц + сайдбар
+   "Сегодня" + подача заявки + рассмотрение (см. public/js/sections/vacations.js)
+   ============================================================================= */
+.vac-layout{ display:grid; grid-template-columns:2fr 1fr; gap:20px; align-items:start; }
+@media (max-width:900px){ .vac-layout{ grid-template-columns:1fr; } }
+
+.vac-cal-header{ display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+.vac-cal-title{ font-size:16px; font-weight:800; min-width:150px; text-align:center; }
+.vac-cal-spacer{ flex:1; }
+
+.vac-cal-scroll{ overflow-x:auto; margin:0 -4px; padding:0 4px; }
+.vac-cal-inner{ min-width:640px; }
+
+.vac-cal-weekdays{
+  display:grid; grid-template-columns:repeat(7,1fr);
+  padding:0 0 8px 5px; font-size:10.5px; font-weight:700; letter-spacing:.05em;
+  text-transform:uppercase; color:var(--text-faint);
+}
+
+.vac-cal-grid{ border:1px solid var(--border-soft); border-radius:var(--radius-md); overflow:hidden; }
+.vac-week{ position:relative; border-bottom:1px solid var(--border-soft); }
+.vac-week:last-child{ border-bottom:none; }
+.vac-week-cells{ display:grid; grid-template-columns:repeat(7,1fr); }
+.vac-day-cell{
+  border-right:1px solid var(--border-soft); padding:6px 5px 6px;
+  display:flex; flex-direction:column;
+}
+.vac-day-cell:last-child{ border-right:none; }
+.vac-day-cell.is-muted{ opacity:.35; }
+.vac-day-num{ font-size:12px; line-height:18px; height:18px; font-weight:700; color:var(--text-heading); }
+.vac-day-num.is-today{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:20px; height:18px; border-radius:50%; background:var(--pink); color:#fff;
+}
+.vac-day-bars-space{ flex-shrink:0; height:calc(var(--lanes, 1) * 21px); }
+.vac-day-overflow{ height:13px; font-size:9.5px; font-weight:700; color:var(--text-faint); text-align:right; }
+.vac-day-occupancy{ height:14px; font-family:var(--font-mono); font-size:9.5px; font-weight:700; color:var(--text-faint); text-align:right; }
+.vac-day-occupancy.is-near, .vac-day-occupancy.is-full{ color:var(--amber); }
+
+.vac-week-bars{
+  position:absolute; left:0; right:0; top:24px;
+  display:grid; grid-template-columns:repeat(7,1fr);
+  pointer-events:none;
+}
+.vac-bar{
+  pointer-events:auto; cursor:pointer;
+  margin:0 3px; padding:2px 8px; height:18px; align-self:start;
+  border-radius:3px; font-size:10.5px; font-weight:700; color:#0b0913;
+  display:flex; align-items:center; gap:5px; overflow:hidden; white-space:nowrap;
+}
+.vac-bar.round-l{ border-top-left-radius:9px; border-bottom-left-radius:9px; }
+.vac-bar.round-r{ border-top-right-radius:9px; border-bottom-right-radius:9px; }
+.vac-bar-dot{ width:5px; height:5px; border-radius:50%; background:currentColor; flex-shrink:0; }
+.vac-bar-label{ overflow:hidden; text-overflow:ellipsis; }
+.vac-bar.status-pending{ background:rgba(251,191,36,.88); }
+.vac-bar.status-approved{ background:rgba(52,211,153,.88); color:#04231a; }
+.vac-bar.status-rejected{ background:rgba(248,113,113,.55); color:#3a0d0d; text-decoration:line-through; }
+.vac-bar.status-cancelled{ background:rgba(138,131,163,.32); color:var(--text-muted); text-decoration:line-through; }
+
+.vac-legend{ display:flex; flex-wrap:wrap; gap:16px; margin-top:16px; padding-top:14px; border-top:1px solid var(--border-soft); }
+.vac-legend-item{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-muted); }
+.vac-legend-dot{ width:9px; height:9px; border-radius:3px; display:inline-block; flex-shrink:0; }
+.vac-legend-dot.status-pending{ background:var(--amber); }
+.vac-legend-dot.status-approved{ background:var(--green); }
+.vac-legend-dot.status-rejected{ background:var(--red); }
+.vac-legend-dot.status-cancelled{ background:var(--text-faint); }
+
+.vac-sidebar{ display:flex; flex-direction:column; gap:16px; }
+.vac-today-label{ font-size:10.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--text-faint); }
+.vac-today-date{ font-size:15.5px; font-weight:800; color:var(--text-heading); margin-bottom:14px; }
+.vac-today-list{ display:flex; flex-direction:column; gap:8px; max-height:420px; overflow-y:auto; }
+.vac-today-row{ padding:10px 12px; border-radius:10px; background:var(--bg-card-2); border:1px solid var(--border-soft); }
+.vac-today-row-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px; }
+.vac-today-row .nickname{ font-size:13px; }
+.vac-today-row-dates{ font-size:11px; color:var(--text-muted); font-family:var(--font-mono); }
+
+/* --- модалка "Новый отпуск": поле периода + встроенный мини-календарь --- */
+.vac-period-trigger{
+  width:100%; display:flex; align-items:center; gap:10px;
+  background:var(--bg-input); border:1px solid var(--border); border-radius:10px;
+  padding:11px 13px; color:var(--text-heading); font-size:13.5px; font-weight:600;
+  cursor:pointer; text-align:left;
+}
+.vac-period-trigger:hover{ border-color:var(--border-strong); }
+.vac-period-trigger .chev{ margin-left:auto; color:var(--text-muted); flex-shrink:0; }
+.vac-period-days{ font-size:11.5px; color:var(--text-faint); margin-top:6px; }
+
+.vac-mini-cal{ margin-top:10px; background:var(--bg-card-2); border:1px solid var(--border-soft); border-radius:12px; padding:12px; }
+.vac-mini-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.vac-mini-head b{ font-size:12.5px; color:var(--text-heading); }
+.vac-mini-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:2px 0; text-align:center; }
+.vac-mini-wd{ font-size:9.5px; color:var(--text-faint); padding-bottom:4px; }
+.vac-mini-day{ font-size:12px; padding:6px 0; cursor:pointer; color:var(--text-body); }
+.vac-mini-day:hover{ background:var(--bg-hover); }
+.vac-mini-day.is-muted{ color:var(--text-faint); opacity:.4; }
+.vac-mini-day.is-today{ font-weight:800; color:var(--accent-light); }
+.vac-mini-day.in-range{ background:var(--accent-soft); }
+.vac-mini-day.range-start{ background:var(--accent); color:#fff; border-radius:6px 0 0 6px; }
+.vac-mini-day.range-end{ background:var(--accent); color:#fff; border-radius:0 6px 6px 0; }
+.vac-mini-day.range-start.range-end{ border-radius:6px; }
+.vac-mini-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
+
+.vac-slots-list{
+  display:flex; flex-direction:column; gap:4px; max-height:140px; overflow-y:auto;
+  background:var(--bg-input); border:1px solid var(--border); border-radius:10px; padding:8px 10px;
+}
+.vac-slot-row{ display:flex; justify-content:space-between; font-size:12px; color:var(--text-body); font-family:var(--font-mono); }
+.vac-slot-row .is-near, .vac-slot-row .is-full{ color:var(--amber); font-weight:700; }
+
+@media (max-width:560px){
+  .vac-today-date{ font-size:14px; }
+}
+
+/* =============================================================================
    Модальные окна
    ============================================================================= */
 .modal-overlay{
