@@ -4,7 +4,7 @@ const upload = require('../middleware/upload');
 const { saveImage } = require('../db/images');
 const { requireAnyRole, requireRoleIn } = require('../middleware/auth');
 const { EDIT_ROLES } = require('../utils/roleAccess');
-const { sanitizeRichText, toDisplayHtml } = require('../utils/richText');
+const { renderBody, rawBodyForEdit, normalizeMarkdownSource } = require('../utils/richText');
 
 const router = express.Router();
 
@@ -15,7 +15,9 @@ router.get('/', requireAnyRole, async (req, res, next) => {
       `SELECT id, position, title, body, image_id, updated_at
        FROM rules ORDER BY position ASC, id ASC`
     );
-    const rules = rows.map((r) => ({ ...r, body: toDisplayHtml(r.body) }));
+    // bodyRaw — исходный Markdown-текст для предзаполнения редактора при
+    // открытии правила на редактирование (см. public/js/markdownEditor.js).
+    const rules = rows.map((r) => ({ ...r, body: renderBody(r.body), bodyRaw: rawBodyForEdit(r.body) }));
     res.json({ rules });
   } catch (err) {
     next(err);
@@ -25,7 +27,7 @@ router.get('/', requireAnyRole, async (req, res, next) => {
 router.post('/', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
   try {
     const title = (req.body.title || '').trim();
-    const body = sanitizeRichText(req.body.body || '');
+    const body = normalizeMarkdownSource(req.body.body || '');
     if (!title) return res.status(400).json({ error: 'Укажите заголовок правила.' });
     const maxPos = await pool.query('SELECT COALESCE(MAX(position), -1) + 1 AS next FROM rules');
     const { rows } = await pool.query(
@@ -55,7 +57,7 @@ router.put('/reorder', requireRoleIn(EDIT_ROLES), express.json(), async (req, re
 router.put('/:id', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
   try {
     const title = (req.body.title || '').trim();
-    const body = sanitizeRichText(req.body.body || '');
+    const body = normalizeMarkdownSource(req.body.body || '');
     if (!title) return res.status(400).json({ error: 'Укажите заголовок правила.' });
     await pool.query(
       `UPDATE rules SET title = $1, body = $2, updated_at = now() WHERE id = $3`,

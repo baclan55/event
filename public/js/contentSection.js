@@ -26,14 +26,14 @@ const ContentSection = {
     }
 
     function paint() {
-      const block = data.blocks[audience] || { body: '', imageId: null };
+      const block = data.blocks[audience] || { body: '', bodyRaw: '', imageId: null };
       container.innerHTML = `
         <div class="card card-pad">
           <div class="card-header">
             ${showToggle ? segmentedHTML(audience) : `<h3>${esc(opts.hasToggle ? 'Event Helper' : (opts.heading || ''))}</h3>`}
             ${Auth.hasRoleIn(Auth.ROLE_GROUPS.edit) ? `<button type="button" class="btn btn-ghost btn-sm" id="editBtn">${ICONS.edit()} Редактировать</button>` : ''}
           </div>
-          <div class="pre-wrap">${block.body ? block.body : '<span style="color:var(--text-faint)">Текст пока не добавлен.</span>'}</div>
+          <div class="md-body">${block.body ? block.body : '<span style="color:var(--text-faint)">Текст пока не добавлен.</span>'}</div>
           ${block.imageId ? `<div class="section-image"><img src="/media/${block.imageId}" alt=""></div>` : ''}
           ${block.updatedAt ? `<div class="meta-line">Обновлено ${formatDate(block.updatedAt)}${block.updatedBy ? ' · ' + esc(block.updatedBy) : ''}</div>` : ''}
         </div>`;
@@ -47,12 +47,12 @@ const ContentSection = {
     }
 
     function openEditModal() {
-      const block = data.blocks[audience] || { body: '', imageId: null };
+      const block = data.blocks[audience] || { body: '', bodyRaw: '', imageId: null };
       const overlay = Modal.open(`
         <h2>Редактирование</h2>
         <div class="modal-sub">${opts.hasToggle ? (audience === 'helper' ? 'Event Helper' : 'Event Administrator') : esc(opts.heading || '')}</div>
         <div class="error-text" id="editErr"></div>
-        <div class="field"><label>Текст</label><div id="editBodyMount"></div></div>
+        <div class="field"><label>Текст (Markdown)</label><div id="editBodyMount"></div></div>
         <div class="field">
           <label>Картинка</label>
           ${block.imageId ? `<div class="section-image" style="margin-bottom:10px;"><img src="/media/${block.imageId}" alt=""></div>` : ''}
@@ -64,10 +64,10 @@ const ContentSection = {
           <button type="button" class="btn btn-primary" id="saveBtn">Сохранить</button>
         </div>`, { wide: true });
 
-      const editor = RichEditor.mount(overlay.querySelector('#editBodyMount'), block.body);
+      const editor = MarkdownEditor.mount(overlay.querySelector('#editBodyMount'), block.bodyRaw);
 
       overlay.querySelector('#saveBtn').addEventListener('click', async () => {
-        const body = editor.getHTML();
+        const body = editor.getMarkdown();
         const err = overlay.querySelector('#editErr');
         try {
           await api.put(`/api/content/${opts.section}`, { audience, body });

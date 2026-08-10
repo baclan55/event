@@ -34,6 +34,12 @@ window.Sections.roster = {
 
     function paint() {
       const admin = Auth.hasRoleIn(Auth.ROLE_GROUPS.edit);
+      // Те же роли, что видят раздел «Система выговоров» (см.
+      // src/utils/roleAccess.js -> REPRIMANDS_ROLES), дополнительно могут
+      // открыть профиль сотрудника прямо из «Состава» — удобно посмотреть
+      // историю его выговоров и сразу выдать новый, не уходя в общий раздел
+      // (см. public/js/memberProfile.js).
+      const canOpenProfile = Auth.hasRoleIn(Auth.ROLE_GROUPS.reprimands);
 
       // Кандидаты (одобренные заявки, ждущие обзвона) — отдельная категория:
       // у них тоже нет role_id, но их не показываем во вкладке "Без ролей",
@@ -66,7 +72,7 @@ window.Sections.roster = {
         const blockedBadge = m.is_blocked ? `<span class="badge badge-red">${ICONS.lock()}Заблокирован</span>` : '';
         return `
           <div class="roster-row" data-id="${m.id}">
-            <div class="who">
+            <div class="who${canOpenProfile ? ' who-clickable' : ''}"${canOpenProfile ? ` data-profile="${m.id}" role="button" tabindex="0" title="Открыть профиль"` : ''}>
               ${avatarHTML(m.avatar_url || m.avatar_image_id, m.nickname, 38)}
               <div>
                 <div class="nickname">${esc(m.nickname)}</div>
@@ -128,6 +134,12 @@ window.Sections.roster = {
       container.querySelector('#addMemberBtn')?.addEventListener('click', () => openEditModal(null));
       container.querySelectorAll('[data-tab]').forEach((btn) => {
         btn.addEventListener('click', () => { activeTab = btn.dataset.tab; paint(); });
+      });
+      container.querySelectorAll('[data-profile]').forEach((el) => {
+        el.addEventListener('click', () => MemberProfile.open(el.dataset.profile));
+        el.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); MemberProfile.open(el.dataset.profile); }
+        });
       });
       container.querySelectorAll('[data-edit]').forEach((btn) => {
         btn.addEventListener('click', async () => {

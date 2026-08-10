@@ -17,6 +17,7 @@ const reprimandsRoutes = require('./routes/reprimands');
 const applicationsRoutes = require('./routes/applications');
 const ownerRoutes = require('./routes/owner');
 const mediaRoutes = require('./routes/media');
+const markdownPreviewRoutes = require('./routes/markdownPreview');
 
 const app = express();
 app.set('trust proxy', 1); // Render стоит за прокси — нужно для secure-cookie
@@ -49,6 +50,7 @@ app.use('/api/reprimands', reprimandsRoutes);
 app.use('/api/applications', applicationsRoutes);
 app.use('/api/owner', ownerRoutes);
 app.use('/media', mediaRoutes);
+app.use('/api/markdown', markdownPreviewRoutes);
 
 app.get('/api/config', (req, res) => {
   res.json({

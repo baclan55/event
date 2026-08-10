@@ -5,7 +5,7 @@ const { saveImage } = require('../db/images');
 const { requireAnyRole, requireRoleIn } = require('../middleware/auth');
 const { EDIT_ROLES } = require('../utils/roleAccess');
 const { tierForPriority } = require('../utils/tier');
-const { sanitizeRichText, toDisplayHtml } = require('../utils/richText');
+const { renderBody, rawBodyForEdit, normalizeMarkdownSource } = require('../utils/richText');
 
 const router = express.Router();
 
@@ -42,7 +42,11 @@ router.get('/:section', checkSection, requireAnyRole, async (req, res, next) => 
     for (const row of rows) {
       if (row.audience === 'administrator' && !canSeeAdministrator) continue;
       result[row.audience] = {
-        body: toDisplayHtml(row.body),
+        body: renderBody(row.body),
+        // Исходный Markdown-текст — для предзаполнения редактора при
+        // открытии на редактирование (см. public/js/markdownEditor.js).
+        // Для отображения используется только body выше.
+        bodyRaw: rawBodyForEdit(row.body),
         imageId: row.image_id,
         updatedAt: row.updated_at,
         updatedBy: row.updated_by_name,
@@ -57,7 +61,7 @@ router.get('/:section', checkSection, requireAnyRole, async (req, res, next) => 
 router.put('/:section', checkSection, requireRoleIn(EDIT_ROLES), async (req, res, next) => {
   try {
     const audience = ALLOWED_AUDIENCE.has(req.body.audience) ? req.body.audience : 'general';
-    const body = sanitizeRichText(typeof req.body.body === 'string' ? req.body.body : '');
+    const body = normalizeMarkdownSource(typeof req.body.body === 'string' ? req.body.body : '');
     await pool.query(
       `INSERT INTO content_blocks (section, audience, body, updated_by, updated_at)
        VALUES ($1, $2, $3, $4, now())

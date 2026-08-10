@@ -3,6 +3,7 @@ const pool = require('../db/pool');
 const { requireAnyRole, requireRoleIn } = require('../middleware/auth');
 const { tierForPriority } = require('../utils/tier');
 const { REPRIMANDS_ROLES } = require('../utils/roleAccess');
+const { getRolesForUsers } = require('../db/roles');
 const {
   HELPER_POINT_VALUES,
   HELPER_BLOCK_POINTS,
@@ -115,6 +116,64 @@ router.get('/me', requireAnyRole, async (req, res, next) => {
       tier,
       isBlocked: !!req.user.is_blocked,
       blockedAt: req.user.blocked_at || null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Карточка конкретного сотрудника — те же данные, что в общем списке (см.
+// GET '/' выше), но только на одного человека, вместе с его профилем (роли,
+// счётчик МП, статус блокировки). Виден тем же ролям, что видят весь раздел
+// «Система выговоров» (REPRIMANDS_ROLES) — используется, чтобы открыть
+// профиль сотрудника прямо из «Состава» (клик по строке) и посмотреть его
+// историю выговоров / выдать новый, не уходя в общий список и не фильтруя
+// его вручную. Право ВЫДАТЬ выговор из этой карточки по-прежнему проверяется
+// в POST '/' ниже (по приоритету роли) — здесь только просмотр.
+router.get('/user/:userId', requireRoleIn(REPRIMANDS_ROLES), async (req, res, next) => {
+  try {
+    const { rows: userRows } = await pool.query(
+      `SELECT u.id, u.nickname, u.discord_username, u.avatar_image_id, u.avatar_url,
+              u.weekly_events, u.is_blocked, u.blocked_at, u.role_id,
+              r.priority AS role_priority
+       FROM users u
+       LEFT JOIN roles r ON r.id = u.role_id
+       WHERE u.id = $1`,
+      [req.params.userId]
+    );
+    if (!userRows.length) return res.status(404).json({ error: 'Участник не найден.' });
+    const target = userRows[0];
+    const rolesMap = await getRolesForUsers([target.id]);
+    target.roles = rolesMap.get(target.id) || [];
+
+    const { rows } = await pool.query(
+      `SELECT rp.id, rp.reason, rp.type, rp.created_at, rp.converted, rp.auto_generated,
+              iu.nickname AS issued_by_nickname
+       FROM reprimands rp
+       LEFT JOIN users iu ON iu.id = rp.issued_by
+       WHERE rp.user_id = $1
+       ORDER BY rp.created_at DESC`,
+      [req.params.userId]
+    );
+
+    const decayMs = ADMIN_POINT_DECAY_DAYS * 24 * 60 * 60 * 1000;
+    const reprimands = rows.map((r) => {
+      let active = true;
+      let expiresAt = null;
+      if (r.type === 'point') {
+        expiresAt = new Date(new Date(r.created_at).getTime() + decayMs).toISOString();
+        active = new Date(expiresAt).getTime() > Date.now();
+      } else if (r.type === 'verbal' && r.converted) {
+        active = false;
+      }
+      return { ...r, active, expires_at: expiresAt };
+    });
+
+    res.json({
+      user: target,
+      reprimands,
+      limits: LIMITS_PAYLOAD,
+      tier: tierForPriority(target.role_priority),
     });
   } catch (err) {
     next(err);

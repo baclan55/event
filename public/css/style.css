@@ -301,61 +301,60 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
 }
 .error-text{ color:var(--red); font-size:12.5px; min-height:1.3em; margin:2px 0 6px; }
 
-/* Редактор форматированного текста (жирный/курсив/размер/шрифт) — см.
-   public/js/richEditor.js. Панель сверху, поле ввода снизу — оформлены как
-   единый блок в стиле .input, чтобы не выбиваться из остальных форм. */
-.rte{
+/* Markdown-редактор (жирный/курсив/зачёркнутый/заголовок/списки/цитата/код +
+   ссылка на Discord + переключатель Написать/Просмотр) — см.
+   public/js/markdownEditor.js. Панель сверху, поле ввода снизу — оформлены
+   как единый блок в стиле .input, чтобы не выбиваться из остальных форм. */
+.mde{
   border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--bg-input);
 }
-.rte:focus-within{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
-.rte-toolbar{
+.mde:focus-within{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.mde-toolbar{
   display:flex; align-items:center; gap:4px; flex-wrap:wrap;
   padding:7px 8px; background:var(--bg-card-2); border-bottom:1px solid var(--border);
 }
-.rte-btn{
+.mde-btn{
   display:inline-flex; align-items:center; justify-content:center;
-  width:30px; height:28px; border-radius:7px; border:1px solid transparent;
-  background:none; color:var(--text-body); font-family:inherit; font-size:14px; font-weight:700;
+  min-width:29px; height:28px; padding:0 7px; border-radius:7px; border:1px solid transparent;
+  background:none; color:var(--text-body); font-family:inherit; font-size:13px; font-weight:700;
   cursor:pointer;
 }
-.rte-btn:hover{ background:var(--bg-hover); color:var(--text-heading); }
-.rte-btn-bold{ font-weight:800; }
-.rte-btn-italic{ font-style:italic; }
-.rte-btn-clear{ color:var(--text-muted); }
-.rte-btn-clear svg{ width:13px; height:13px; }
-.rte-sep{ width:1px; height:20px; background:var(--border); margin:0 3px; flex-shrink:0; }
-.rte-select{
-  height:28px; border-radius:7px; border:1px solid var(--border); background:var(--bg-input);
-  color:var(--text-body); font-family:inherit; font-size:12px; padding:0 6px; cursor:pointer; outline:none;
-}
-.rte-select:hover{ border-color:var(--border-strong); color:var(--text-heading); }
-.rte-editor{
-  min-height:150px; max-height:420px; overflow-y:auto; line-height:1.6;
-  border:none; border-radius:0;
-}
-.rte-editor:focus{ outline:none; box-shadow:none; }
-/* Внутри .rte-editor может встретиться span[style] с произвольным
-   font-size/font-family (от самого редактора) — это ожидаемо и не
-   переопределяется здесь. */
+.mde-btn:hover{ background:var(--bg-hover); color:var(--text-heading); }
+.mde-btn-bold{ font-weight:800; }
+.mde-btn-italic{ font-style:italic; }
+.mde-btn-strike{ text-decoration:line-through; }
+.mde-btn-code{ font-family:var(--font-mono); font-size:11px; }
+.mde-sep{ width:1px; height:20px; background:var(--border); margin:0 3px; flex-shrink:0; }
+.mde-btn-discord{ color:#8b93f8; }
+.mde-btn-discord:hover{ color:#fff; background:#5865f2; }
+.mde-toolbar-spacer{ flex:1 1 auto; min-width:8px; }
+.mde-tabs{ padding:3px; flex-shrink:0; }
+.mde-tabs button{ padding:5px 12px; font-size:11.5px; }
 
-.rte-btn-discord{ color:#8b93f8; }
-.rte-btn-discord:hover{ color:#fff; background:#5865f2; }
-
-/* Панель вставки ссылки на канал Discord (см. richEditor.js) — раскрывается
-   прямо в теле редактора между тулбаром и полем ввода, а не в отдельном
-   модальном окне (RichEditor обычно и так открыт внутри Modal, а тот умеет
-   показывать только одно окно за раз). */
-.rte-discord-pop{
+/* Панель вставки ссылки на канал Discord — раскрывается прямо в теле
+   редактора между тулбаром и полем ввода, а не в отдельном модальном окне
+   (редактор обычно и так открыт внутри Modal, а тот умеет показывать
+   только одно окно за раз). */
+.mde-discord-pop{
   padding:14px 14px 2px; background:var(--bg-card-2); border-bottom:1px solid var(--border);
 }
-.rte-discord-pop .field{ margin-bottom:12px; }
-.rte-discord-pop-actions{ display:flex; justify-content:flex-end; gap:8px; margin-bottom:14px; }
+.mde-discord-pop .field{ margin-bottom:12px; }
+.mde-discord-pop-actions{ display:flex; justify-content:flex-end; gap:8px; margin-bottom:14px; }
 
-/* "Чип" ссылки на канал Discord — то, что реально попадает в сохранённый
-   текст (см. .discord-chip в src/utils/richText.js на бэке). Оформлен по
-   образцу упоминания канала в самом Discord: приглушённый блёрпл-фон,
-   "#" перед названием, при наведении — сплошная заливка. Класс общий и для
-   редактора, и для готовой страницы — стиль совпадает в обоих местах. */
+.mde-textarea{
+  display:block; width:100%; min-height:180px; max-height:460px; resize:vertical;
+  border:none; border-radius:0; background:none; line-height:1.6; font-family:inherit;
+}
+.mde-textarea:focus{ outline:none; box-shadow:none; }
+.mde-preview{ min-height:180px; max-height:460px; overflow-y:auto; padding:14px 16px; }
+.mde-preview .empty-state{ padding:14px 0; }
+
+/* "Чип" ссылки на канал Discord — то, что реально попадает в отображаемый
+   текст (см. transformDiscordAnchor в src/utils/richText.js на бэке).
+   Оформлен по образцу упоминания канала в самом Discord: приглушённый
+   блёрпл-фон, "#" перед названием, при наведении — сплошная заливка. Класс
+   общий и для предпросмотра в редакторе, и для готовой страницы — стиль
+   совпадает в обоих местах. */
 .discord-chip{
   display:inline-flex; align-items:center;
   padding:1px 7px 1px 5px; border-radius:5px; margin:0 1px;
@@ -367,6 +366,46 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
 }
 .discord-chip:hover, .discord-chip:focus-visible{ background:#5865f2; color:#fff; }
 .discord-chip:hover::before, .discord-chip:focus-visible::before{ color:#fff; }
+
+/* Типографика отрендеренного Markdown (FAQ/Регламент/Первые шаги/Правила —
+   вывод renderBody на бэке, и предпросмотр в .mde-preview). Блочные теги
+   сами задают отступы, поэтому в отличие от старого простого текста
+   white-space:pre-wrap здесь не нужен и даже вреден (перенос строк между
+   тегами в разметке стал бы виден как лишние пробелы/пустые строки). */
+.md-body{ color:var(--text-body); font-size:13.5px; line-height:1.65; }
+.md-body > *:first-child{ margin-top:0; }
+.md-body > *:last-child{ margin-bottom:0; }
+.md-body p{ margin:0 0 .85em; }
+.md-body h1, .md-body h2, .md-body h3, .md-body h4, .md-body h5, .md-body h6{
+  color:var(--text-heading); line-height:1.3; margin:1.1em 0 .5em; font-weight:700;
+}
+.md-body h1{ font-size:1.4em; }
+.md-body h2{ font-size:1.25em; }
+.md-body h3{ font-size:1.12em; }
+.md-body h4, .md-body h5, .md-body h6{ font-size:1em; }
+.md-body ul, .md-body ol{ margin:0 0 .85em; padding-left:1.4em; }
+.md-body li{ margin:.25em 0; }
+.md-body li > ul, .md-body li > ol{ margin:.25em 0 0; }
+.md-body blockquote{
+  margin:0 0 .85em; padding:2px 14px; border-left:3px solid var(--accent);
+  color:var(--text-muted); background:var(--accent-soft); border-radius:0 8px 8px 0;
+}
+.md-body blockquote > *:last-child{ margin-bottom:0; }
+.md-body code{
+  background:var(--bg-card-2); border:1px solid var(--border); border-radius:5px;
+  padding:1px 5px; font-family:var(--font-mono); font-size:.92em; color:var(--accent-light);
+}
+.md-body pre{
+  background:var(--bg-card-2); border:1px solid var(--border); border-radius:8px;
+  padding:12px 14px; overflow-x:auto; margin:0 0 .85em;
+}
+.md-body pre code{ background:none; border:none; padding:0; color:var(--text-body); }
+.md-body hr{ border:none; border-top:1px solid var(--border); margin:1.1em 0; }
+.md-body strong{ color:var(--text-heading); }
+.md-body a:not(.discord-chip){ color:var(--accent-light); text-decoration:underline; }
+.md-body table{ width:100%; border-collapse:collapse; margin:0 0 .85em; font-size:.95em; }
+.md-body th, .md-body td{ border:1px solid var(--border); padding:6px 10px; text-align:left; }
+.md-body th{ background:var(--bg-card-2); color:var(--text-heading); }
 
 .form-row-2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 @media (max-width:560px){ .form-row-2{ grid-template-columns:1fr; } }
@@ -432,7 +471,7 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
 .rules-card.open .rules-panel{ grid-template-rows:1fr; }
 .rules-panel-inner{ overflow:hidden; }
 .rules-panel-text{
-  padding:2px 16px 18px 92px; color:var(--text-body); font-size:13.5px; white-space:pre-wrap;
+  padding:2px 16px 18px 92px;
 }
 @media (max-width:560px){
   .rules-panel-text{ padding-left:16px; }
@@ -459,6 +498,14 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
   padding:5px 11px; border-radius:var(--radius-pill); flex-shrink:0;
 }
 .roster-row .row-actions{ display:flex; gap:4px; flex-shrink:0; }
+
+/* Клик по сотруднику открывает его профиль (карточка + история выговоров,
+   см. public/js/memberProfile.js) — виден только ролям, которым доступна
+   "Система выговоров" (Auth.ROLE_GROUPS.reprimands). */
+.roster-row .who-clickable{ cursor:pointer; border-radius:var(--radius-sm); margin:-4px -6px; padding:4px 6px; transition:background .15s ease; }
+.roster-row .who-clickable:hover{ background:var(--bg-hover); }
+.roster-row .who-clickable:hover .nickname{ color:var(--accent-light); }
+.roster-row .who-clickable:focus-visible{ outline:2px solid var(--accent-light); outline-offset:2px; }
 
 /* Общие классы для "кто это" — переиспользуются и в .roster-row, и в
    карточках заявок/кандидатов ниже (там своего родителя-обёртки нет). */
