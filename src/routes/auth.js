@@ -156,8 +156,90 @@ router.get('/discord', (req, res) => {
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', 'identify');
   url.searchParams.set('state', state);
-  res.redirect(url.toString());
+
+  req.session.save((err) => {
+    if (err) {
+      console.error('[discord] session.save failed:', err.message);
+      return res.status(500).send('Не удалось создать сессию входа. Попробуйте ещё раз.');
+    }
+    res.redirect(url.toString());
+  });
 });
+
+/**
+ * Завершение входа после того, как Cloudflare Worker сам обменял code
+ * на данные Discord (VDS часто не достучится до discord.com → 502 на callback).
+ * Заголовок X-Worker-Secret = DISCORD_WORKER_SECRET || SESSION_SECRET.
+ */
+router.post('/discord/complete', async (req, res, next) => {
+  try {
+    const secret = process.env.DISCORD_WORKER_SECRET || process.env.SESSION_SECRET;
+    if (!secret || req.get('x-worker-secret') !== secret) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const discordUser = req.body && req.body.discordUser;
+    const state = req.body && req.body.state;
+    if (!discordUser || !discordUser.id || !discordUser.username) {
+      return res.status(400).json({ error: 'Нет данных Discord.' });
+    }
+
+    const expectedState = req.session.discordOAuthState;
+    delete req.session.discordOAuthState;
+    if (!expectedState || !state || state !== expectedState) {
+      return res.status(400).json({ error: 'state не совпадает' });
+    }
+
+    const redirectPath = await finishDiscordLogin(req, discordUser);
+    await new Promise((resolve, reject) => {
+      req.session.save((err) => (err ? reject(err) : resolve()));
+    });
+    res.json({ redirect: redirectPath });
+  } catch (err) {
+    next(err);
+  }
+});
+
+async function finishDiscordLogin(req, discordUser) {
+  const isDesignatedOwner =
+    !!process.env.DISCORD_OWNER_ID && String(discordUser.id) === String(process.env.DISCORD_OWNER_ID);
+
+  const existing = await pool.query('SELECT id FROM users WHERE discord_id = $1', [discordUser.id]);
+  let userId;
+  if (existing.rows.length) {
+    userId = existing.rows[0].id;
+    await pool.query(
+      'UPDATE users SET discord_username = $1 WHERE id = $2',
+      [discordUser.username, userId]
+    );
+  } else {
+    const { rows: countRows } = await pool.query('SELECT COUNT(*)::int AS c FROM users');
+    const isFirstEverUser = countRows[0].c === 0;
+    const grantOwner = isDesignatedOwner || isFirstEverUser;
+
+    let roleId = null;
+    if (grantOwner) {
+      const { rows: roleRows } = await pool.query('SELECT id FROM roles ORDER BY priority ASC LIMIT 1');
+      roleId = roleRows[0]?.id || null;
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO users (discord_id, discord_username, nickname, role_id, is_owner, is_admin)
+       VALUES ($1, $2, $3, $4, $5, $5) RETURNING id`,
+      [discordUser.id, discordUser.username, discordUser.username, roleId, grantOwner]
+    );
+    userId = rows[0].id;
+  }
+
+  if (isDesignatedOwner) {
+    await pool.query('UPDATE users SET is_owner = TRUE, is_admin = TRUE WHERE id = $1', [userId]);
+  }
+
+  req.session.userId = userId;
+  const returnTo = req.session.discordOAuthReturnTo;
+  delete req.session.discordOAuthReturnTo;
+  return returnTo === 'apply' ? '/#/apply' : '/#/faq';
+}
 
 router.get('/discord/callback', async (req, res, next) => {
   try {
@@ -172,10 +254,6 @@ router.get('/discord/callback', async (req, res, next) => {
       return res.status(400).send('Discord не передал код авторизации.');
     }
 
-    // Сверяем state с тем, что был сохранён в сессии при переходе на
-    // /discord — защита от CSRF (подсунутого чужого кода авторизации).
-    // Значение из сессии одноразовое и удаляется сразу после проверки,
-    // независимо от результата.
     const expectedState = req.session.discordOAuthState;
     delete req.session.discordOAuthState;
     if (!expectedState || !state || state !== expectedState) {
@@ -196,13 +274,11 @@ router.get('/discord/callback', async (req, res, next) => {
         }),
       });
     } catch (err) {
-      // Типично для VDS: исходящий 443 к discord.com закрыт/таймаут
-      // (тот же симптом, что у Discord-бота: Connect Timeout).
       console.error('[discord] token exchange network error:', err.message);
       return res.status(502).json({
         error:
           'Сервер не может связаться с Discord API. Проверьте исходящий HTTPS (443) ' +
-          'с VDS до discord.com и DNS.',
+          'с VDS до discord.com и DNS. Либо входите через workers.dev (OAuth там на стороне Worker).',
       });
     }
     if (!tokenRes.ok) {
@@ -230,53 +306,11 @@ router.get('/discord/callback', async (req, res, next) => {
     }
     const discordUser = await userRes.json();
 
-    const isDesignatedOwner =
-      !!process.env.DISCORD_OWNER_ID && String(discordUser.id) === String(process.env.DISCORD_OWNER_ID);
-
-    const existing = await pool.query('SELECT id FROM users WHERE discord_id = $1', [discordUser.id]);
-    let userId;
-    if (existing.rows.length) {
-      userId = existing.rows[0].id;
-      await pool.query(
-        'UPDATE users SET discord_username = $1 WHERE id = $2',
-        [discordUser.username, userId]
-      );
-    } else {
-      const { rows: countRows } = await pool.query('SELECT COUNT(*)::int AS c FROM users');
-      const isFirstEverUser = countRows[0].c === 0;
-      const grantOwner = isDesignatedOwner || isFirstEverUser;
-
-      // Новый рядовой пользователь роль не получает — остаётся "Без роли"
-      // (роль ему назначает администратор вручную на странице «Состав»).
-      // Владельцу (назначенному по DISCORD_OWNER_ID или первому вошедшему)
-      // по-прежнему выдаём высшую роль в иерархии.
-      let roleId = null;
-      if (grantOwner) {
-        const { rows: roleRows } = await pool.query('SELECT id FROM roles ORDER BY priority ASC LIMIT 1');
-        roleId = roleRows[0]?.id || null;
-      }
-
-      const { rows } = await pool.query(
-        `INSERT INTO users (discord_id, discord_username, nickname, role_id, is_owner, is_admin)
-         VALUES ($1, $2, $3, $4, $5, $5) RETURNING id`,
-        [discordUser.id, discordUser.username, discordUser.username, roleId, grantOwner]
-      );
-      userId = rows[0].id;
-    }
-
-    // Всегда синхронизируем права для явно назначенного владельца — так он
-    // не потеряет доступ, даже если его аккаунт уже существовал без прав.
-    if (isDesignatedOwner) {
-      await pool.query('UPDATE users SET is_owner = TRUE, is_admin = TRUE WHERE id = $1', [userId]);
-    }
-
-    req.session.userId = userId;
-
-    // См. комментарий в /discord выше — одноразовое значение, сразу удаляем
-    // из сессии независимо от результата.
-    const returnTo = req.session.discordOAuthReturnTo;
-    delete req.session.discordOAuthReturnTo;
-    res.redirect(returnTo === 'apply' ? '/#/apply' : '/#/faq');
+    const redirectPath = await finishDiscordLogin(req, discordUser);
+    await new Promise((resolve, reject) => {
+      req.session.save((err) => (err ? reject(err) : resolve()));
+    });
+    res.redirect(redirectPath);
   } catch (err) {
     next(err);
   }
