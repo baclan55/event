@@ -1,4 +1,7 @@
 services:
+  # NB: при DATABASE_URL, указывающем на внешний Neon (см. сервис app ниже),
+  # этот локальный Postgres не нужен — сервис можно вообще удалить из файла.
+  # Оставлен на случай, если понадобится локальная БД для теста.
   db:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -9,6 +12,7 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
     ports:
+      # Проброшен на хост для удобства (psql/DBeaver с компьютера).
       - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-eventportal} -d ${POSTGRES_DB:-eventportal}"]
@@ -21,6 +25,35 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    # Явный список переменных вместо env_file: -.env.
+    # Portainer подставляет сюда значения из раздела "Environment variables"
+    # стека (Stack -> Environment variables) через синтаксис ${VAR} — это
+    # работает и в обычном Compose-режиме, и в Swarm-режиме, в отличие от
+    # env_file, который Swarm игнорирует. Заведите в Portainer переменную
+    # с именем ровно как слева от двоеточия (например DATABASE_URL) —
+    # значение справа ${DATABASE_URL} подставится автоматически.
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SESSION_SECRET: ${SESSION_SECRET}
+      DISCORD_OWNER_ID: ${DISCORD_OWNER_ID}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
+      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      DISCORD_EVENTS_CHANNEL_ID: ${DISCORD_EVENTS_CHANNEL_ID}
+      DISCORD_EVENTS_SOURCE_BOT_ID: ${DISCORD_EVENTS_SOURCE_BOT_ID}
+      EVENT_BOT_CATCHUP_LIMIT: ${EVENT_BOT_CATCHUP_LIMIT}
+      APPLICATIONS_WEBHOOK_URL: ${APPLICATIONS_WEBHOOK_URL}
+      CLOUDINARY_URL: ${CLOUDINARY_URL}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      APP_TITLE: ${APP_TITLE:-Events Denver}
+      APP_SUBTITLE: ${APP_SUBTITLE:-Ивент-отдел сервера}
+      WEEKLY_EVENTS_TARGET: ${WEEKLY_EVENTS_TARGET:-5}
+      WEEKLY_RESET_TZ: ${WEEKLY_RESET_TZ:-Europe/Moscow}
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
     depends_on:
       db:
         condition: service_healthy
