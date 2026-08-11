@@ -22,8 +22,6 @@ function publicUser(u) {
     roleId: u.role_id,
     roleName: u.role_name,
     rolePriority: u.role_priority != null ? u.role_priority : null,
-    // Полный набор ролей (сотрудник может иметь несколько сразу) — имена,
-    // от высшей к низшей. roleName/roleId выше — только "основная" роль.
     roles: (u.roles || []).map((r) => r.name),
     isBlocked: !!u.is_blocked,
     blockedAt: u.blocked_at || null,
