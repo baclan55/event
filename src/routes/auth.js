@@ -171,6 +171,20 @@ router.get('/discord', (req, res) => {
  * на данные Discord (VDS часто не достучится до discord.com → 502 на callback).
  * Заголовок X-Worker-Secret = DISCORD_WORKER_SECRET || SESSION_SECRET.
  */
+router.get('/discord/oauth-config', (req, res) => {
+  const secret = process.env.DISCORD_WORKER_SECRET || process.env.SESSION_SECRET;
+  if (!secret || req.get('x-worker-secret') !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const clientId = process.env.DISCORD_CLIENT_ID;
+  const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+  const redirectUri = process.env.DISCORD_REDIRECT_URI;
+  if (!clientId || !clientSecret || !redirectUri) {
+    return res.status(500).json({ error: 'Discord OAuth не настроен на VDS.' });
+  }
+  res.json({ clientId, clientSecret, redirectUri });
+});
+
 router.post('/discord/complete', async (req, res, next) => {
   try {
     const secret = process.env.DISCORD_WORKER_SECRET || process.env.SESSION_SECRET;
