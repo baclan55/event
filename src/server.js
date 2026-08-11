@@ -79,6 +79,9 @@ app.get('*', (req, res) => {
 // --- обработка ошибок -------------------------------------------------------
 app.use((err, req, res, next) => {
   console.error('[error]', err.message);
+  // Если ответ уже ушёл (например, сессия/pg упали после начала стрима) —
+  // повторный res.json даёт ERR_HTTP_HEADERS_SENT.
+  if (res.headersSent) return next(err);
   if (err.message && err.message.includes('Разрешены только изображения')) {
     return res.status(400).json({ error: err.message });
   }
