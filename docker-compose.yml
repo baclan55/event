@@ -33,7 +33,10 @@ services:
     # с именем ровно как слева от двоеточия (например DATABASE_URL) —
     # значение справа ${DATABASE_URL} подставится автоматически.
     environment:
+      # Локальный db: postgresql://eventportal:eventportal@db:5432/eventportal
+      # Neon: строка с ?sslmode=require. Явно: DATABASE_SSL=true|false.
       DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SSL: ${DATABASE_SSL:-}
       SESSION_SECRET: ${SESSION_SECRET}
       DISCORD_OWNER_ID: ${DISCORD_OWNER_ID}
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
