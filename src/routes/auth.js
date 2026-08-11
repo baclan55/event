@@ -182,17 +182,29 @@ router.get('/discord/callback', async (req, res, next) => {
       return res.status(400).send('Недействительный запрос авторизации (state не совпадает). Попробуйте войти ещё раз.');
     }
 
-    const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        grant_type: 'authorization_code',
-        code: String(code),
-        redirect_uri: redirectUri,
-      }),
-    });
+    let tokenRes;
+    try {
+      tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          grant_type: 'authorization_code',
+          code: String(code),
+          redirect_uri: redirectUri,
+        }),
+      });
+    } catch (err) {
+      // Типично для VDS: исходящий 443 к discord.com закрыт/таймаут
+      // (тот же симптом, что у Discord-бота: Connect Timeout).
+      console.error('[discord] token exchange network error:', err.message);
+      return res.status(502).json({
+        error:
+          'Сервер не может связаться с Discord API. Проверьте исходящий HTTPS (443) ' +
+          'с VDS до discord.com и DNS.',
+      });
+    }
     if (!tokenRes.ok) {
       const text = await tokenRes.text();
       console.error('[discord] token exchange failed:', text);
@@ -200,9 +212,19 @@ router.get('/discord/callback', async (req, res, next) => {
     }
     const tokenData = await tokenRes.json();
 
-    const userRes = await fetch('https://discord.com/api/users/@me', {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` },
-    });
+    let userRes;
+    try {
+      userRes = await fetch('https://discord.com/api/users/@me', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
+    } catch (err) {
+      console.error('[discord] users/@me network error:', err.message);
+      return res.status(502).json({
+        error:
+          'Сервер не может связаться с Discord API. Проверьте исходящий HTTPS (443) ' +
+          'с VDS до discord.com и DNS.',
+      });
+    }
     if (!userRes.ok) {
       return res.status(400).send('Не удалось получить данные пользователя Discord.');
     }
