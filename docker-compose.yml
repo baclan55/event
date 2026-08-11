@@ -107,7 +107,53 @@ services:
     depends_on:
       - app
 
+  # Web-админка PostgreSQL (pgAdmin) → сервис db в этой же сети.
+  # Открыть: http://IP:5050  (или https://домен:5050 если пробросишь).
+  # Логин в pgAdmin: PGADMIN_EMAIL / PGADMIN_PASSWORD.
+  # Подключение к БД уже прописано (Host=db). Пароль БД = POSTGRES_PASSWORD.
+  pgadmin:
+    image: dpage/pgadmin4:8
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@eventportal.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-changeme}
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      POSTGRES_USER: ${POSTGRES_USER:-eventportal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eventportal}
+      POSTGRES_DB: ${POSTGRES_DB:-eventportal}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mkdir -p /pgadmin4
+        cat > /pgadmin4/servers.json <<EOF
+        {
+          "Servers": {
+            "1": {
+              "Name": "eventportal-db",
+              "Group": "Servers",
+              "Host": "db",
+              "Port": 5432,
+              "MaintenanceDB": "$${POSTGRES_DB}",
+              "Username": "$${POSTGRES_USER}",
+              "SSLMode": "prefer",
+              "PassFile": "/tmp/pgpass"
+            }
+          }
+        }
+        EOF
+        echo "db:5432:*:$${POSTGRES_USER}:$${POSTGRES_PASSWORD}" > /tmp/pgpass
+        chmod 600 /tmp/pgpass
+        exec /entrypoint.sh
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   db-data:
   caddy-data:
   caddy-config:
+  pgadmin-data:
