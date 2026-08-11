@@ -2,8 +2,6 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-eventportal}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eventportal}
@@ -11,9 +9,6 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
     ports:
-      # Проброшен на хост для удобства (psql/DBeaver с компьютера).
-      # Для чисто продакшен-развёртывания (DATABASE_URL указывает на Neon)
-      # этот сервис можно вообще убрать из файла.
       - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-eventportal} -d ${POSTGRES_DB:-eventportal}"]
@@ -26,8 +21,6 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    env_file:
-      - .env
     depends_on:
       db:
         condition: service_healthy
