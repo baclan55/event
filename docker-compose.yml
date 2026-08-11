@@ -69,8 +69,9 @@ services:
 
   # Авто-HTTPS (Let's Encrypt) для APP_DOMAIN → reverse_proxy на app:3000.
   # В Portainer: APP_DOMAIN=events-denver.work.gd
-  # DNS: A-запись домена → IP VDS. Если домен в Cloudflare — серое облако (DNS only).
-  # Открыть на VDS порты 80 и 443.
+  # DNS: A → IP VDS, серое облако если Cloudflare. Порты 80 и 443 открыты.
+  # Caddyfile пишется внутри контейнера (без bind-mount — иначе Portainer
+  # создаёт пустую папку /data/compose/.../Caddyfile и падает).
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -81,8 +82,24 @@ services:
     environment:
       APP_DOMAIN: ${APP_DOMAIN:-events-denver.work.gd}
       ACME_EMAIL: ${ACME_EMAIL:-admin@events-denver.work.gd}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        cat > /etc/caddy/Caddyfile <<EOF
+        {
+        	email $${ACME_EMAIL}
+        }
+        $${APP_DOMAIN} {
+        	encode gzip
+        	reverse_proxy app:3000 {
+        		header_up X-Forwarded-Proto {scheme}
+        		header_up X-Forwarded-Host {host}
+        		header_up X-Real-IP {remote_host}
+        	}
+        }
+        EOF
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
