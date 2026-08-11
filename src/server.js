@@ -26,6 +26,18 @@ app.set('trust proxy', 1); // Render стоит за прокси — нужно
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Лёгкий health-check ДО session/auth: будит Neon (SELECT 1), подходит для
+// keep-alive и Render healthCheckPath, не трогает таблицу session.
+app.get('/api/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[health]', err.message);
+    res.status(503).json({ ok: false, error: 'База данных недоступна.' });
+  }
+});
+
 app.use(
   session({
     store: new pgSession({ pool, tableName: 'session', createTableIfMissing: true }),
@@ -94,6 +106,9 @@ const PORT = process.env.PORT || 3000;
 // поэтому безопасно применять её на каждом старте сервера — это защищает от
 // ситуации "задеплоили новый код, но забыли прогнать npm run db:migrate",
 // из-за которой раньше отваливались, например, выговоры (не было колонки type).
+// Важно: НЕ ждём applySchema перед listen — на cold start (Render free +
+// Neon wake) полный schema.sql может идти десятки секунд и иначе блокирует
+// все HTTP-запросы, пока DDL не закончится.
 async function applySchema() {
   const fs = require('fs');
   const schemaPath = path.join(__dirname, 'db', 'schema.sql');
@@ -105,15 +120,14 @@ async function applySchema() {
   }
 }
 
-applySchema().then(() => {
-  app.listen(PORT, () => {
-    console.log(`[server] Event Department Portal запущен на порту ${PORT}`);
-  });
-  // Бот учёта посещаемости мероприятий (см. src/bot/eventAttendanceBot.js).
-  // Запускается в этом же процессе; если DISCORD_BOT_TOKEN не задан — просто
-  // ничего не делает.
-  startEventAttendanceBot(pool);
-  // Еженедельный сброс счётчика "МП в неделю" по понедельникам в 00:00
-  // (см. src/utils/weeklyReset.js).
-  startWeeklyResetScheduler(pool);
+app.listen(PORT, () => {
+  console.log(`[server] Event Department Portal запущен на порту ${PORT}`);
 });
+applySchema();
+// Бот учёта посещаемости мероприятий (см. src/bot/eventAttendanceBot.js).
+// Запускается в этом же процессе; если DISCORD_BOT_TOKEN не задан — просто
+// ничего не делает.
+startEventAttendanceBot(pool);
+// Еженедельный сброс счётчика "МП в неделю" по понедельникам в 00:00
+// (см. src/utils/weeklyReset.js).
+startWeeklyResetScheduler(pool);
