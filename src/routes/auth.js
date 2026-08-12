@@ -279,9 +279,16 @@ router.get('/discord/callback', async (req, res, next) => {
         console.error('[discord] relay failed:', relayRes.status, relayData);
         const detail = relayData.error || relayData.detail || `HTTP ${relayRes.status}`;
         if (relayRes.status === 403) {
+          const reason = relayData.reason || '';
+          if (reason === 'worker_secret_missing') {
+            return res.status(400).send(
+              'На Cloudflare Worker нет Secret DISCORD_RELAY_SECRET (Settings → Variables → Add secret).'
+            );
+          }
           return res.status(400).send(
-            'Relay вернул Forbidden: не совпадает DISCORD_RELAY_SECRET ' +
-            '(Portainer ↔ Cloudflare Worker).'
+            `Секрет не совпал (Portainer отправил ${relayData.gotLen ?? '?'} символов, ` +
+            `в Worker ожидает ${relayData.expectedLen ?? '?'}). ` +
+            'Проверьте имя переменной, Recreate app/event-bot, без кавычек в значении.'
           );
         }
         if (relayData.error === 'token_exchange_failed') {

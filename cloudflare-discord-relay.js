@@ -20,9 +20,23 @@ export default {
       return json({ ok: true });
     }
 
-    const secret = request.headers.get('x-relay-secret') || '';
-    if (!env.DISCORD_RELAY_SECRET || secret !== env.DISCORD_RELAY_SECRET) {
-      return json({ error: 'Forbidden' }, 403);
+    const secret = (request.headers.get('x-relay-secret') || '').trim();
+    const expected = String(env.DISCORD_RELAY_SECRET || '').trim();
+    if (!expected) {
+      return json({
+        error: 'Forbidden',
+        reason: 'worker_secret_missing',
+        hint: 'В Worker → Settings → Variables добавьте Secret с именем DISCORD_RELAY_SECRET и Deploy',
+      }, 403);
+    }
+    if (secret !== expected) {
+      return json({
+        error: 'Forbidden',
+        reason: 'secret_mismatch',
+        gotLen: secret.length,
+        expectedLen: expected.length,
+        hint: 'Длины должны совпадать. В Portainer без кавычек и пробелов; Recreate контейнера после смены env',
+      }, 403);
     }
 
     if (request.method === 'POST' && url.pathname === '/oauth/complete') {
