@@ -172,8 +172,8 @@ img{ max-width:100%; display:block; }
 
 .topbar{
   position:sticky; top:0; z-index:5;
-  display:flex; align-items:flex-end; justify-content:space-between; gap:16px;
-  padding:26px 32px 20px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:22px 32px 18px;
   background:var(--bg-page);
   transition:transform .28s ease, box-shadow .28s ease;
   will-change:transform;
@@ -189,10 +189,13 @@ img{ max-width:100%; display:block; }
 .topbar-titles .sub b{ color:var(--text-muted); font-weight:600; }
 
 .account-widget{
-  display:flex; align-items:center; gap:10px; cursor:pointer;
+  display:inline-flex; align-items:center; gap:10px; cursor:pointer;
+  align-self:center; flex-shrink:0;
   padding:6px 10px 6px 6px; border-radius:var(--radius-pill);
   border:1px solid transparent; background:transparent; color:inherit; font:inherit;
+  line-height:1.2;
 }
+.account-widget .avatar{ flex-shrink:0; }
 .account-widget:hover{ background:var(--bg-card); border-color:var(--border-soft); }
 .account-widget .name{ font-size:13.5px; font-weight:700; color:var(--text-heading); }
 .account-widget .chev{ color:var(--text-muted); }
@@ -203,7 +206,8 @@ img{ max-width:100%; display:block; }
 }
 .account-dropdown .nav-item{ width:100%; }
 
-.content{ flex:1; width:100%; min-width:0; padding:4px 32px 48px; }
+.content{ flex:1; width:100%; min-width:0; padding:22px 32px 48px; }
+.content > .toolbar:first-child{ margin-top:0; }
 
 /* =============================================================================
    Кнопки
@@ -868,8 +872,8 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
   }
   .sidebar.open{ transform:translateX(0); }
   .menu-toggle{ display:inline-flex; }
-  .topbar{ padding:20px 18px 16px; align-items:center; }
-  .content{ padding:4px 18px 40px; }
+  .topbar{ padding:18px 18px 14px; align-items:center; }
+  .content{ padding:18px 18px 40px; }
   .sidebar-scrim{
     display:none; position:fixed; inset:0; background:rgba(6,5,12,.6); z-index:40;
   }

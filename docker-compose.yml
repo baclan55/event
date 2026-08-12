@@ -44,9 +44,9 @@ services:
       DISCORD_RELAY_URL: ${DISCORD_RELAY_URL:-https://hidden-union-525e.majes.workers.dev}
       NODE_ENV: production
       PORT: "3000"
-      # Схему применяйте отдельно (npm run db:migrate), не на каждый старт —
-      # иначе первые запросы конкурируют с тяжёлым SQL.
-      APPLY_SCHEMA_ON_START: ${APPLY_SCHEMA_ON_START:-0}
+      # Автосоздание недостающих таблиц при старте (удобно для Portainer).
+      # Отключить: APPLY_SCHEMA_ON_START=0
+      APPLY_SCHEMA_ON_START: ${APPLY_SCHEMA_ON_START:-1}
     depends_on:
       db:
         condition: service_healthy

@@ -4,7 +4,7 @@ import { invalidateUserCache, jsonError } from '@/lib/auth';
 import { EDIT_ROLES, OWNER_PANEL_ROLES } from '@/lib/roleAccess';
 import { tierForPriority } from '@/lib/tier';
 import { getRolesForUsers, replaceUserRoles } from '@/lib/roles';
-import { writeAudit } from '@/lib/audit';
+import { listAudit, writeAudit } from '@/lib/audit';
 import { ok, parseId, required } from './helpers';
 import type { ApiHandler } from './types';
 
@@ -97,18 +97,11 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
       );
       const rolesMap = await getRolesForUsers(result.rows.map((row) => row.id as number));
       const roleRows = await query('SELECT id, name, priority FROM roles ORDER BY priority ASC');
-      const auditRows = await query(
-        `SELECT al.id, al.action, al.entity_type, al.entity_id, al.details, al.created_at,
-                actor.nickname AS actor_nickname
-         FROM audit_log al
-         LEFT JOIN users actor ON actor.id=al.actor_id
-         ORDER BY al.created_at DESC
-         LIMIT 100`,
-      );
+      const audit = await listAudit(100);
       return NextResponse.json({
         users: result.rows.map((row) => ({ ...row, roles: rolesMap.get(row.id as number) || [] })),
         roles: roleRows.rows,
-        audit: auditRows.rows,
+        audit,
       });
     }
     if (method === 'DELETE') {

@@ -32,7 +32,17 @@ function resolveSsl(connectionString: string): false | { rejectUnauthorized: boo
   return false;
 }
 
-const globalForDb = globalThis as unknown as { __eventPortalPool?: Pool };
+function shouldApplySchemaOnStart(): boolean {
+  const flag = runtimeEnv('APPLY_SCHEMA_ON_START').toLowerCase();
+  // По умолчанию включено: в Portainer миграцию руками запускать неудобно.
+  if (!flag) return true;
+  return !(flag === '0' || flag === 'false' || flag === 'off');
+}
+
+const globalForDb = globalThis as unknown as {
+  __eventPortalPool?: Pool;
+  __eventPortalReady?: Promise<void>;
+};
 
 function createPool(): Pool {
   const connectionString = runtimeEnv('DATABASE_URL');
@@ -58,11 +68,31 @@ function getPool(): Pool {
     globalForDb.__eventPortalPool.on('error', (err) => {
       console.error('[db] Неожиданная ошибка пула соединений:', err.message);
     });
-    void import('@/lib/weeklyReset')
-      .then((m) => m.startWeeklyResetScheduler())
-      .catch((err) => console.error('[db] weekly reset:', (err as Error).message));
   }
   return globalForDb.__eventPortalPool;
+}
+
+async function ensureReady(): Promise<void> {
+  if (!globalForDb.__eventPortalReady) {
+    globalForDb.__eventPortalReady = (async () => {
+      const db = getPool();
+      if (shouldApplySchemaOnStart()) {
+        try {
+          const { applySchemaOnStart } = await import('@/lib/applySchema');
+          await applySchemaOnStart(db);
+        } catch (err) {
+          console.error('[db] Автомиграция схемы:', (err as Error).message);
+        }
+      }
+      try {
+        const weekly = await import('@/lib/weeklyReset');
+        weekly.startWeeklyResetScheduler();
+      } catch (err) {
+        console.error('[db] weekly reset:', (err as Error).message);
+      }
+    })();
+  }
+  await globalForDb.__eventPortalReady;
 }
 
 /** Ленивый пул — URL берётся при первом запросе, не на build. */
@@ -74,10 +104,11 @@ export const pool: Pool = new Proxy({} as Pool, {
   },
 });
 
-export function query<T extends QueryResultRow = QueryResultRow>(
+export async function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
   params?: unknown[]
 ): Promise<QueryResult<T>> {
+  await ensureReady();
   return getPool().query<T>(text, params);
 }
 

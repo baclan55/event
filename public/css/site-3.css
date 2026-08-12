@@ -1,4 +1,8 @@
 
+.profile-avatar-edit svg{ width:14px; height:14px; }
+.profile-main{ min-width:0; flex:1; }
+.profile-main h2{ margin:0; color:var(--text-heading); font-size:20px; }
+.profile-name-line{ display:flex; align-items:center; gap:8px; }
 .profile-weekly{ text-align:right; min-width:130px; }
 .profile-weekly .stat-value{ font-size:30px; }
 .profile-weekly .badge{ margin-top:8px; }
@@ -245,11 +249,3 @@
   position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center;
   background:rgba(6,5,12,.68); padding:20px; backdrop-filter:blur(2px);
 }
-.modal-dialog{
-  width:100%; max-width:440px; max-height:92vh; overflow-y:auto;
-  background:var(--bg-card); border:1px solid var(--border-soft);
-  border-radius:var(--radius-lg); padding:30px 28px; box-shadow:var(--shadow-pop);
-  position:relative;
-}
-.modal-dialog.wide{ max-width:600px; }
-.modal-dialog h2{ font-size:19px; text-align:center; margin-bottom:4px; }
