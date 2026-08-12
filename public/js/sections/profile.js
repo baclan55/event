@@ -17,15 +17,15 @@ window.Sections.profile = {
     };
 
     try {
-      // Подтягиваем свежие данные о себе (счётчик мероприятий мог измениться
-      // после входа в кабинет) и свои выговоры отдельным self-service роутом —
-      // обычный /api/reprimands виден только администраторам.
+      // Свежие выговоры; профиль берём из bootstrap, при успехе me — обновляем счётчики.
       const [meData, rpData] = await Promise.all([
-        api.get('/api/auth/me'),
+        api.get('/api/auth/me').catch(() => null),
         api.get('/api/reprimands/me'),
       ]);
-      user = meData.user;
-      Auth.currentUser = user;
+      if (meData && meData.user) {
+        user = meData.user;
+        Auth.currentUser = user;
+      }
       reprimands = rpData.reprimands;
       limits = rpData.limits;
       tier = rpData.tier;

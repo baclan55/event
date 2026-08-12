@@ -73,7 +73,20 @@ router.get('/', requireRoleIn(REPRIMANDS_ROLES), async (req, res, next) => {
       return { ...r, tier, active, expires_at: expiresAt };
     });
 
-    res.json({ reprimands, limits: LIMITS_PAYLOAD });
+    // Состав для формы выдачи выговора — в том же ответе (без второго /api/roster).
+    const { rows: memberRows } = await pool.query(
+      `SELECT u.id, u.nickname, u.is_blocked,
+              r.priority AS role_priority
+       FROM users u
+       LEFT JOIN roles r ON r.id = u.role_id
+       ORDER BY COALESCE(r.priority, 999) ASC, u.nickname ASC`
+    );
+    const members = memberRows.map((m) => ({
+      ...m,
+      tier: tierForPriority(m.role_priority),
+    }));
+
+    res.json({ reprimands, limits: LIMITS_PAYLOAD, members });
   } catch (err) {
     next(err);
   }

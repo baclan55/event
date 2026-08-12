@@ -21,7 +21,10 @@ router.get('/users', async (req, res, next) => {
     );
     const rolesMap = await getRolesForUsers(rows.map((u) => u.id));
     const users = rows.map((u) => ({ ...u, roles: rolesMap.get(u.id) || [] }));
-    res.json({ users });
+    const { rows: roleRows } = await pool.query(
+      'SELECT id, name, priority FROM roles ORDER BY priority ASC'
+    );
+    res.json({ users, roles: roleRows });
   } catch (err) {
     next(err);
   }

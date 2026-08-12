@@ -15,12 +15,9 @@ window.Sections.applications = {
     let items = [];
     let isOpen = true;
     try {
-      const [data, statusData] = await Promise.all([
-        api.get('/api/applications'),
-        api.get('/api/applications/status'),
-      ]);
+      const data = await api.get('/api/applications');
       items = data.applications;
-      isOpen = statusData.isOpen;
+      isOpen = data.isOpen !== false;
     } catch (e) {
       container.innerHTML = `<div class="empty-state"><h3>Не удалось загрузить заявки</h3><p>${esc(e.message)}</p></div>`;
       return;
@@ -115,6 +112,7 @@ window.Sections.applications = {
     async function reload() {
       const data = await api.get('/api/applications');
       items = data.applications;
+      if (typeof data.isOpen === 'boolean') isOpen = data.isOpen;
       paint();
     }
   },

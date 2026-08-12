@@ -5,20 +5,33 @@ const { syncBlockStatus } = require('../utils/reprimandRules');
 const BLOCKED_MESSAGE =
   'Учётная запись заблокирована за превышение лимита выговоров. Обратитесь к руководству отдела для разблокировки.';
 
+// Не чаще раза в N мс на пользователя — иначе каждый API-хит тянет лишние SQL.
+const BLOCK_SYNC_TTL_MS = 60_000;
+const blockSyncAt = new Map();
+
 // Подгружает текущего пользователя (если есть активная сессия) в req.user.
-// Вызывается на каждый запрос — до роутов.
 async function attachUser(req, res, next) {
   try {
     if (!req.session || !req.session.userId) {
       req.user = null;
       return next();
     }
+
+    // Один round-trip: пользователь + набор ролей (json_agg).
     const { rows } = await pool.query(
       `SELECT u.id, u.nickname, u.discord_id, u.discord_username,
               u.avatar_image_id, u.avatar_url, u.avatar_public_id,
               u.is_owner, u.is_admin, u.weekly_events, u.note,
               u.is_blocked, u.blocked_at,
-              u.role_id, r.name AS role_name, r.priority AS role_priority
+              u.role_id, r.name AS role_name, r.priority AS role_priority,
+              COALESCE(
+                (SELECT json_agg(json_build_object('id', rr.id, 'name', rr.name, 'priority', rr.priority)
+                                 ORDER BY rr.priority ASC)
+                 FROM user_roles ur
+                 JOIN roles rr ON rr.id = ur.role_id
+                 WHERE ur.user_id = u.id),
+                '[]'::json
+              ) AS roles
        FROM users u
        LEFT JOIN roles r ON r.id = u.role_id
        WHERE u.id = $1`,
@@ -26,31 +39,22 @@ async function attachUser(req, res, next) {
     );
     req.user = rows[0] || null;
 
-    // Полный набор ролей (сотрудник может иметь несколько одновременно —
-    // см. user_roles в схеме БД). role_id/role_name/role_priority выше
-    // остаются "основной" (высшей по приоритету) ролью — для сортировки,
-    // тира и т.п.; roles/roleNames — реальный набор для проверки доступа
-    // (см. userHasRoleIn в src/utils/roleAccess.js).
     if (req.user) {
-      const { rows: roleRows } = await pool.query(
-        `SELECT r.id, r.name, r.priority FROM user_roles ur JOIN roles r ON r.id = ur.role_id
-         WHERE ur.user_id = $1 ORDER BY r.priority ASC`,
-        [req.user.id]
-      );
-      req.user.roles = roleRows;
-      req.user.roleNames = roleRows.map((r) => r.name);
+      const roles = Array.isArray(req.user.roles) ? req.user.roles : [];
+      req.user.roles = roles;
+      req.user.roleNames = roles.map((r) => r.name);
     }
 
-    // Уже заблокированного пользователя лениво пере-проверяем при каждом
-    // входе — актуально для баллов администраторов, которые сгорают через
-    // ADMIN_POINT_DECAY_DAYS дней и могут снять блокировку автоматически
-    // (см. src/utils/reprimandRules.js). Для не заблокированных лишний
-    // запрос не делаем, чтобы не нагружать каждый вызов API.
     if (req.user && req.user.is_blocked) {
-      const status = await syncBlockStatus(req.user.id);
-      if (status) {
-        req.user.is_blocked = status.blocked;
-        if (!status.blocked) req.user.blocked_at = null;
+      const uid = req.user.id;
+      const last = blockSyncAt.get(uid) || 0;
+      if (Date.now() - last >= BLOCK_SYNC_TTL_MS) {
+        blockSyncAt.set(uid, Date.now());
+        const status = await syncBlockStatus(uid);
+        if (status) {
+          req.user.is_blocked = status.blocked;
+          if (!status.blocked) req.user.blocked_at = null;
+        }
       }
     }
     next();
@@ -81,10 +85,6 @@ function requireOwner(req, res, next) {
   next();
 }
 
-// Личный кабинет целиком закрыт для сотрудников без роли (см.
-// src/utils/roleAccess.js) — им доступ откроется, как только администратор
-// назначит роль в «Составе». Заблокированным (см. users.is_blocked) кабинет
-// тоже закрыт целиком — их аккаунт и история при этом никуда не деваются.
 function requireAnyRole(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Требуется вход в личный кабинет.' });
   if (req.user.is_blocked) return res.status(403).json({ error: BLOCKED_MESSAGE, blocked: true });
@@ -94,9 +94,6 @@ function requireAnyRole(req, res, next) {
   next();
 }
 
-// Раздел доступен только сотрудникам с одной из перечисленных ролей (плюс
-// владельцу — см. userHasRoleIn). Используется для узких разделов вроде
-// выговоров, заявок и панели владельца.
 function requireRoleIn(roles) {
   return function (req, res, next) {
     if (!req.user) return res.status(401).json({ error: 'Требуется вход в личный кабинет.' });

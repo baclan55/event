@@ -267,27 +267,26 @@ function startEventAttendanceBot(pool) {
   client.once(Events.ClientReady, async (c) => {
     console.log(`[event-bot] Подключен как ${c.user.tag}. Слежу за каналом ${channelId}.`);
 
-    // "Догоняющая" проверка при старте: если сайт/бот были офлайн (например,
-    // Render "усыпил" бесплатный сервис) и за это время сбор успели закрыть,
-    // это событие всё равно будет учтено — просматриваем последние сообщения
-    // канала от бота-источника и прогоняем через ту же идемпотентную логику
-    // (см. creditParticipants выше). Безопасно даже для уже виденных
-    // сообщений: начисление получат только те, кто ещё не в леджере для
-    // этого message_id — это же попутно "долечивает" сборы, которые раньше
-    // были зачтены не полностью (см. README).
-    try {
-      const channel = await c.channels.fetch(channelId);
-      if (channel && channel.isTextBased()) {
+    // Catchup откладываем и обрабатываем по одному — не забиваем пул Postgres
+    // в момент старта сайта / первых запросов пользователей.
+    const catchupDelayMs = Math.max(0, parseInt(process.env.EVENT_BOT_CATCHUP_DELAY_MS, 10) || 15_000);
+    setTimeout(async () => {
+      try {
+        const channel = await c.channels.fetch(channelId);
+        if (!channel || !channel.isTextBased()) return;
         const messages = await channel.messages.fetch({ limit: catchupLimit });
-        const fromSource = [...messages.values()].filter((m) => m.author?.id === sourceBotId);
-        for (const m of fromSource.reverse()) {
+        const fromSource = [...messages.values()]
+          .filter((m) => m.author?.id === sourceBotId)
+          .reverse();
+        for (const m of fromSource) {
           await handleMessage(pool, m, { channelId, sourceBotId });
+          await new Promise((r) => setTimeout(r, 50));
         }
         console.log(`[event-bot] Проверено сообщений при старте: ${fromSource.length}.`);
+      } catch (err) {
+        console.error('[event-bot] Не удалось проверить историю канала при старте:', err.message);
       }
-    } catch (err) {
-      console.error('[event-bot] Не удалось проверить историю канала при старте:', err.message);
-    }
+    }, catchupDelayMs);
   });
 
   client.on(Events.MessageCreate, (message) => handleMessage(pool, message, { channelId, sourceBotId }));

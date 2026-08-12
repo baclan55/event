@@ -3,13 +3,10 @@ window.Sections.roster = {
   async render(container) {
     let members = [], roles = [], target = 5;
     try {
-      const [rosterData, rolesData] = await Promise.all([
-        api.get('/api/roster'),
-        api.get('/api/roster/roles'),
-      ]);
+      const rosterData = await api.get('/api/roster');
       members = rosterData.members;
       target = rosterData.target;
-      roles = rolesData.roles;
+      roles = rosterData.roles || [];
     } catch (e) {
       container.innerHTML = `<div class="empty-state"><h3>Не удалось загрузить состав</h3><p>${esc(e.message)}</p></div>`;
       return;

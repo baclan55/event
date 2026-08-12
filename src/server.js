@@ -20,29 +20,44 @@ const ownerRoutes = require('./routes/owner');
 const mediaRoutes = require('./routes/media');
 const markdownPreviewRoutes = require('./routes/markdownPreview');
 
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+
 const app = express();
-// Caddy (и любой reverse-proxy) терминирует TLS — нужно для secure-cookie.
 app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// В проде принимаем только канонический хост (APP_DOMAIN). Запросы на IP:порт
-// или со старым Host отсекаются даже если порт приложения случайно открыт.
 const APP_DOMAIN = (process.env.APP_DOMAIN || '').trim().toLowerCase();
+const isLocalHealth = (req) => {
+  const host = String(req.headers.host || '').split(':')[0].toLowerCase();
+  return (req.path === '/api/health' || req.path === '/api/health/live')
+    && (host === '127.0.0.1' || host === 'localhost');
+};
+
 if (APP_DOMAIN && process.env.NODE_ENV === 'production') {
   app.use((req, res, next) => {
     const host = String(req.headers.host || '').split(':')[0].toLowerCase();
-    if (host === APP_DOMAIN) return next();
-    // health из docker-сети (wget 127.0.0.1) — без проверки Host.
-    if (req.path === '/api/health' && (host === '127.0.0.1' || host === 'localhost')) {
+    if (host === APP_DOMAIN || isLocalHealth(req)) return next();
+    res.status(404).type('text/plain').send('Not Found');
+  });
+
+  app.use((req, res, next) => {
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || '')
+      .split(',')[0].trim().toLowerCase();
+    if (proto === 'https' || req.path === '/api/health' || req.path === '/api/health/live') {
       return next();
     }
-    res.status(404).type('text/plain').send('Not Found');
+    return res.redirect(301, `https://${APP_DOMAIN}${req.originalUrl || '/'}`);
   });
 }
 
-// Лёгкий health-check ДО session/auth (Docker HEALTHCHECK / мониторинг).
+// Liveness — без БД (Docker HEALTHCHECK не валит контейнер из‑за Neon sleep).
+app.get('/api/health/live', (req, res) => {
+  res.json({ ok: true });
+});
+
+// Readiness — с проверкой БД (мониторинг / ручная диагностика).
 app.get('/api/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
@@ -53,23 +68,46 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-app.use(
-  session({
-    store: new pgSession({ pool, tableName: 'session', createTableIfMissing: true }),
-    secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 дней
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-    },
-  })
-);
+// Публичный конфиг — до session (без Postgres).
+app.get('/api/config', (req, res) => {
+  res.json({
+    appTitle: process.env.APP_TITLE || 'Events Denver',
+    appSubtitle: process.env.APP_SUBTITLE || 'Ивент-отдел сервера',
+    weeklyEventsTarget: parseInt(process.env.WEEKLY_EVENTS_TARGET, 10) || 5,
+    discordEnabled: Boolean(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET),
+  });
+});
 
-app.use(attachUser);
+// Публичный статус заявок — до session.
+app.get('/api/applications/status', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('SELECT is_open FROM applications_settings WHERE id = 1');
+    res.json({ isOpen: rows.length ? rows[0].is_open : true });
+  } catch (err) {
+    next(err);
+  }
+});
 
-// --- API -------------------------------------------------------------------
+app.use(express.static(PUBLIC_DIR, {
+  index: false,
+  etag: true,
+  maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0,
+}));
+
+const sessionMiddleware = session({
+  store: new pgSession({ pool, tableName: 'session', createTableIfMissing: true }),
+  secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+  },
+});
+
+app.use('/api', sessionMiddleware, attachUser);
+
 app.use('/api/auth', authRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/rules', rulesRoutes);
@@ -81,33 +119,16 @@ app.use('/api/owner', ownerRoutes);
 app.use('/media', mediaRoutes);
 app.use('/api/markdown', markdownPreviewRoutes);
 
-app.get('/api/config', (req, res) => {
-  res.json({
-    appTitle: process.env.APP_TITLE || 'Events Denver',
-    appSubtitle: process.env.APP_SUBTITLE || 'Ивент-отдел сервера',
-    weeklyEventsTarget: parseInt(process.env.WEEKLY_EVENTS_TARGET, 10) || 5,
-    discordEnabled: Boolean(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET),
-  });
-});
-
-// Любой не найденный /api/* маршрут должен вернуть JSON-404, а не HTML
-// приложения (иначе неверный путь к API молча отдаёт index.html).
 app.use('/api', (req, res) => {
   res.status(404).json({ error: 'Такого API-маршрута не существует.' });
 });
 
-// --- статика + одностраничное приложение -----------------------------------
-app.use(express.static(path.join(__dirname, '..', 'public')));
-
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
-// --- обработка ошибок -------------------------------------------------------
 app.use((err, req, res, next) => {
   console.error('[error]', err.message);
-  // Если ответ уже ушёл (например, сессия/pg упали после начала стрима) —
-  // повторный res.json даёт ERR_HTTP_HEADERS_SENT.
   if (res.headersSent) return next(err);
   if (err.message && err.message.includes('Разрешены только изображения')) {
     return res.status(400).json({ error: err.message });
@@ -116,22 +137,34 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-// В Docker слушаем 0.0.0.0 (Caddy ходит на app:3000 по сети compose).
-// Порт наружу не публикуется — см. docker-compose.yml.
 const HOST = process.env.HOST || '0.0.0.0';
 
-// Схема идемпотентна (CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS),
-// поэтому безопасно применять её на каждом старте сервера — это защищает от
-// ситуации "задеплоили новый код, но забыли прогнать npm run db:migrate".
-// listen не ждём applySchema — иначе старт блокируется на DDL.
 async function applySchema() {
+  if (process.env.APPLY_SCHEMA_ON_START === '0' || process.env.APPLY_SCHEMA_ON_START === 'false') {
+    console.log('[server] APPLY_SCHEMA_ON_START=false — схему не применяем (npm run db:migrate).');
+    return;
+  }
+  await new Promise((r) => setTimeout(r, 3000));
   const fs = require('fs');
   const schemaPath = path.join(__dirname, 'db', 'schema.sql');
+  const client = await pool.connect();
   try {
-    await pool.query(fs.readFileSync(schemaPath, 'utf8'));
-    console.log('[server] Схема базы данных проверена/обновлена.');
+    // Один инстанс за раз применяет schema (несколько реплик / быстрый restart).
+    const locked = await client.query('SELECT pg_try_advisory_lock($1) AS ok', [87201401]);
+    if (!locked.rows[0].ok) {
+      console.log('[server] Схема уже применяется другим процессом — пропускаем.');
+      return;
+    }
+    try {
+      await client.query(fs.readFileSync(schemaPath, 'utf8'));
+      console.log('[server] Схема базы данных проверена/обновлена.');
+    } finally {
+      await client.query('SELECT pg_advisory_unlock($1)', [87201401]);
+    }
   } catch (err) {
     console.error('[server] Не удалось применить схему БД при старте:', err.message);
+  } finally {
+    client.release();
   }
 }
 
@@ -139,11 +172,15 @@ app.listen(PORT, HOST, () => {
   console.log(`[server] Event Department Portal: http://${HOST}:${PORT}` +
     (APP_DOMAIN ? ` (домен ${APP_DOMAIN})` : ''));
 });
+
 applySchema();
-// Бот учёта посещаемости мероприятий (см. src/bot/eventAttendanceBot.js).
-// Запускается в этом же процессе; если DISCORD_BOT_TOKEN не задан — просто
-// ничего не делает.
-startEventAttendanceBot(pool);
-// Еженедельный сброс счётчика "МП в неделю" по понедельникам в 00:00
-// (см. src/utils/weeklyReset.js).
+
+const embedBot = !['1', 'true', 'yes'].includes(
+  String(process.env.DISABLE_EMBEDDED_BOT || '').toLowerCase()
+);
+if (embedBot) {
+  setTimeout(() => startEventAttendanceBot(pool), 5000);
+} else {
+  console.log('[server] DISABLE_EMBEDDED_BOT — Discord-бот в этом процессе не запускается.');
+}
 startWeeklyResetScheduler(pool);

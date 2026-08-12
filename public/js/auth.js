@@ -25,11 +25,14 @@ const Auth = {
   },
 
   async bootstrap() {
-    try { Auth.config = await api.get('/api/config'); } catch (e) { /* используем значения по умолчанию */ }
-    try {
-      const { user } = await api.get('/api/auth/me');
-      Auth.currentUser = user;
-    } catch (e) {
+    const [configResult, meResult] = await Promise.allSettled([
+      api.get('/api/config'),
+      api.get('/api/auth/me'),
+    ]);
+    if (configResult.status === 'fulfilled') Auth.config = configResult.value;
+    if (meResult.status === 'fulfilled') {
+      Auth.currentUser = meResult.value.user;
+    } else {
       Auth.currentUser = null;
     }
   },

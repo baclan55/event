@@ -1,8 +1,7 @@
 // Небольшая обёртка над fetch: JSON по умолчанию, аккуратная обработка ошибок.
-// На free Render/Neon первый запрос после простоя может оборваться
-// (ERR_CONNECTION_CLOSED) — для GET делаем один повтор после короткой паузы.
 const api = {
-  _timeoutMs: 25_000,
+  // Короткий timeout: лучше быстро показать ошибку, чем держать белый экран ~50с.
+  _timeoutMs: 12_000,
 
   async get(url) {
     return api._fetchWithRetry('GET', url);
@@ -27,9 +26,9 @@ const api = {
       const res = await api._fetch(method, url, init);
       return api._parse(res);
     } catch (err) {
-      // Повторяем только сетевые сбои / таймаут — не 4xx/5xx от сервера.
-      if (err.status) throw err;
-      await new Promise((r) => setTimeout(r, 800));
+      // Не ретраим таймаут (AbortError) и HTTP-ошибки — только обрыв сети.
+      if (err.status || err.aborted) throw err;
+      await new Promise((r) => setTimeout(r, 400));
       const res = await api._fetch(method, url, init);
       return api._parse(res);
     }
@@ -42,13 +41,14 @@ const api = {
       return await fetch(url, {
         method,
         credentials: 'same-origin',
-        signal: ctrl.signal,
         ...init,
+        signal: ctrl.signal,
       });
     } catch (err) {
       if (err.name === 'AbortError') {
         const e = new Error('Сервер не отвечает. Подождите пару секунд и обновите страницу.');
         e.status = 0;
+        e.aborted = true;
         throw e;
       }
       const e = new Error('Сеть недоступна или соединение оборвалось. Попробуйте ещё раз.');

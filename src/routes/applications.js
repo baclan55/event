@@ -72,6 +72,7 @@ async function notifyDiscord(app) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8_000),
     });
   } catch (err) {
     console.error('[applications] не удалось отправить уведомление в Discord:', err.message);
@@ -114,7 +115,13 @@ router.get('/', requireRoleIn(APPLICATIONS_ROLES), async (req, res, next) => {
        LEFT JOIN users cu ON cu.id = a.candidate_user_id
        ORDER BY a.created_at DESC`
     );
-    res.json({ applications: rows });
+    const { rows: settingsRows } = await pool.query(
+      'SELECT is_open FROM applications_settings WHERE id = 1'
+    );
+    res.json({
+      applications: rows,
+      isOpen: settingsRows.length ? settingsRows[0].is_open : true,
+    });
   } catch (err) {
     next(err);
   }

@@ -1,8 +1,9 @@
 services:
-  # NB: при DATABASE_URL, указывающем на внешний Neon (см. сервис app ниже),
-  # этот локальный Postgres не нужен — сервис можно вообще удалить из файла.
-  # Оставлен на случай, если понадобится локальная БД для теста.
+  # Локальный Postgres — только с профилем local-db:
+  #   docker compose --profile local-db up -d
+  # При Neon (DATABASE_URL на *.neon.tech) профиль не нужен.
   db:
+    profiles: ["local-db"]
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -11,7 +12,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-eventportal}
     volumes:
       - db-data:/var/lib/postgresql/data
-    # Порт БД наружу не публикуем — доступ только из docker-сети (app/pgadmin).
     expose:
       - "5432"
     healthcheck:
@@ -25,29 +25,20 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    # Явный список переменных вместо env_file: -.env.
-    # Portainer подставляет сюда значения из раздела "Environment variables"
-    # стека (Stack -> Environment variables) через синтаксис ${VAR} — это
-    # работает и в обычном Compose-режиме, и в Swarm-режиме, в отличие от
-    # env_file, который Swarm игнорирует. Заведите в Portainer переменную
-    # с именем ровно как слева от двоеточия (например DATABASE_URL) —
-    # значение справа ${DATABASE_URL} подставится автоматически.
     environment:
-      # Локальный db: postgresql://eventportal:eventportal@db:5432/eventportal
-      # Neon: строка с ?sslmode=require. Явно: DATABASE_SSL=true|false.
       DATABASE_URL: ${DATABASE_URL}
       DATABASE_SSL: ${DATABASE_SSL:-}
       SESSION_SECRET: ${SESSION_SECRET}
       DISCORD_OWNER_ID: ${DISCORD_OWNER_ID}
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
-      # Должен совпадать с Discord Developer Portal:
-      # https://event.mjdn.ru/api/auth/discord/callback
       DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI:-https://event.mjdn.ru/api/auth/discord/callback}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
       DISCORD_EVENTS_CHANNEL_ID: ${DISCORD_EVENTS_CHANNEL_ID}
       DISCORD_EVENTS_SOURCE_BOT_ID: ${DISCORD_EVENTS_SOURCE_BOT_ID}
       EVENT_BOT_CATCHUP_LIMIT: ${EVENT_BOT_CATCHUP_LIMIT}
+      EVENT_BOT_CATCHUP_DELAY_MS: ${EVENT_BOT_CATCHUP_DELAY_MS:-15000}
+      APPLY_SCHEMA_ON_START: ${APPLY_SCHEMA_ON_START:-1}
       APPLICATIONS_WEBHOOK_URL: ${APPLICATIONS_WEBHOOK_URL}
       CLOUDINARY_URL: ${CLOUDINARY_URL}
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
@@ -59,23 +50,29 @@ services:
       WEEKLY_RESET_TZ: ${WEEKLY_RESET_TZ:-Europe/Moscow}
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
-      # Канонический хост — Express отклоняет запросы с другим Host
-      # (на случай, если порт 3000 когда-то случайно опубликуют).
       APP_DOMAIN: ${APP_DOMAIN:-event.mjdn.ru}
-    depends_on:
-      db:
-        condition: service_healthy
-    # Порт 3000 наружу НЕ публикуем — вход только через Caddy :443.
+      # Бот вынесен в сервис event-bot — в app его не поднимаем.
+      DISABLE_EMBEDDED_BOT: ${DISABLE_EMBEDDED_BOT:-1}
     expose:
       - "3000"
 
-  # Авто-HTTPS (Let's Encrypt) для APP_DOMAIN → reverse_proxy на app:3000.
-  # В Portainer: APP_DOMAIN=event.mjdn.ru
-  # DNS: A-запись event.mjdn.ru → IP VDS (если Cloudflare — DNS only / серое облако
-  # на время выпуска сертификата, либо полный прокси с Flexible/Full по ситуации).
-  # Порты 80 и 443 на VDS должны быть открыты.
-  # Caddyfile пишется внутри контейнера (без bind-mount — иначе Portainer
-  # создаёт пустую папку /data/compose/.../Caddyfile и падает).
+  # Discord-бот учёта посещаемости — отдельный процесс (свой пул/restart).
+  event-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: on-failure
+    command: ["node", "src/bot/standalone.js"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SSL: ${DATABASE_SSL:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      DISCORD_EVENTS_CHANNEL_ID: ${DISCORD_EVENTS_CHANNEL_ID}
+      DISCORD_EVENTS_SOURCE_BOT_ID: ${DISCORD_EVENTS_SOURCE_BOT_ID}
+      EVENT_BOT_CATCHUP_LIMIT: ${EVENT_BOT_CATCHUP_LIMIT}
+      EVENT_BOT_CATCHUP_DELAY_MS: ${EVENT_BOT_CATCHUP_DELAY_MS:-15000}
+      NODE_ENV: ${NODE_ENV:-production}
+    # Без токена process.exit(0) — on-failure не зациклит.
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -93,13 +90,16 @@ services:
         {
         	email $${ACME_EMAIL}
         }
-        $${APP_DOMAIN} {
+        https://$${APP_DOMAIN} {
         	encode gzip
         	reverse_proxy app:3000 {
-        		header_up X-Forwarded-Proto {scheme}
+        		header_up X-Forwarded-Proto https
         		header_up X-Forwarded-Host {host}
         		header_up X-Real-IP {remote_host}
         	}
+        }
+        http://$${APP_DOMAIN} {
+        	redir https://$${APP_DOMAIN}{uri} permanent
         }
         :80, :443 {
         	respond "Not Found" 404
@@ -112,10 +112,9 @@ services:
     depends_on:
       - app
 
-  # Web-админка PostgreSQL (pgAdmin) → сервис db.
-  # Только внутри docker-сети по умолчанию; наружу не публикуем.
-  # Если нужен доступ с хоста — временно добавьте ports: ["127.0.0.1:5050:80"].
+  # Web-админка PostgreSQL — только с профилем local-db.
   pgadmin:
+    profiles: ["local-db"]
     image: dpage/pgadmin4:8
     restart: unless-stopped
     environment:

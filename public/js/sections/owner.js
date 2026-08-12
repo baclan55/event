@@ -8,12 +8,9 @@ window.Sections.owner = {
 
     let users = [], roles = [];
     try {
-      const [uData, rData] = await Promise.all([
-        api.get('/api/owner/users'),
-        api.get('/api/roster/roles'),
-      ]);
+      const uData = await api.get('/api/owner/users');
       users = uData.users;
-      roles = rData.roles;
+      roles = uData.roles || [];
     } catch (e) {
       container.innerHTML = `<div class="empty-state"><h3>Не удалось загрузить пользователей</h3><p>${esc(e.message)}</p></div>`;
       return;
@@ -107,6 +104,7 @@ window.Sections.owner = {
     async function reload() {
       const data = await api.get('/api/owner/users');
       users = data.users;
+      if (Array.isArray(data.roles)) roles = data.roles;
       paint();
     }
   },

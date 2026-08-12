@@ -78,12 +78,9 @@ window.Sections.vacations = (function () {
       let all = [];
       let mine = [];
       try {
-        const [allData, mineData] = await Promise.all([
-          api.get('/api/vacations'),
-          api.get('/api/vacations/mine'),
-        ]);
-        all = allData.vacations;
-        mine = mineData.vacations;
+        const data = await api.get('/api/vacations');
+        all = data.vacations;
+        mine = data.mine || [];
       } catch (e) {
         container.innerHTML = `<div class="empty-state"><h3>Не удалось загрузить отпуска</h3><p>${esc(e.message)}</p></div>`;
         return;
@@ -299,9 +296,9 @@ window.Sections.vacations = (function () {
       }
 
       async function reload() {
-        const [allData, mineData] = await Promise.all([api.get('/api/vacations'), api.get('/api/vacations/mine')]);
-        all = allData.vacations;
-        mine = mineData.vacations;
+        const data = await api.get('/api/vacations');
+        all = data.vacations;
+        mine = data.mine || [];
         vacNorm = normalizeAll(all);
         paint();
       }

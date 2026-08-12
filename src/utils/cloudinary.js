@@ -3,12 +3,6 @@ const cloudinary = require('cloudinary').v2;
 // Cloudinary включается опционально: если переменные окружения не заданы,
 // isConfigured() вернёт false и роуты аватаров продолжат работать по-старому
 // (файл целиком сохраняется в Postgres, как раньше — см. src/db/images.js).
-//
-// Поддерживаются два способа настройки (нужен только один):
-//   1) CLOUDINARY_URL=cloudinary://<api_key>:<api_secret>@<cloud_name>
-//      (сама библиотека cloudinary читает эту переменную автоматически)
-//   2) три отдельные переменные:
-//      CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
 if (!process.env.CLOUDINARY_URL && process.env.CLOUDINARY_CLOUD_NAME) {
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -23,12 +17,18 @@ function isConfigured() {
   return Boolean(cfg.cloud_name && cfg.api_key && cfg.api_secret);
 }
 
-// Загружает буфер (req.file.buffer от multer) в Cloudinary. Сразу приводим
-// аватар к квадрату 512×512 с фокусом на лицо (gravity: 'face') — не
-// обязательно, но избавляет от лишней ручной обрезки на фронтенде.
-// Возвращает { url, publicId }.
+function withTimeout(promise, ms, label) {
+  let timer;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms);
+    }),
+  ]);
+}
+
 function uploadAvatar(buffer) {
-  return new Promise((resolve, reject) => {
+  const upload = new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
         folder: 'events-denver/avatars',
@@ -42,15 +42,13 @@ function uploadAvatar(buffer) {
     );
     stream.end(buffer);
   });
+  return withTimeout(upload, 20_000, 'cloudinary upload');
 }
 
-// Удаляет старый аватар при замене на новый — иначе в аккаунте Cloudinary
-// будут копиться "осиротевшие" картинки. Ошибку намеренно не пробрасываем
-// дальше: неудачное удаление старого файла не должно ломать загрузку нового.
 async function deleteAvatar(publicId) {
   if (!publicId) return;
   try {
-    await cloudinary.uploader.destroy(publicId);
+    await withTimeout(cloudinary.uploader.destroy(publicId), 10_000, 'cloudinary destroy');
   } catch (err) {
     console.error('[cloudinary] не удалось удалить старый аватар:', err.message);
   }

@@ -51,8 +51,16 @@ const App = {
 
   async init() {
     document.body.insertAdjacentHTML('afterbegin', '<div class="bg-decor"></div>');
-    await Auth.bootstrap();
     window.addEventListener('hashchange', App.router);
+    // Сразу рисуем каркас (home), не дожидаясь API — иначе белый экран на весь bootstrap.
+    const hash = (window.location.hash || '#/home').replace('#/', '');
+    if (App.siteKeys.includes(hash) || !window.location.hash) {
+      App.currentKey = App.siteKeys.includes(hash) ? hash : 'home';
+      App.renderSite(App.currentKey);
+    } else {
+      document.getElementById('app').innerHTML = '<div class="empty-state">Загрузка…</div>';
+    }
+    await Auth.bootstrap();
     App.router();
   },
 

@@ -28,14 +28,28 @@ function maskReason(row, viewer) {
 // в отпуске.
 router.get('/', requireAnyRole, async (req, res, next) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT ${SELECT_FIELDS}
-       FROM vacations v
-       JOIN users u ON u.id = v.user_id
-       LEFT JOIN users rb ON rb.id = v.reviewed_by
-       ORDER BY v.start_date ASC`
-    );
-    res.json({ vacations: rows.map((r) => maskReason(r, req.user)) });
+    const [allResult, mineResult] = await Promise.all([
+      pool.query(
+        `SELECT ${SELECT_FIELDS}
+         FROM vacations v
+         JOIN users u ON u.id = v.user_id
+         LEFT JOIN users rb ON rb.id = v.reviewed_by
+         ORDER BY v.start_date ASC`
+      ),
+      pool.query(
+        `SELECT ${SELECT_FIELDS}
+         FROM vacations v
+         JOIN users u ON u.id = v.user_id
+         LEFT JOIN users rb ON rb.id = v.reviewed_by
+         WHERE v.user_id = $1
+         ORDER BY v.created_at DESC`,
+        [req.user.id]
+      ),
+    ]);
+    res.json({
+      vacations: allResult.rows.map((r) => maskReason(r, req.user)),
+      mine: mineResult.rows,
+    });
   } catch (err) {
     next(err);
   }

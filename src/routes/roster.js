@@ -23,17 +23,18 @@ router.get('/', requireAnyRole, async (req, res, next) => {
        LEFT JOIN roles r ON r.id = u.role_id
        ORDER BY COALESCE(r.priority, 999) ASC, u.nickname ASC`
     );
-    // Полный набор ролей на каждого (сотрудник может иметь несколько сразу)
-    // — одним запросом на всех, чтобы не дёргать базу в цикле. role_name/
-    // role_priority выше остаются "основной" (высшей по приоритету) ролью
-    // — используются для группировки/сортировки/тира, как и раньше.
     const rolesMap = await getRolesForUsers(rows.map((m) => m.id));
     const members = rows.map((m) => ({
       ...m,
       tier: tierForPriority(m.role_priority),
       roles: rolesMap.get(m.id) || [],
     }));
-    res.json({ members, target: TARGET });
+    // Справочник ролей в том же ответе — фронту не нужен второй round-trip
+    // на /api/roster/roles при открытии «Состава».
+    const { rows: roleRows } = await pool.query(
+      'SELECT id, name, priority FROM roles ORDER BY priority ASC'
+    );
+    res.json({ members, target: TARGET, roles: roleRows });
   } catch (err) {
     next(err);
   }
@@ -124,6 +125,9 @@ router.post('/:id/avatar', requireRoleIn(EDIT_ROLES), upload.single('image'), as
       if (oldPublicId) cloudinary.deleteAvatar(oldPublicId);
       res.json({ ok: true, avatarUrl: url });
     } else {
+      if (process.env.NODE_ENV === 'production') {
+        console.warn('[roster] Cloudinary не настроен — аватар пишется в Postgres (BYTEA).');
+      }
       const imageId = await saveImage(req.file);
       await pool.query('UPDATE users SET avatar_image_id = $1 WHERE id = $2', [imageId, req.params.id]);
       res.json({ ok: true, imageId });

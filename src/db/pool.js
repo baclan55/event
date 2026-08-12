@@ -50,13 +50,15 @@ function resolveSsl(connectionString) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: resolveSsl(process.env.DATABASE_URL),
-  // Не висеть бесконечно на мёртвых/«спящих» соединениях после простоя.
-  connectionTimeoutMillis: 15_000,
+  connectionTimeoutMillis: 10_000,
   idleTimeoutMillis: 20_000,
   max: 10,
   allowExitOnIdle: true,
   keepAlive: true,
   keepAliveInitialDelayMillis: 10_000,
+  // Не держать зависшие запросы бесконечно (Neon/сеть).
+  statement_timeout: 20_000,
+  query_timeout: 20_000,
 });
 
 pool.on('error', (err) => {

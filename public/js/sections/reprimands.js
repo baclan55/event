@@ -14,13 +14,10 @@ window.Sections.reprimands = {
       admin: { points: 3, decayDays: 10 },
     };
     try {
-      const [rpData, rosterData] = await Promise.all([
-        api.get('/api/reprimands'),
-        api.get('/api/roster'),
-      ]);
+      const rpData = await api.get('/api/reprimands');
       items = rpData.reprimands;
       limits = rpData.limits;
-      members = rosterData.members;
+      members = rpData.members || [];
     } catch (e) {
       container.innerHTML = `<div class="empty-state"><h3>Не удалось загрузить выговоры</h3><p>${esc(e.message)}</p></div>`;
       return;
@@ -336,13 +333,10 @@ window.Sections.reprimands = {
     }
 
     async function reload() {
-      const [rpData, rosterData] = await Promise.all([
-        api.get('/api/reprimands'),
-        api.get('/api/roster'),
-      ]);
+      const rpData = await api.get('/api/reprimands');
       items = rpData.reprimands;
       limits = rpData.limits;
-      members = rosterData.members;
+      members = rpData.members || [];
       paint();
     }
   },

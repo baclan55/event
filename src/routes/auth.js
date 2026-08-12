@@ -8,6 +8,21 @@ const { requireAnyRole } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Канонический Discord redirect URI: всегда https + APP_DOMAIN в проде.
+// Иначе при DISCORD_REDIRECT_URI=http://... Discord возвращает колбэк без TLS,
+// secure-cookie сессии не ставится, вход «ломается».
+function getDiscordRedirectUri() {
+  const domain = (process.env.APP_DOMAIN || '').trim().toLowerCase();
+  if (domain) return `https://${domain}/api/auth/discord/callback`;
+
+  const fromEnv = (process.env.DISCORD_REDIRECT_URI || '').trim();
+  if (!fromEnv) return null;
+  if (process.env.NODE_ENV === 'production' && fromEnv.startsWith('http://')) {
+    return `https://${fromEnv.slice('http://'.length)}`;
+  }
+  return fromEnv;
+}
+
 function publicUser(u) {
   if (!u) return null;
   return {
@@ -68,8 +83,6 @@ router.post('/me/avatar', requireAnyRole, upload.single('image'), async (req, re
 
     let rows;
     if (cloudinary.isConfigured()) {
-      // Cloudinary настроен (см. README) — грузим туда, а старый файл (если
-      // был) удаляем, чтобы не копить мусор в аккаунте Cloudinary.
       const { url, publicId } = await cloudinary.uploadAvatar(req.file.buffer);
       const oldPublicId = req.user.avatar_public_id;
       ({ rows } = await pool.query(
@@ -81,7 +94,9 @@ router.post('/me/avatar', requireAnyRole, upload.single('image'), async (req, re
       ));
       if (oldPublicId) cloudinary.deleteAvatar(oldPublicId);
     } else {
-      // Cloudinary не настроен — прежнее поведение: файл целиком в Postgres.
+      if (process.env.NODE_ENV === 'production') {
+        console.warn('[auth] Cloudinary не настроен — аватар пишется в Postgres (BYTEA).');
+      }
       const imageId = await saveImage(req.file);
       ({ rows } = await pool.query(
         `UPDATE users SET avatar_image_id = $1 WHERE id = $2
@@ -118,11 +133,11 @@ router.post('/logout', (req, res) => {
 // ---------------------------------------------------------------------------
 router.get('/discord', (req, res) => {
   const clientId = process.env.DISCORD_CLIENT_ID;
-  const redirectUri = process.env.DISCORD_REDIRECT_URI;
+  const redirectUri = getDiscordRedirectUri();
   if (!clientId || !redirectUri) {
     return res.status(400).send(
       'Вход через Discord не настроен. Задайте DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET ' +
-      'и DISCORD_REDIRECT_URI в файле .env (см. .env.example и README.md).'
+      'и APP_DOMAIN (или DISCORD_REDIRECT_URI) в окружении.'
     );
   }
   // Согласие на обработку персональных данных обязательно (чекбокс в окне
@@ -215,7 +230,7 @@ router.get('/discord/callback', async (req, res, next) => {
   try {
     const clientId = process.env.DISCORD_CLIENT_ID;
     const clientSecret = process.env.DISCORD_CLIENT_SECRET;
-    const redirectUri = process.env.DISCORD_REDIRECT_URI;
+    const redirectUri = getDiscordRedirectUri();
     const { code, state } = req.query;
     if (!clientId || !clientSecret || !redirectUri) {
       return res.status(400).send('Вход через Discord не настроен на сервере.');
@@ -242,6 +257,7 @@ router.get('/discord/callback', async (req, res, next) => {
           code: String(code),
           redirect_uri: redirectUri,
         }),
+        signal: AbortSignal.timeout(10_000),
       });
     } catch (err) {
       console.error('[discord] token exchange network error:', err.message);
@@ -262,6 +278,7 @@ router.get('/discord/callback', async (req, res, next) => {
     try {
       userRes = await fetch('https://discord.com/api/users/@me', {
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        signal: AbortSignal.timeout(10_000),
       });
     } catch (err) {
       console.error('[discord] users/@me network error:', err.message);
@@ -280,6 +297,12 @@ router.get('/discord/callback', async (req, res, next) => {
     await new Promise((resolve, reject) => {
       req.session.save((err) => (err ? reject(err) : resolve()));
     });
+    // Абсолютный https-редирект: если Discord вернул колбэк на http://
+    // (устаревший redirect URI), не оставляем пользователя на незащищённом URL.
+    const domain = (process.env.APP_DOMAIN || '').trim().toLowerCase();
+    if (domain) {
+      return res.redirect(302, `https://${domain}${redirectPath}`);
+    }
     res.redirect(redirectPath);
   } catch (err) {
     next(err);
