@@ -277,7 +277,25 @@ router.get('/discord/callback', async (req, res, next) => {
       const relayData = await relayRes.json().catch(() => ({}));
       if (!relayRes.ok || !relayData.discordUser || !relayData.discordUser.id) {
         console.error('[discord] relay failed:', relayRes.status, relayData);
-        return res.status(400).send('Не удалось подтвердить вход через Discord (relay).');
+        const detail = relayData.error || relayData.detail || `HTTP ${relayRes.status}`;
+        if (relayRes.status === 403) {
+          return res.status(400).send(
+            'Relay вернул Forbidden: не совпадает DISCORD_RELAY_SECRET ' +
+            '(Portainer ↔ Cloudflare Worker).'
+          );
+        }
+        if (relayData.error === 'token_exchange_failed') {
+          return res.status(400).send(
+            'Discord отклонил обмен кода. Проверьте на Worker секреты DISCORD_CLIENT_ID/SECRET ' +
+            'и Redirect URI: https://event.mjdn.ru/api/auth/discord/callback'
+          );
+        }
+        if (relayData.error === 'Discord secrets не заданы на Worker' || relayRes.status === 500) {
+          return res.status(400).send(
+            'На Cloudflare Worker не заданы DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET.'
+          );
+        }
+        return res.status(400).send(`Не удалось подтвердить вход через Discord (relay): ${detail}`);
       }
       discordUser = relayData.discordUser;
     } else {
