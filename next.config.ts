@@ -3,17 +3,15 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   output: 'standalone',
   poweredByHeader: false,
-  compress: true,
+  // Сжатие делает Cloudflare; на origin мешает и даёт HTTP/2 protocol error.
+  compress: false,
   async headers() {
-    // HTML главной не кэшировать на год (дефолт force-static).
     return [
       {
-        source: '/',
-        headers: [{ key: 'Cache-Control', value: 'public, max-age=0, s-maxage=60, must-revalidate' }],
-      },
-      {
-        source: '/apply',
-        headers: [{ key: 'Cache-Control', value: 'public, max-age=0, s-maxage=60, must-revalidate' }],
+        source: '/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-cache, no-store, max-age=0, must-revalidate' },
+        ],
       },
     ];
   },
