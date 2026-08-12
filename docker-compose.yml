@@ -21,10 +21,9 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    ports:
-      - "80:3000"
-    # Переменные из Portainer Stack → Environment подставляются в ${...}.
-    # Локально: скопируйте .env.example → .env рядом с compose.
+    # Порт наружу не публикуем — только через Caddy.
+    expose:
+      - "3000"
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://eventportal:eventportal@db:5432/eventportal}
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET обязателен}
@@ -66,6 +65,46 @@ services:
       db:
         condition: service_healthy
 
+  # HTTPS + прокси на Next (app:3000). Cloudflare → VDS:80/443 → Caddy → app.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-event.mjdn.ru}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@event.mjdn.ru}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        cat > /etc/caddy/Caddyfile <<EOF
+        {
+        	email $${ACME_EMAIL}
+        }
+        https://$${APP_DOMAIN} {
+        	encode gzip
+        	reverse_proxy app:3000 {
+        		header_up X-Forwarded-Proto https
+        		header_up X-Forwarded-Host {host}
+        		header_up X-Real-IP {remote_host}
+        	}
+        }
+        http://$${APP_DOMAIN} {
+        	redir https://$${APP_DOMAIN}{uri} permanent
+        }
+        :80, :443 {
+        	respond "Not Found" 404
+        }
+        EOF
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
   pgadmin:
     profiles: ["tools"]
     image: dpage/pgadmin4:8
@@ -84,4 +123,6 @@ services:
 
 volumes:
   db-data:
+  caddy-data:
+  caddy-config:
   pgadmin-data:
