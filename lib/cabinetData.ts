@@ -6,6 +6,7 @@ import { rawBodyForEdit, renderBody } from '@/lib/richText';
 import { getRolesForUsers } from '@/lib/roles';
 import { tierForPriority } from '@/lib/tier';
 import { VACATIONS_REVIEW_ROLES, userHasRoleIn } from '@/lib/roleAccess';
+import { ADMIN_POINT_DECAY_DAYS, adminPointActive } from '@/lib/reprimandRules';
 
 export async function requirePortalUser(): Promise<PublicUser> {
   const user = publicUser(await getCurrentUser());
@@ -32,10 +33,8 @@ export async function loadDashboard() {
 
 export async function loadReprimandsMe(userId: number) {
   try {
-    // Не выбираем новые служебные колонки (converted и т.п.): профиль должен
-    // работать и до применения последней миграции схемы.
     const r = await query<Record<string, unknown>>(
-      `SELECT rp.id, rp.reason, rp.type, rp.created_at,
+      `SELECT rp.id, rp.reason, rp.type, rp.created_at, rp.converted, rp.auto_generated,
               ib.nickname AS issued_by_nickname
        FROM reprimands rp
        LEFT JOIN users ib ON ib.id = rp.issued_by
@@ -43,7 +42,15 @@ export async function loadReprimandsMe(userId: number) {
        ORDER BY rp.created_at DESC`,
       [userId]
     );
-    return r.rows;
+    return r.rows.map((row) => ({
+      ...row,
+      active: row.type === 'point'
+        ? adminPointActive(row.created_at as string)
+        : !(row.type === 'verbal' && row.converted),
+      expires_at: row.type === 'point'
+        ? new Date(new Date(row.created_at as string).getTime() + ADMIN_POINT_DECAY_DAYS * 864e5).toISOString()
+        : null,
+    }));
   } catch (error) {
     console.error('[cabinet] Не удалось загрузить выговоры профиля:', (error as Error).message);
     return [];
@@ -125,12 +132,18 @@ export async function loadVacations(viewer?: PublicUser) {
 }
 
 export async function loadApplications() {
-  const r = await query<Record<string, unknown>>(
-    `SELECT a.*, rb.nickname AS reviewed_by_nickname
-     FROM applications a LEFT JOIN users rb ON rb.id = a.reviewed_by
-     ORDER BY a.created_at DESC LIMIT 100`
-  );
-  return r.rows;
+  const [applications, settings] = await Promise.all([
+    query<Record<string, unknown>>(
+      `SELECT a.*, rb.nickname AS reviewed_by_nickname
+       FROM applications a LEFT JOIN users rb ON rb.id = a.reviewed_by
+       ORDER BY a.created_at DESC LIMIT 100`
+    ),
+    query<{ is_open: boolean }>('SELECT is_open FROM applications_settings WHERE id=1'),
+  ]);
+  return {
+    rows: applications.rows,
+    isOpen: settings.rows[0]?.is_open ?? true,
+  };
 }
 
 export async function loadCandidates() {

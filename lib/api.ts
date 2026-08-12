@@ -56,6 +56,7 @@ async function login(discordUser: { id: string; username: string; avatar?: strin
     userId = inserted.rows[0].id;
   }
   if (owner) await query('UPDATE users SET is_owner=TRUE,is_admin=TRUE WHERE id=$1', [userId]);
+  invalidateUserCache(userId);
   session.userId = userId; const ret = session.discordOAuthReturnTo; delete session.discordOAuthReturnTo; return ret === 'apply' ? '/apply' : '/app/faq';
 }
 
@@ -114,7 +115,53 @@ export async function handle(key: string, request: NextRequest, context: Ctx): P
     if (key.startsWith('rule')) { const u=await required(method==='GET'?undefined:EDIT_ROLES); if(u instanceof NextResponse)return u; const b=await body(request); if(key==='rules'&&method==='GET'){const r=await query<Record<string,unknown>>('SELECT id,position,title,body,image_id,updated_at FROM rules ORDER BY position,id');return NextResponse.json({rules:r.rows.map(x=>({...x,body:renderBody(x.body),bodyRaw:rawBodyForEdit(x.body)}))});} if(key==='rules'&&method==='POST'){const title=String(b.title||'').trim();if(!title)return jsonError('Укажите заголовок правила.',400);const n=await query<{next:number}>('SELECT COALESCE(MAX(position),-1)+1 AS next FROM rules');const r=await query<{id:number}>('INSERT INTO rules(position,title,body) VALUES($1,$2,$3) RETURNING id',[n.rows[0].next,title,normalizeMarkdownSource(String(b.body||''))]);return ok({id:r.rows[0].id});} if(key==='rules-reorder'){if(!Array.isArray(b.order))return jsonError('order должен быть массивом id.',400);await Promise.all(b.order.map((v,i)=>query('UPDATE rules SET position=$1 WHERE id=$2',[i,v])));return ok();} if(key==='rule-image'){if(method==='DELETE'){await query('UPDATE rules SET image_id=NULL,updated_at=now() WHERE id=$1',[id(p.id)]);return ok();}const f=await image(request);if(!f||f instanceof Error)return jsonError(f?.message||'Файл не получен.',400);const imageId=await saveImage(f);await query('UPDATE rules SET image_id=$1,updated_at=now() WHERE id=$2',[imageId,id(p.id)]);return ok({imageId});} if(method==='DELETE'){await query('DELETE FROM rules WHERE id=$1',[id(p.id)]);return ok();}const title=String(b.title||'').trim();if(!title)return jsonError('Укажите заголовок правила.',400);await query('UPDATE rules SET title=$1,body=$2,updated_at=now() WHERE id=$3',[title,normalizeMarkdownSource(String(b.body||'')),id(p.id)]);return ok();}
     if (key.startsWith('roster')) { const u=await required(key==='roster'&&method==='GET'||key==='roster-roles'?undefined:EDIT_ROLES);if(u instanceof NextResponse)return u;const b=await body(request);if(key==='roster-roles'){const r=await query('SELECT id,name,priority FROM roles ORDER BY priority');return NextResponse.json({roles:r.rows});}if(key==='roster'&&method==='GET'){const r=await query<Record<string,unknown>>('SELECT u.id,u.nickname,u.discord_username,u.avatar_image_id,u.avatar_url,u.weekly_events,u.note,u.role_id,u.status,u.is_blocked,u.blocked_at,r.name role_name,r.priority role_priority FROM users u LEFT JOIN roles r ON r.id=u.role_id ORDER BY COALESCE(r.priority,999),u.nickname');const roles=await getRolesForUsers(r.rows.map(x=>x.id as number));const all=await query('SELECT id,name,priority FROM roles ORDER BY priority');return NextResponse.json({members:r.rows.map(x=>({...x,tier:tierForPriority(x.role_priority as number),roles:roles.get(x.id as number)||[]})),target:Number(process.env.WEEKLY_EVENTS_TARGET)||5,roles:all.rows});}if(key==='roster-user'&&method==='DELETE'){const x=await query<{is_owner:boolean}>('SELECT is_owner FROM users WHERE id=$1',[id(p.id)]);if(x.rows[0]?.is_owner)return jsonError('Нельзя удалить владельца из состава.',400);await query('DELETE FROM users WHERE id=$1',[id(p.id)]);invalidateUserCache(p.id);return ok();}const nickname=String(b.nickname||'').trim();if(!nickname)return jsonError('Укажите никнейм участника.',400);const roleIds=Array.isArray(b.roleIds)?b.roleIds:b.roleId?[b.roleId]:[];if(key==='roster'){const x=await query<{id:number}>('INSERT INTO users(nickname,weekly_events,note) VALUES($1,$2,$3) RETURNING id',[nickname,Number(b.weeklyEvents)||0,String(b.note||'')]);if(roleIds.length)await replaceUserRoles(x.rows[0].id,roleIds as number[]);return ok({id:x.rows[0].id});}await query('UPDATE users SET nickname=$1,weekly_events=COALESCE($2::integer,weekly_events),note=$3 WHERE id=$4',[nickname,Number.isFinite(Number(b.weeklyEvents))?Number(b.weeklyEvents):null,String(b.note||''),id(p.id)]);await replaceUserRoles(id(p.id),roleIds as number[]);invalidateUserCache(p.id);return ok();}
     if (key==='applications-status') {if(method==='GET'){const r=await query<{is_open:boolean}>('SELECT is_open FROM applications_settings WHERE id=1');return NextResponse.json({isOpen:r.rows[0]?.is_open??true});}const u=await required(APPLICATIONS_ROLES);if(u instanceof NextResponse)return u;const isOpen=b.isOpen===true||b.isOpen==='true';await query('UPDATE applications_settings SET is_open=$1,updated_by=$2,updated_at=now() WHERE id=1',[isOpen,u.id]);return ok({isOpen});}
-    if (key==='vacations-mine'||key==='vacations'||key==='vacation') {const u=await required();if(u instanceof NextResponse)return u;const fields='v.id,v.user_id,v.start_date,v.end_date,v.reason,v.status,v.created_at,v.reviewed_by,v.reviewed_at,u.nickname,u.avatar_image_id,u.avatar_url,rb.nickname reviewed_by_nickname';if(key==='vacations-mine'){const r=await query(`SELECT ${fields} FROM vacations v JOIN users u ON u.id=v.user_id LEFT JOIN users rb ON rb.id=v.reviewed_by WHERE v.user_id=$1 ORDER BY v.created_at DESC`,[u.id]);return NextResponse.json({vacations:r.rows});}if(key==='vacations'&&method==='GET'){const r=await query<Record<string,unknown>>(`SELECT ${fields} FROM vacations v JOIN users u ON u.id=v.user_id LEFT JOIN users rb ON rb.id=v.reviewed_by ORDER BY v.start_date`);const mine=r.rows.filter(x=>x.user_id===u.id);return NextResponse.json({vacations:r.rows.map(x=>({...x,reason:u.is_owner||u.id===x.user_id||userHasRoleIn(u,VACATIONS_REVIEW_ROLES)?x.reason:''})),mine});}if(key==='vacations'){const start=String(b.startDate||''),end=String(b.endDate||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end)||end<start)return jsonError('Укажите корректный период отпуска.',400);const r=await query<{id:number}>('INSERT INTO vacations(user_id,start_date,end_date,reason) VALUES($1,$2,$3,$4) RETURNING id',[u.id,start,end,String(b.reason||'')]);return ok({id:r.rows[0].id});}if(method==='DELETE'){const x=await required(VACATIONS_REVIEW_ROLES);if(x instanceof NextResponse)return x;await query('DELETE FROM vacations WHERE id=$1',[id(p.id)]);return ok();}const v=await query<{user_id:number,status:string}>('SELECT user_id,status FROM vacations WHERE id=$1',[id(p.id)]);if(!v.rows[0])return jsonError('Заявка не найдена.',404);const status=String(b.status);const reviewer=userHasRoleIn(u,VACATIONS_REVIEW_ROLES);if(!reviewer&&!(status==='cancelled'&&v.rows[0].user_id===u.id&&v.rows[0].status==='pending'))return jsonError('Недостаточно прав для рассмотрения заявок на отпуск.',403);await query('UPDATE vacations SET status=$1,reviewed_by=$2,reviewed_at=now() WHERE id=$3',[status,u.id,id(p.id)]);return ok();}
+    if (key === 'vacations-mine' || key === 'vacations' || key === 'vacation') {
+      const u = await required();
+      if (u instanceof NextResponse) return u;
+      const fields = 'v.id,v.user_id,v.start_date,v.end_date,v.reason,v.status,v.created_at,v.reviewed_by,v.reviewed_at,u.nickname,u.avatar_image_id,u.avatar_url,rb.nickname reviewed_by_nickname';
+      if (key === 'vacations-mine') {
+        const r = await query(`SELECT ${fields} FROM vacations v JOIN users u ON u.id=v.user_id LEFT JOIN users rb ON rb.id=v.reviewed_by WHERE v.user_id=$1 ORDER BY v.created_at DESC`, [u.id]);
+        return NextResponse.json({ vacations: r.rows });
+      }
+      if (key === 'vacations' && method === 'GET') {
+        const r = await query<Record<string, unknown>>(`SELECT ${fields} FROM vacations v JOIN users u ON u.id=v.user_id LEFT JOIN users rb ON rb.id=v.reviewed_by ORDER BY v.start_date`);
+        const mine = r.rows.filter((x) => x.user_id === u.id);
+        return NextResponse.json({
+          vacations: r.rows.map((x) => ({
+            ...x,
+            reason: u.is_owner || u.id === x.user_id || userHasRoleIn(u, VACATIONS_REVIEW_ROLES) ? x.reason : '',
+          })),
+          mine,
+        });
+      }
+      if (key === 'vacations') {
+        const start = String(b.startDate || '');
+        const end = String(b.endDate || '');
+        const reason = String(b.reason || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || end < start) {
+          return jsonError('Укажите корректный период отпуска.', 400);
+        }
+        if (reason.length > 500) return jsonError('Причина слишком длинная (максимум 500 символов).', 400);
+        const r = await query<{ id: number }>('INSERT INTO vacations(user_id,start_date,end_date,reason) VALUES($1,$2,$3,$4) RETURNING id', [u.id, start, end, reason]);
+        return ok({ id: r.rows[0].id });
+      }
+      if (method === 'DELETE') {
+        const x = await required(VACATIONS_REVIEW_ROLES);
+        if (x instanceof NextResponse) return x;
+        await query('DELETE FROM vacations WHERE id=$1', [id(p.id)]);
+        return ok();
+      }
+      const v = await query<{ user_id: number; status: string }>('SELECT user_id,status FROM vacations WHERE id=$1', [id(p.id)]);
+      if (!v.rows[0]) return jsonError('Заявка не найдена.', 404);
+      const status = String(b.status);
+      if (!['approved', 'rejected', 'cancelled'].includes(status)) return jsonError('Некорректный статус заявки.', 400);
+      const reviewer = userHasRoleIn(u, VACATIONS_REVIEW_ROLES);
+      const ownPendingCancellation = status === 'cancelled' && v.rows[0].user_id === u.id && v.rows[0].status === 'pending';
+      if (!reviewer && !ownPendingCancellation) return jsonError('Недостаточно прав для рассмотрения заявок на отпуск.', 403);
+      if (v.rows[0].status !== 'pending' && status !== 'cancelled') return jsonError('Рассмотренную заявку нельзя изменить повторно.', 400);
+      await query('UPDATE vacations SET status=$1,reviewed_by=$2,reviewed_at=now() WHERE id=$3', [status, reviewer ? u.id : null, id(p.id)]);
+      return ok();
+    }
 
     if (key.startsWith('reprimand')) {
       if (key === 'reprimands-me') {
@@ -191,9 +238,12 @@ export async function handle(key: string, request: NextRequest, context: Ctx): P
       const reason = String(b.reason || '').trim();
       let type = String(b.type || '').trim();
       if (!userId || !reason) return jsonError('Укажите участника и причину.', 400);
-      const target = await query<{ id: number; is_blocked: boolean; role_priority: number | null }>(
-        `SELECT u.id, u.is_blocked, r.priority AS role_priority FROM users u LEFT JOIN roles r ON r.id=u.role_id WHERE u.id=$1`, [userId]);
+      const target = await query<{ id: number; is_blocked: boolean; is_owner: boolean; status: string; role_priority: number | null }>(
+        `SELECT u.id, u.is_blocked, u.is_owner, u.status, r.priority AS role_priority
+         FROM users u LEFT JOIN roles r ON r.id=u.role_id WHERE u.id=$1`, [userId]);
       if (!target.rows[0]) return jsonError('Участник не найден.', 404);
+      if (target.rows[0].is_owner) return jsonError('Нельзя выдать выговор владельцу.', 403);
+      if (target.rows[0].status !== 'member') return jsonError('Выговор можно выдать только действующему сотруднику.', 400);
       if (target.rows[0].is_blocked) return jsonError('Участник уже заблокирован.', 400);
       const targetPriority = target.rows[0].role_priority;
       if (!u.is_owner && u.role_priority != null && targetPriority != null && targetPriority < u.role_priority) {
@@ -294,6 +344,7 @@ export async function handle(key: string, request: NextRequest, context: Ctx): P
               candidateId = nu.rows[0].id;
             }
           }
+          if (!candidateId) return jsonError('Нельзя одобрить заявку без связанного Discord-пользователя.', 400);
           if (candidateId) await query(`UPDATE users SET status='candidate' WHERE id=$1`, [candidateId]);
           await query('UPDATE applications SET status=$1, reviewed_by=$2, candidate_user_id=$3 WHERE id=$4',
             [status, u.id, candidateId, id(p.id)]);
@@ -345,8 +396,8 @@ export async function handle(key: string, request: NextRequest, context: Ctx): P
     if (key === 'owner-users' || key === 'owner-user') {
       const u = await required(OWNER_PANEL_ROLES); if (u instanceof NextResponse) return u;
       if (key === 'owner-users' && method === 'GET') {
-        const r = await query<Record<string, unknown>>(`SELECT u.id, u.discord_id, u.nickname, u.discord_username, u.is_owner, u.is_admin,
-          u.weekly_events, u.role_id, rr.name AS role_name, u.created_at
+        const r = await query<Record<string, unknown>>(`SELECT u.id, u.discord_id, u.nickname, u.discord_username, u.avatar_image_id, u.avatar_url,
+          u.is_owner, u.is_admin, u.weekly_events, u.role_id, rr.name AS role_name, u.created_at
           FROM users u LEFT JOIN roles rr ON rr.id=u.role_id ORDER BY u.created_at ASC`);
         const rolesMap = await getRolesForUsers(r.rows.map((x) => x.id as number));
         const roleRows = await query('SELECT id, name, priority FROM roles ORDER BY priority ASC');
@@ -357,9 +408,23 @@ export async function handle(key: string, request: NextRequest, context: Ctx): P
       }
       if (method === 'DELETE') {
         if (String(u.id) === String(p.id)) return jsonError('Нельзя удалить самого себя.', 400);
+        const target = await query<{ is_owner: boolean }>('SELECT is_owner FROM users WHERE id=$1', [id(p.id)]);
+        if (!target.rows[0]) return jsonError('Пользователь не найден.', 404);
+        if (target.rows[0].is_owner) return jsonError('Нельзя удалить владельца.', 400);
         await query('DELETE FROM users WHERE id=$1', [id(p.id)]);
         invalidateUserCache(p.id);
         return ok();
+      }
+      const target = await query<{ is_owner: boolean }>('SELECT is_owner FROM users WHERE id=$1', [id(p.id)]);
+      if (!target.rows[0]) return jsonError('Пользователь не найден.', 404);
+      if (typeof b.isOwner === 'boolean' && b.isOwner !== target.rows[0].is_owner && !u.is_owner) {
+        return jsonError('Только владелец может назначать или снимать права владельца.', 403);
+      }
+      if (String(u.id) === String(p.id) && b.isOwner === false) {
+        return jsonError('Нельзя снять права владельца у самого себя.', 400);
+      }
+      if (typeof b.nickname === 'string' && (!b.nickname.trim() || b.nickname.trim().length > 60)) {
+        return jsonError(!b.nickname.trim() ? 'Введите никнейм.' : 'Никнейм слишком длинный (максимум 60 символов).', 400);
       }
       const fields: string[] = [];
       const values: unknown[] = [];

@@ -46,7 +46,7 @@ export async function addUserRole(userId: number, roleName: string) {
     );
     if (!rows[0]) {
       await client.query('ROLLBACK');
-      return;
+      throw new Error(`Роль "${roleName}" не найдена. Примените начальные данные базы.`);
     }
     await client.query(
       `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)

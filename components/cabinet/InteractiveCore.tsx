@@ -136,7 +136,7 @@ export function ProfileInteractive({
         tier: data.tier || 'helper',
         limits: data.limits || DEFAULT_LIMITS,
       }))
-      .catch(() => undefined);
+      .catch((err) => setError((err as Error).message));
   }, [reprimands]);
 
   async function saveNickname(event: FormEvent) {
@@ -241,7 +241,7 @@ export function RosterInteractive({
 
   async function openProfile(id: number) {
     if (!canViewProfiles) return;
-    setProfileLoading(true); setError('');
+    setProfile(null); setProfileLoading(true); setError('');
     try {
       setProfile(await request(`/api/reprimands/user/${id}`));
     } catch (err) {
@@ -480,7 +480,7 @@ export function ReprimandsInteractive() {
   );
 }
 
-export function OwnerInteractive() {
+export function OwnerInteractive({ canManageOwners }: { canManageOwners: boolean }) {
   const [users, setUsers] = useState<Row[]>([]);
   const [roles, setRoles] = useState<Row[]>([]);
   const [editing, setEditing] = useState<Row | null>(null);
@@ -499,12 +499,13 @@ export function OwnerInteractive() {
     if (!editing) return;
     const form = new FormData(event.currentTarget);
     try {
-      await request(`/api/owner/users/${editing.id}`, { method: 'PUT', body: JSON.stringify({
+      const payload: Row = {
         nickname: form.get('nickname'),
         roleIds: form.getAll('roleIds').map(Number),
         isAdmin: form.get('isAdmin') === 'on',
-        isOwner: form.get('isOwner') === 'on',
-      }) });
+      };
+      if (canManageOwners) payload.isOwner = editing.is_owner || form.get('isOwner') === 'on';
+      await request(`/api/owner/users/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       setEditing(null); await load();
     } catch (err) { setError((err as Error).message); }
   }
@@ -519,8 +520,8 @@ export function OwnerInteractive() {
     <>
       <div className="toolbar"><div className="toolbar-left">{users.length} учётных записей</div></div>
       <ErrorText value={error} />
-      {users.map((user) => <div className="roster-row" key={user.id}><Avatar row={user} /><div className="who"><div><div className="nickname">{user.nickname} {user.is_owner && <span className="badge badge-purple">Владелец</span>}</div><div className="role-tag">{(user.roles || []).map((r: Row) => r.name).join(' · ') || 'Без роли'}{user.discord_username ? ` · ${user.discord_username}` : ''}</div></div></div><div className="row-actions"><button className="icon-btn" onClick={() => setEditing(user)}><NavIcon name="edit" /></button><button className="icon-btn danger" onClick={() => void remove(user.id)}><NavIcon name="trash" /></button></div></div>)}
-      {editing && <Modal title="Редактирование пользователя" onClose={() => setEditing(null)} wide><form onSubmit={save}><ErrorText value={error} /><div className="field"><label>Никнейм</label><input className="input" name="nickname" defaultValue={editing.nickname} /></div><div className="field"><label>Роли</label><div className="role-checklist">{roles.map((role) => <label className="role-check-item" key={role.id}><input type="checkbox" name="roleIds" value={role.id} defaultChecked={(editing.roles || []).some((r: Row) => r.id === role.id)} />{role.name}</label>)}</div></div><label className="qform-check-label"><input type="checkbox" name="isAdmin" defaultChecked={editing.is_admin} /> Администратор</label><label className="qform-check-label"><input type="checkbox" name="isOwner" defaultChecked={editing.is_owner} /> Владелец</label><div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={() => setEditing(null)}>Отмена</button><button className="btn btn-primary">Сохранить</button></div></form></Modal>}
+      {users.map((user) => <div className="roster-row" key={user.id}><Avatar row={user} /><div className="who"><div><div className="nickname">{user.nickname} {user.is_owner && <span className="badge badge-purple">Владелец</span>}</div><div className="role-tag">{(user.roles || []).map((r: Row) => r.name).join(' · ') || 'Без роли'}{user.discord_username ? ` · ${user.discord_username}` : ''}</div></div></div><div className="row-actions"><button className="icon-btn" onClick={() => setEditing(user)}><NavIcon name="edit" /></button>{!user.is_owner && <button className="icon-btn danger" onClick={() => void remove(user.id)}><NavIcon name="trash" /></button>}</div></div>)}
+      {editing && <Modal title="Редактирование пользователя" onClose={() => setEditing(null)} wide><form onSubmit={save}><ErrorText value={error} /><div className="field"><label>Никнейм</label><input className="input" name="nickname" maxLength={60} required defaultValue={editing.nickname} /></div><div className="field"><label>Роли</label><div className="role-checklist">{roles.map((role) => <label className="role-check-item" key={role.id}><input type="checkbox" name="roleIds" value={role.id} defaultChecked={(editing.roles || []).some((r: Row) => r.id === role.id)} />{role.name}</label>)}</div></div><label className="qform-check-label"><input type="checkbox" name="isAdmin" defaultChecked={editing.is_admin} /> Администратор</label>{canManageOwners && <label className="qform-check-label"><input type="checkbox" name="isOwner" defaultChecked={editing.is_owner} disabled={editing.is_owner} /> Владелец</label>}<div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={() => setEditing(null)}>Отмена</button><button className="btn btn-primary">Сохранить</button></div></form></Modal>}
     </>
   );
 }
@@ -530,18 +531,22 @@ export function ContentInteractive({
   title,
   initialBlocks,
   canEdit,
+  splitByAudience = false,
+  canViewAdministrator = false,
 }: {
   section: string;
   title: string;
   initialBlocks: Record<string, Row>;
   canEdit: boolean;
+  splitByAudience?: boolean;
+  canViewAdministrator?: boolean;
 }) {
   const [blocks, setBlocks] = useState(initialBlocks);
-  const [audience, setAudience] = useState(initialBlocks.helper ? 'helper' : 'general');
+  const [audience, setAudience] = useState(splitByAudience ? 'helper' : 'general');
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
-  const block = blocks[audience] || {};
-  const hasAudienceTabs = !!(blocks.helper || blocks.administrator);
+  const block = blocks[audience] || (audience === 'helper' ? blocks.general : undefined) || {};
+  const hasAudienceTabs = splitByAudience && canViewAdministrator;
 
   async function reload() {
     const data = await request(`/api/content/${section}`);
@@ -576,14 +581,14 @@ export function ContentInteractive({
     <>
       <div className="card card-pad">
         <div className="card-header">
-          {hasAudienceTabs ? <div className="segmented"><button className={audience === 'helper' ? 'active' : ''} onClick={() => setAudience('helper')}>Event Helper</button><button className={audience === 'administrator' ? 'active' : ''} onClick={() => setAudience('administrator')}>Event Administrator</button></div> : <h3>{title}</h3>}
+          {hasAudienceTabs ? <div className="segmented"><button className={audience === 'helper' ? 'active' : ''} onClick={() => setAudience('helper')}>Event Helper</button><button className={audience === 'administrator' ? 'active' : ''} onClick={() => setAudience('administrator')}>Event Administrator</button></div> : <h3>{splitByAudience ? 'Event Helper' : title}</h3>}
           {canEdit && <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}><NavIcon name="edit" /> Редактировать</button>}
         </div>
         {block.body ? <div className="md-body" dangerouslySetInnerHTML={{ __html: block.body }} /> : <div className="empty-state"><p>Текст пока не добавлен.</p></div>}
         {block.imageId && <div className="section-image"><img src={`/media/${block.imageId}`} alt="" /></div>}
         {block.updatedAt && <div className="meta-line">Обновлено {new Date(block.updatedAt).toLocaleString('ru-RU')}{block.updatedBy ? ` · ${block.updatedBy}` : ''}</div>}
       </div>
-      {editing && <Modal title={`Редактирование · ${title}`} onClose={() => setEditing(false)} wide><form onSubmit={save}><ErrorText value={error} /><div className="field"><label>Текст (Markdown)</label><MarkdownFormField name="body" initialValue={block.bodyRaw || ''} /></div><div className="field"><label>Картинка</label><input className="input" name="image" type="file" accept="image/*" />{block.imageId && <button className="btn btn-ghost btn-sm" type="button" onClick={() => void removeImage()}><NavIcon name="trash" /> Удалить текущую</button>}</div><div className="modal-actions"><button className="btn btn-ghost" type="button" onClick={() => setEditing(false)}>Отмена</button><button className="btn btn-primary">Сохранить</button></div></form></Modal>}
+      {editing && <Modal title={`Редактирование · ${splitByAudience ? audience === 'helper' ? 'Event Helper' : 'Event Administrator' : title}`} onClose={() => setEditing(false)} wide><form onSubmit={save}><ErrorText value={error} /><div className="field"><label>Текст (Markdown)</label><MarkdownFormField name="body" initialValue={block.bodyRaw || ''} /></div><div className="field"><label>Картинка</label><input className="input" name="image" type="file" accept="image/*" />{block.imageId && <button className="btn btn-ghost btn-sm" type="button" onClick={() => void removeImage()}><NavIcon name="trash" /> Удалить текущую</button>}</div><div className="modal-actions"><button className="btn btn-ghost" type="button" onClick={() => setEditing(false)}>Отмена</button><button className="btn btn-primary">Сохранить</button></div></form></Modal>}
     </>
   );
 }
@@ -674,6 +679,7 @@ export function VacationsInteractive({
   const [rangeStart, setRangeStart] = useState('');
   const [rangeEnd, setRangeEnd] = useState('');
   const [reason, setReason] = useState('');
+  const [selectedVacation, setSelectedVacation] = useState<Row | null>(null);
   const [error, setError] = useState('');
   const today = new Date();
   const iso = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -689,13 +695,38 @@ export function VacationsInteractive({
     });
   };
   const statusLabel = (value: string) => value === 'approved' ? 'Одобрено' : value === 'rejected' ? 'Отклонено' : value === 'cancelled' ? 'Отменено' : 'На рассмотрении';
+  const dateKey = (value: unknown) => {
+    const raw = String(value || '');
+    return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : iso(new Date(raw));
+  };
   const dayRows = (date: Date) => rows.filter((row) => {
     const value = iso(date);
-    return row.status !== 'cancelled' && value >= String(row.start_date).slice(0, 10) && value <= String(row.end_date).slice(0, 10);
+    return row.status !== 'cancelled' && value >= dateKey(row.start_date) && value <= dateKey(row.end_date);
   });
   const pending = rows.filter((row) => row.status === 'pending');
   const mine = rows.filter((row) => row.user_id === currentUserId);
   const todayRows = dayRows(today);
+  const monthDays = calendarDays(month);
+  const weeks = Array.from({ length: 6 }, (_, index) => monthDays.slice(index * 7, index * 7 + 7));
+
+  function segmentsForWeek(week: Date[]) {
+    const weekStart = iso(week[0]);
+    const weekEnd = iso(week[6]);
+    const laneEnds: number[] = [];
+    const segments = rows
+      .filter((row) => row.status !== 'cancelled' && dateKey(row.start_date) <= weekEnd && dateKey(row.end_date) >= weekStart)
+      .sort((a, b) => dateKey(a.start_date).localeCompare(dateKey(b.start_date)))
+      .map((row) => {
+        const start = Math.max(0, week.findIndex((day) => iso(day) >= dateKey(row.start_date)));
+        let end = week.findIndex((day) => iso(day) > dateKey(row.end_date));
+        if (end < 0) end = 7;
+        let lane = laneEnds.findIndex((laneEnd) => laneEnd <= start);
+        if (lane < 0) lane = laneEnds.length;
+        laneEnds[lane] = end;
+        return { row, start, end, lane };
+      });
+    return { segments, lanes: Math.max(1, laneEnds.length) };
+  }
 
   async function reload() {
     const data = await request('/api/vacations');
@@ -749,12 +780,18 @@ export function VacationsInteractive({
           </div>
           <div className="vac-cal-scroll"><div className="vac-cal-inner">
             <div className="vac-cal-weekdays">{['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => <div key={day}>{day}</div>)}</div>
-            <div className="vac-simple-grid">{calendarDays(month).map((day) => {
-              const entries = dayRows(day);
-              return <div className={`vac-day-cell${day.getMonth() !== month.getMonth() ? ' is-muted' : ''}`} key={iso(day)}>
-                <div className={`vac-day-num${iso(day) === iso(today) ? ' is-today' : ''}`}>{day.getDate()}</div>
-                <div className="vac-day-items">{entries.slice(0, 2).map((row) => <div className={`vac-day-item status-${row.status}`} title={`${row.nickname}: ${row.reason || 'без причины'}`} key={row.id}>{row.nickname}</div>)}{entries.length > 2 && <div className="vac-day-overflow">+ ещё {entries.length - 2}</div>}</div>
-                <div className={`vac-day-occupancy${entries.length >= 3 ? ' is-near' : ''}`}>{entries.length}/3</div>
+            <div className="vac-cal-grid">{weeks.map((week) => {
+              const { segments, lanes } = segmentsForWeek(week);
+              return <div className="vac-week" key={iso(week[0])}>
+                <div className="vac-week-cells">{week.map((day) => {
+                  const entries = dayRows(day);
+                  return <div className={`vac-day-cell${day.getMonth() !== month.getMonth() ? ' is-muted' : ''}`} key={iso(day)}>
+                    <div className={`vac-day-num${iso(day) === iso(today) ? ' is-today' : ''}`}>{day.getDate()}</div>
+                    <div className="vac-day-bars-space" style={{ height: lanes * 21 }} />
+                    <div className={`vac-day-occupancy${entries.length >= 3 ? ' is-near' : ''}`}>{entries.length}/3</div>
+                  </div>;
+                })}</div>
+                <div className="vac-week-bars">{segments.map(({ row, start, end, lane }) => <button type="button" className={`vac-bar status-${row.status}${dateKey(row.start_date) >= iso(week[0]) ? ' round-l' : ''}${dateKey(row.end_date) <= iso(week[6]) ? ' round-r' : ''}`} style={{ gridColumn: `${start + 1} / ${end + 1}`, gridRow: lane + 1 }} key={`${row.id}-${iso(week[0])}`} title={`${row.nickname} · ${statusLabel(row.status)}`} onClick={() => setSelectedVacation(row)}><span className="vac-bar-dot" /><span className="vac-bar-label">{row.nickname}</span></button>)}</div>
               </div>;
             })}</div>
           </div></div>
@@ -773,14 +810,16 @@ export function VacationsInteractive({
 
       {canReview && <div className="card card-pad" style={{ marginTop: 20 }}><div className="card-header"><h3>Все заявки</h3></div>{rows.map((row) => <div className="roster-row" key={row.id}><Avatar row={row} /><div className="who"><div><div className="nickname">{row.nickname}</div><div className="role-tag">{new Date(row.start_date).toLocaleDateString('ru-RU')} — {new Date(row.end_date).toLocaleDateString('ru-RU')}</div></div></div><span className="badge badge-muted">{statusLabel(row.status)}</span><button className="icon-btn danger" onClick={() => void remove(row.id)}><NavIcon name="trash" /></button></div>)}</div>}
 
+      {selectedVacation && <Modal title={selectedVacation.nickname} onClose={() => setSelectedVacation(null)}><div className="modal-sub">{new Date(selectedVacation.start_date).toLocaleDateString('ru-RU')} — {new Date(selectedVacation.end_date).toLocaleDateString('ru-RU')} · {statusLabel(selectedVacation.status)}</div>{selectedVacation.reason && <p className="rule-text" style={{ textAlign: 'center' }}>{selectedVacation.reason}</p>}<div className="modal-actions">{canReview && selectedVacation.status === 'pending' && <><button className="btn btn-danger" onClick={() => { void status(selectedVacation.id, 'rejected'); setSelectedVacation(null); }}>Отклонить</button><button className="btn btn-primary" onClick={() => { void status(selectedVacation.id, 'approved'); setSelectedVacation(null); }}>Одобрить</button></>}{selectedVacation.user_id === currentUserId && selectedVacation.status === 'pending' && <button className="btn btn-ghost" onClick={() => { void status(selectedVacation.id, 'cancelled'); setSelectedVacation(null); }}>Отменить заявку</button>}</div></Modal>}
+
       {adding && <Modal title="Новый отпуск" onClose={() => setAdding(false)}><form onSubmit={create}><ErrorText value={error} /><div className="field"><label>Период отпуска</label><div className="vac-period-trigger"><span>{rangeStart ? `${new Date(`${rangeStart}T00:00:00`).toLocaleDateString('ru-RU')} — ${new Date(`${rangeEnd || rangeStart}T00:00:00`).toLocaleDateString('ru-RU')}` : 'Выберите даты'}</span></div><div className="vac-mini-cal"><div className="vac-mini-head"><button type="button" className="icon-btn" onClick={() => setPickerMonth(new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() - 1, 1))}>‹</button><b>{monthTitle(pickerMonth)}</b><button type="button" className="icon-btn" onClick={() => setPickerMonth(new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() + 1, 1))}>›</button></div><div className="vac-mini-grid">{['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => <div className="vac-mini-wd" key={day}>{day}</div>)}{calendarDays(pickerMonth).map((day) => { const value = iso(day); const inRange = rangeStart && value >= rangeStart && value <= (rangeEnd || rangeStart); return <button type="button" className={`vac-mini-day${day.getMonth() !== pickerMonth.getMonth() ? ' is-muted' : ''}${value === rangeStart ? ' range-start' : ''}${value === rangeEnd ? ' range-end' : ''}${inRange ? ' in-range' : ''}${value === iso(today) ? ' is-today' : ''}`} key={value} onClick={() => chooseDate(value)}>{day.getDate()}</button>; })}</div><div className="vac-mini-actions"><button type="button" className="btn btn-ghost btn-sm" onClick={() => { setRangeStart(''); setRangeEnd(''); }}>Сбросить</button></div></div></div><div className="field"><label>Причина (необязательно)</label><textarea className="input" value={reason} onChange={(event) => setReason(event.target.value)} /></div><div className="modal-actions"><button className="btn btn-ghost" type="button" onClick={() => setAdding(false)}>Отмена</button><button className="btn btn-primary">Создать</button></div></form></Modal>}
     </>
   );
 }
 
-export function ApplicationsInteractive({ initialRows, candidates = false }: { initialRows: Row[]; candidates?: boolean }) {
+export function ApplicationsInteractive({ initialRows, initialIsOpen = true, candidates = false }: { initialRows: Row[]; initialIsOpen?: boolean; candidates?: boolean }) {
   const [rows, setRows] = useState(initialRows);
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(initialIsOpen);
   const [error, setError] = useState('');
 
   async function reload() {

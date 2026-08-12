@@ -81,6 +81,16 @@ CREATE TABLE IF NOT EXISTS content_blocks (
   UNIQUE (section, audience)
 );
 
+-- Перенос старого общего блока FAQ/регламента во вкладку Event Helper.
+-- Если helper-блок уже существует, сохраняем его и удаляем только legacy-дубль.
+INSERT INTO content_blocks (section, audience, body, image_id, updated_by, updated_at)
+SELECT section, 'helper', body, image_id, updated_by, updated_at
+FROM content_blocks
+WHERE section IN ('faq', 'regulations') AND audience = 'general'
+ON CONFLICT (section, audience) DO NOTHING;
+DELETE FROM content_blocks
+WHERE section IN ('faq', 'regulations') AND audience = 'general';
+
 -- Правила МП — список правил, каждое со своим текстом/картинкой.
 CREATE TABLE IF NOT EXISTS rules (
   id         SERIAL PRIMARY KEY,

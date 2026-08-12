@@ -695,11 +695,13 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
 .vac-week-bars{
   position:absolute; left:0; right:0; top:24px;
   display:grid; grid-template-columns:repeat(7,1fr);
+  grid-auto-rows:21px;
   pointer-events:none;
 }
 .vac-bar{
   pointer-events:auto; cursor:pointer;
   margin:0 3px; padding:2px 8px; height:18px; align-self:start;
+  min-width:0; border:0; font:inherit;
   border-radius:3px; font-size:10.5px; font-weight:700; color:#0b0913;
   display:flex; align-items:center; gap:5px; overflow:hidden; white-space:nowrap;
 }

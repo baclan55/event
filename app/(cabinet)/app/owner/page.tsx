@@ -4,6 +4,6 @@ import { OwnerInteractive } from '@/components/cabinet/InteractiveCore';
 export const dynamic = 'force-dynamic';
 
 export default async function OwnerPage() {
-  await requirePortalUser();
-  return <OwnerInteractive />;
+  const user = await requirePortalUser();
+  return <OwnerInteractive canManageOwners={user.isOwner} />;
 }

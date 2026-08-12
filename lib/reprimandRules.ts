@@ -93,13 +93,13 @@ export async function maybeConvertVerbalToStrict(userId: number, issuedBy: numbe
 
 export const LIMITS_PAYLOAD = {
   helper: {
-    verbal: HELPER_POINT_VALUES.verbal,
-    strict: HELPER_POINT_VALUES.strict,
-    block: HELPER_BLOCK_POINTS,
+    verbalPoints: HELPER_POINT_VALUES.verbal,
+    strictPoints: HELPER_POINT_VALUES.strict,
+    blockPoints: HELPER_BLOCK_POINTS,
     verbalToStrict: HELPER_VERBAL_TO_STRICT,
   },
   admin: {
-    pointLimit: ADMIN_POINT_LIMIT,
+    points: ADMIN_POINT_LIMIT,
     decayDays: ADMIN_POINT_DECAY_DAYS,
   },
 };

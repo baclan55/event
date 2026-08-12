@@ -5,6 +5,6 @@ export const dynamic = 'force-dynamic';
 
 export default async function ApplicationsPage() {
   await requirePortalUser();
-  const rows = await loadApplications();
-  return <ApplicationsInteractive initialRows={rows} />;
+  const data = await loadApplications();
+  return <ApplicationsInteractive initialRows={data.rows} initialIsOpen={data.isOpen} />;
 }
