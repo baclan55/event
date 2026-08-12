@@ -275,13 +275,24 @@ function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }
   const seen = new Map(); // messageId -> content hash (ловить edits)
 
   async function discordGet(path) {
-    const res = await fetch(`${relayUrl}/api/v10${path}`, {
-      headers: {
-        Authorization: `Bot ${token}`,
-        'X-Relay-Secret': relaySecret,
-      },
-      signal: AbortSignal.timeout(20_000),
-    });
+    const url = `${relayUrl}/api/v10${path}`;
+    let res;
+    try {
+      res = await fetch(url, {
+        headers: {
+          Authorization: `Bot ${token}`,
+          'X-Relay-Secret': relaySecret,
+        },
+        signal: AbortSignal.timeout(20_000),
+      });
+    } catch (err) {
+      const cause = err.cause ? ` (${err.cause.code || err.cause.message || err.cause})` : '';
+      throw new Error(
+        `не достучались до relay ${relayUrl}${cause}. ` +
+        'DNS discord-relay.event.mjdn.ru должен идти в Cloudflare (прокси ON), ' +
+        'а не A-записью на IP VDS. Проверьте: curl -sI https://discord-relay.event.mjdn.ru/health'
+      );
+    }
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`Discord relay ${res.status}: ${text.slice(0, 200)}`);
@@ -325,6 +336,20 @@ function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }
   );
 
   (async () => {
+    try {
+      const health = await fetch(`${relayUrl}/health`, {
+        headers: { 'X-Relay-Secret': relaySecret },
+        signal: AbortSignal.timeout(10_000),
+      });
+      // /health у нас без секрета — если 403, всё равно хост жив
+      console.log(`[event-bot] Relay health: HTTP ${health.status}`);
+    } catch (err) {
+      const cause = err.cause ? ` (${err.cause.code || err.cause.message || err.cause})` : '';
+      console.error(
+        `[event-bot] Relay недоступен с VDS: ${relayUrl}/health${cause}. ` +
+        'Частая причина: DNS поддомена указывает на IP сервера (Caddy), а не на Cloudflare Worker.'
+      );
+    }
     try {
       await pollOnce('старт');
     } catch (err) {

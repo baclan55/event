@@ -52,8 +52,8 @@ services:
       PORT: 3000
       APP_DOMAIN: ${APP_DOMAIN:-event.mjdn.ru}
       DISABLE_EMBEDDED_BOT: ${DISABLE_EMBEDDED_BOT:-1}
-      # Discord OAuth через CF Worker на discord-relay.event.mjdn.ru
-      DISCORD_RELAY_URL: ${DISCORD_RELAY_URL:-https://discord-relay.event.mjdn.ru}
+      # Discord OAuth + бот через CF Worker
+      DISCORD_RELAY_URL: ${DISCORD_RELAY_URL:-https://hidden-union-525e.majes.workers.dev}
       DISCORD_RELAY_SECRET: ${DISCORD_RELAY_SECRET:-}
       DISCORD_PROXY: ${DISCORD_PROXY:-}
       HTTPS_PROXY: ${HTTPS_PROXY:-}
@@ -79,7 +79,7 @@ services:
       EVENT_BOT_POLL_MS: ${EVENT_BOT_POLL_MS:-30000}
       NODE_ENV: ${NODE_ENV:-production}
       # Тот же relay, что у app (OAuth + REST для бота)
-      DISCORD_RELAY_URL: ${DISCORD_RELAY_URL:-https://discord-relay.event.mjdn.ru}
+      DISCORD_RELAY_URL: ${DISCORD_RELAY_URL:-https://hidden-union-525e.majes.workers.dev}
       DISCORD_RELAY_SECRET: ${DISCORD_RELAY_SECRET:-}
       DISCORD_PROXY: ${DISCORD_PROXY:-}
       HTTPS_PROXY: ${HTTPS_PROXY:-}

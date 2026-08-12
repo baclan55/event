@@ -1,10 +1,8 @@
-# Discord OAuth relay — только обмен code→user для VDS.
-# Поддомен: discord-relay.event.mjdn.ru (сайт event.mjdn.ru не трогаем).
-name = "event-denver-discord-relay"
+# Discord OAuth + REST relay.
+# URL: https://hidden-union-525e.majes.workers.dev
+name = "hidden-union-525e"
 main = "cloudflare-discord-relay.js"
 compatibility_date = "2026-08-05"
 
-# Кастомный домен Worker (зона mjdn.ru уже в Cloudflare).
-routes = [
-  { pattern = "discord-relay.event.mjdn.ru/*", zone_name = "mjdn.ru" }
-]
+# workers.dev уже привязан. Секреты в Dashboard → Worker → Settings → Variables:
+#   DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_RELAY_SECRET
