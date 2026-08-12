@@ -20,6 +20,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: app
     restart: unless-stopped
     # Порт наружу не публикуем — только через Caddy.
     expose:
@@ -53,8 +54,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: bot
     restart: on-failure
-    command: ["npx", "tsx", "bot/standalone.ts"]
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://eventportal:eventportal@db:5432/eventportal}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
