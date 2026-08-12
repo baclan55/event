@@ -1,6 +1,5 @@
 import { getCurrentUser, publicUser } from '@/lib/auth';
 import { runtimeEnv } from '@/lib/runtimeEnv';
-import { getHeroBgDataUri } from '@/lib/heroBgData';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,16 +11,11 @@ export default async function HomePage() {
     user = null;
   }
   const subtitle = runtimeEnv('APP_SUBTITLE') || 'Ивент-отдел сервера Denver';
-  const heroBg = getHeroBgDataUri();
 
   return (
     <>
       <section className="site-hero">
-        <div
-          className="site-hero-bg"
-          style={{ backgroundImage: `url(${heroBg})` }}
-          aria-hidden
-        />
+        <div className="site-hero-bg" aria-hidden />
         <h1>Events Denver</h1>
         <p className="site-hero-sub">{subtitle}</p>
         <div className="site-hero-actions">

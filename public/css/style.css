@@ -838,6 +838,7 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
 }
 .site-hero-bg{
   position:absolute; inset:0; z-index:0; pointer-events:none;
+  background-image:url('/img/mountains-bg-sm.jpg');
   background-size:cover; background-position:center;
 }
 .site-hero-bg::after{

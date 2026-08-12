@@ -1,6 +1,5 @@
 import type { PublicUser } from '@/lib/auth';
 import { fmtDate } from '@/lib/cabinetData';
-import { updateNicknameAction } from '@/lib/actions/nickname';
 
 type Row = Record<string, any>;
 
@@ -49,7 +48,7 @@ export function ProfileView({ user, reprimands }: { user: PublicUser; reprimands
         <p>Роли: <b>{user.roles.join(' · ') || 'не назначены'}</b></p>
         <p>Мероприятий за неделю: <b>{user.weeklyEvents}</b></p>
         <hr style={{ border: 0, borderTop: '1px solid var(--border-soft)', margin: '16px 0' }} />
-        <form action={updateNicknameAction}>
+        <form action="/api/auth/me/nickname" method="post">
           <div className="field">
             <label>Изменить никнейм</label>
             <input className="input" name="nickname" defaultValue={user.nickname || ''} required maxLength={60} />

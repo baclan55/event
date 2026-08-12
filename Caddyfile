@@ -42,7 +42,6 @@ https://{$APP_DOMAIN} {
 			header_up X-Forwarded-Proto https
 			header_up X-Forwarded-Host {host}
 			header_up X-Real-IP {remote_host}
-			flush_interval -1
 			transport http {
 				versions 1.1
 				dial_timeout 5s
@@ -62,7 +61,6 @@ http://{$APP_DOMAIN} {
 			header_up X-Forwarded-Proto https
 			header_up X-Forwarded-Host {host}
 			header_up X-Real-IP {remote_host}
-			flush_interval -1
 			transport http {
 				versions 1.1
 				dial_timeout 5s

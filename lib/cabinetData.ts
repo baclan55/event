@@ -28,16 +28,23 @@ export async function loadDashboard() {
 }
 
 export async function loadReprimandsMe(userId: number) {
-  const r = await query<Record<string, unknown>>(
-    `SELECT rp.id, rp.reason, rp.type, rp.created_at, rp.converted,
-            ib.nickname AS issued_by_nickname
-     FROM reprimands rp
-     LEFT JOIN users ib ON ib.id = rp.issued_by
-     WHERE rp.user_id = $1
-     ORDER BY rp.created_at DESC`,
-    [userId]
-  );
-  return r.rows;
+  try {
+    // Не выбираем новые служебные колонки (converted и т.п.): профиль должен
+    // работать и до применения последней миграции схемы.
+    const r = await query<Record<string, unknown>>(
+      `SELECT rp.id, rp.reason, rp.type, rp.created_at,
+              ib.nickname AS issued_by_nickname
+       FROM reprimands rp
+       LEFT JOIN users ib ON ib.id = rp.issued_by
+       WHERE rp.user_id = $1
+       ORDER BY rp.created_at DESC`,
+      [userId]
+    );
+    return r.rows;
+  } catch (error) {
+    console.error('[cabinet] Не удалось загрузить выговоры профиля:', (error as Error).message);
+    return [];
+  }
 }
 
 export async function loadContent(section: string) {
