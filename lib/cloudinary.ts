@@ -1,16 +1,17 @@
 import { v2 as cloudinary } from 'cloudinary';
+import { runtimeEnv } from '@/lib/runtimeEnv';
 
 let configured = false;
 
 function ensureConfigured(): boolean {
   if (configured) return true;
-  if (process.env.CLOUDINARY_URL) {
+  if (runtimeEnv('CLOUDINARY_URL')) {
     configured = true;
     return true;
   }
-  const cloud = process.env.CLOUDINARY_CLOUD_NAME;
-  const key = process.env.CLOUDINARY_API_KEY;
-  const secret = process.env.CLOUDINARY_API_SECRET;
+  const cloud = runtimeEnv('CLOUDINARY_CLOUD_NAME');
+  const key = runtimeEnv('CLOUDINARY_API_KEY');
+  const secret = runtimeEnv('CLOUDINARY_API_SECRET');
   if (cloud && key && secret) {
     cloudinary.config({ cloud_name: cloud, api_key: key, api_secret: secret });
     configured = true;
@@ -46,9 +47,7 @@ export async function uploadAvatar(buffer: Buffer): Promise<{ url: string; publi
       const stream = cloudinary.uploader.upload_stream(
         {
           folder: 'events-denver/avatars',
-          transformation: [
-            { width: 512, height: 512, crop: 'fill', gravity: 'face' },
-          ],
+          transformation: [{ width: 512, height: 512, crop: 'fill', gravity: 'face' }],
         },
         (err, res) => {
           if (err || !res) reject(err || new Error('upload failed'));

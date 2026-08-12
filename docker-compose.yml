@@ -76,7 +76,6 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "443:443/udp"
     environment:
       APP_DOMAIN: ${APP_DOMAIN:-event.mjdn.ru}
       ACME_EMAIL: ${ACME_EMAIL:-admin@event.mjdn.ru}

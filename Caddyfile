@@ -1,24 +1,27 @@
 {
 	email {$ACME_EMAIL}
+	# HTTP/3 на origin часто ломает тело ответа за Cloudflare (Pending / обрыв после 4–25KB).
+	servers {
+		protocols h1 h2
+	}
 }
 
 https://{$APP_DOMAIN} {
-	encode gzip
+	# Сжатие делает Cloudflare на edge — на origin не дублируем.
 
-	# Статика Next — с диска, без Node (иначе 15–20с и ERR_CONNECTION_RESET).
-	handle /_next/static/* {
+	handle /_next/static* {
 		root * /srv
 		header Cache-Control "public, max-age=31536000, immutable"
 		file_server
 	}
 
-	handle /css/* {
+	handle /css* {
 		root * /srv/public
 		header Cache-Control "public, max-age=86400"
 		file_server
 	}
 
-	handle /img/* {
+	handle /img* {
 		root * /srv/public
 		header Cache-Control "public, max-age=86400"
 		file_server
@@ -29,16 +32,47 @@ https://{$APP_DOMAIN} {
 			header_up X-Forwarded-Proto https
 			header_up X-Forwarded-Host {host}
 			header_up X-Real-IP {remote_host}
+			flush_interval -1
 			transport http {
+				versions 1.1
 				dial_timeout 5s
-				response_header_timeout 30s
+				response_header_timeout 60s
+				read_timeout 60s
+				write_timeout 60s
 			}
 		}
 	}
 }
 
 http://{$APP_DOMAIN} {
-	redir https://{$APP_DOMAIN}{uri} permanent
+	# За Cloudflare Flexible лучше не редиректить на https origin (петли).
+	# При SSL Full CF ходит на :443 — этот блок почти не используется.
+	handle /_next/static* {
+		root * /srv
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+	handle /css* {
+		root * /srv/public
+		header Cache-Control "public, max-age=86400"
+		file_server
+	}
+	handle /img* {
+		root * /srv/public
+		header Cache-Control "public, max-age=86400"
+		file_server
+	}
+	handle {
+		reverse_proxy app:3000 {
+			header_up X-Forwarded-Proto https
+			header_up X-Forwarded-Host {host}
+			header_up X-Real-IP {remote_host}
+			flush_interval -1
+			transport http {
+				versions 1.1
+			}
+		}
+	}
 }
 
 :80, :443 {

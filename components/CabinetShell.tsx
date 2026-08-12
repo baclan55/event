@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useAuth } from '@/components/AuthProvider';
+import { useAuth, type PortalUser } from '@/components/AuthProvider';
 import { api } from '@/lib/client/api';
 import { APPLICATIONS_ROLES, CANDIDATES_ROLES, OWNER_PANEL_ROLES, REPRIMANDS_ROLES, userHasRoleIn } from '@/lib/roleAccess';
 
@@ -12,8 +12,17 @@ const items = [
   ['reprimands', 'Система выговоров', REPRIMANDS_ROLES], ['applications', 'Заявки', APPLICATIONS_ROLES], ['candidates', 'Кандидаты', CANDIDATES_ROLES],
 ] as const;
 
-export function CabinetShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname(); const router = useRouter(); const { user, config, setUser } = useAuth();
+export function CabinetShell({
+  children,
+  user: userProp,
+}: {
+  children: React.ReactNode;
+  user?: PortalUser | null;
+}) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { user: ctxUser, config, setUser } = useAuth();
+  const user = userProp ?? ctxUser;
   const logout = async () => { await api.post('/api/auth/logout'); setUser(null); router.replace('/'); };
   const visible = items.filter((item) => !item[2] || userHasRoleIn({ is_owner: user?.isOwner, roleNames: user?.roles }, item[2]));
   return <div id="app"><div className="bg-decor" /><aside className="sidebar">

@@ -1,3 +1,5 @@
+import { runtimeEnv } from '@/lib/runtimeEnv';
+
 /** Канонический список env — как в Portainer / .env.example */
 
 export const REQUIRED_ENV = [
@@ -34,27 +36,26 @@ export const PORTAINER_ENV = [
 ] as const;
 
 export function assertRuntimeEnv(): void {
-  // next build / collect page data — не валим образ из‑за отсутствующих секретов.
   if (
-    process.env.NEXT_PHASE === 'phase-production-build' ||
-    process.env.npm_lifecycle_event === 'build'
+    runtimeEnv('NEXT_PHASE') === 'phase-production-build' ||
+    runtimeEnv('npm_lifecycle_event') === 'build'
   ) {
     return;
   }
 
-  const missing = REQUIRED_ENV.filter((key) => !(process.env[key] || '').trim());
+  const missing = REQUIRED_ENV.filter((key) => !runtimeEnv(key));
   if (missing.length) {
     throw new Error(`[env] Не заданы обязательные переменные: ${missing.join(', ')}`);
   }
 
-  const weakLogin = DISCORD_LOGIN_ENV.filter((key) => !(process.env[key] || '').trim());
-  if (weakLogin.length && process.env.NODE_ENV === 'production') {
+  const weakLogin = DISCORD_LOGIN_ENV.filter((key) => !runtimeEnv(key));
+  if (weakLogin.length && runtimeEnv('NODE_ENV') === 'production') {
     console.warn(
       `[env] Discord-вход может не работать — пусто: ${weakLogin.join(', ')}`
     );
   }
 
-  if ((process.env.DISCORD_RELAY_URL || '').trim() && !(process.env.DISCORD_RELAY_SECRET || '').trim()) {
+  if (runtimeEnv('DISCORD_RELAY_URL') && !runtimeEnv('DISCORD_RELAY_SECRET')) {
     console.warn('[env] DISCORD_RELAY_URL задан без DISCORD_RELAY_SECRET');
   }
 }

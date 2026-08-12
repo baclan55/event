@@ -48,7 +48,6 @@ const defaultConfig: Config = {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<PortalUser | null>(null);
   const [config, setConfig] = useState<Config | null>(defaultConfig);
-  // Не блокируем публичные страницы: кабинет сам ждёт loading.
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,16 +74,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const url = new URL(window.location.href);
-    if (!url.searchParams.has('authed')) return;
-    url.searchParams.delete('authed');
-    window.history.replaceState({}, '', url.pathname + url.search);
-    setLoading(true);
     void refresh();
   }, [refresh]);
 

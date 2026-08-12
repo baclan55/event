@@ -1,4 +1,5 @@
 import { Pool, type QueryResult, type QueryResultRow } from 'pg';
+import { runtimeEnv } from '@/lib/runtimeEnv';
 
 /**
  * SSL для Postgres.
@@ -7,7 +8,7 @@ import { Pool, type QueryResult, type QueryResultRow } from 'pg';
  * 3. localhost / docker-сервис db → без SSL
  */
 function resolveSsl(connectionString: string): false | { rejectUnauthorized: boolean } {
-  const flag = (process.env.DATABASE_SSL || '').toLowerCase();
+  const flag = runtimeEnv('DATABASE_SSL').toLowerCase();
   if (flag === 'false' || flag === '0' || flag === 'off') return false;
   if (flag === 'true' || flag === '1' || flag === 'on') {
     return { rejectUnauthorized: false };
@@ -24,23 +25,22 @@ function resolveSsl(connectionString: string): false | { rejectUnauthorized: boo
     /localhost|127\.0\.0\.1|@db(?::|\/)|@postgres(?::|\/)/i.test(connectionString);
 
   if (isDockerOrLocal) return false;
-  // Явный облачный хост вне Docker — включаем SSL.
   if (/amazonaws\.com|supabase\.co|render\.com|railway\.app|azure\.com|digitalocean\.com/i.test(connectionString)) {
     return { rejectUnauthorized: false };
   }
   return false;
 }
 
-const connectionString = process.env.DATABASE_URL || '';
 const globalForDb = globalThis as unknown as { __eventPortalPool?: Pool };
 
 function createPool(): Pool {
-  if (!process.env.DATABASE_URL) {
+  const connectionString = runtimeEnv('DATABASE_URL');
+  if (!connectionString) {
     throw new Error('[db] DATABASE_URL не задана.');
   }
   return new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: resolveSsl(process.env.DATABASE_URL),
+    connectionString,
+    ssl: resolveSsl(connectionString),
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 30_000,
     max: 10,
@@ -51,24 +51,30 @@ function createPool(): Pool {
   });
 }
 
-export const pool: Pool =
-  globalForDb.__eventPortalPool ?? (connectionString ? createPool() : (null as unknown as Pool));
-
-if (connectionString) {
-  if (process.env.NODE_ENV !== 'production') {
-    globalForDb.__eventPortalPool = pool;
+function getPool(): Pool {
+  if (!globalForDb.__eventPortalPool) {
+    globalForDb.__eventPortalPool = createPool();
+    globalForDb.__eventPortalPool.on('error', (err) => {
+      console.error('[db] Неожиданная ошибка пула соединений:', err.message);
+    });
   }
-  pool.on('error', (err) => {
-    console.error('[db] Неожиданная ошибка пула соединений:', err.message);
-  });
+  return globalForDb.__eventPortalPool;
 }
+
+/** Ленивый пул — URL берётся при первом запросе, не на build. */
+export const pool: Pool = new Proxy({} as Pool, {
+  get(_target, prop, receiver) {
+    const real = getPool();
+    const value = Reflect.get(real, prop, receiver);
+    return typeof value === 'function' ? value.bind(real) : value;
+  },
+});
 
 export function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
   params?: unknown[]
 ): Promise<QueryResult<T>> {
-  if (!pool) throw new Error('[db] DATABASE_URL не задана.');
-  return pool.query<T>(text, params);
+  return getPool().query<T>(text, params);
 }
 
 export default pool;

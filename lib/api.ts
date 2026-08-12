@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool, query } from '@/lib/db';
 import { getCurrentUser, requireAnyRoleUser, requireRoleInUser, publicUser, invalidateUserCache, jsonError, loadUserById } from '@/lib/auth';
 import { getSession } from '@/lib/session';
+import { runtimeEnv } from '@/lib/runtimeEnv';
 import { EDIT_ROLES, REPRIMANDS_ROLES, APPLICATIONS_ROLES, CANDIDATES_ROLES, OWNER_PANEL_ROLES, VACATIONS_REVIEW_ROLES, userHasRoleIn } from '@/lib/roleAccess';
 import { tierForPriority } from '@/lib/tier';
 import { replaceUserRoles, getRolesForUsers, addUserRole } from '@/lib/roles';
@@ -19,10 +20,10 @@ const id = (v: string) => Number.parseInt(v, 10);
 const ok = (value: Record<string, unknown> = {}) => NextResponse.json({ ok: true, ...value });
 const plain = (text: string, status: number) => new NextResponse(text, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 const redirectUri = () => {
-  const domain = (process.env.APP_DOMAIN || '').trim().toLowerCase();
-  const fromEnv = (process.env.DISCORD_REDIRECT_URI || '').trim();
+  const domain = runtimeEnv('APP_DOMAIN').toLowerCase();
+  const fromEnv = runtimeEnv('DISCORD_REDIRECT_URI');
   if (domain) return `https://${domain}/api/auth/discord/callback`;
-  return process.env.NODE_ENV === 'production' && fromEnv.startsWith('http://') ? `https://${fromEnv.slice(7)}` : fromEnv || null;
+  return runtimeEnv('NODE_ENV') === 'production' && fromEnv.startsWith('http://') ? `https://${fromEnv.slice(7)}` : fromEnv || null;
 };
 async function image(r: Request) {
   try { return await readUploadedImage(await r.formData()); } catch (e) { return e instanceof Error ? e : new Error('Неверный файл.'); }
@@ -42,7 +43,8 @@ function active(rows: Record<string, unknown>[]) {
   return rows.map((r) => ({ ...r, active: r.type === 'point' ? adminPointActive(r.created_at as string) : !(r.type === 'verbal' && r.converted), expires_at: r.type === 'point' ? new Date(new Date(r.created_at as string).getTime() + ADMIN_POINT_DECAY_DAYS * 864e5).toISOString() : null }));
 }
 async function login(discordUser: { id: string; username: string }, session: Awaited<ReturnType<typeof getSession>>) {
-  const owner = !!process.env.DISCORD_OWNER_ID && String(discordUser.id) === String(process.env.DISCORD_OWNER_ID);
+  const ownerId = runtimeEnv('DISCORD_OWNER_ID');
+  const owner = !!ownerId && String(discordUser.id) === String(ownerId);
   const existing = await query<{ id: number }>('SELECT id FROM users WHERE discord_id=$1', [discordUser.id]);
   let userId: number;
   if (existing.rows[0]) { userId = existing.rows[0].id; await query('UPDATE users SET discord_username=$1 WHERE id=$2', [discordUser.username, userId]); }
@@ -60,13 +62,13 @@ async function login(discordUser: { id: string; username: string }, session: Awa
 export async function handle(key: string, request: NextRequest, context: Ctx): Promise<Response> {
   const p = await context.params; const method = request.method; const b = await body(request);
   try {
-    if (key === 'config') return NextResponse.json({ appTitle: process.env.APP_TITLE || 'Events Denver', appSubtitle: process.env.APP_SUBTITLE || 'Ивент-отдел сервера', weeklyEventsTarget: Number.parseInt(process.env.WEEKLY_EVENTS_TARGET || '', 10) || 5, discordEnabled: !!(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET) });
+    if (key === 'config') return NextResponse.json({ appTitle: runtimeEnv('APP_TITLE') || 'Events Denver', appSubtitle: runtimeEnv('APP_SUBTITLE') || 'Ивент-отдел сервера', weeklyEventsTarget: Number.parseInt(runtimeEnv('WEEKLY_EVENTS_TARGET') || '', 10) || 5, discordEnabled: !!(runtimeEnv('DISCORD_CLIENT_ID') && runtimeEnv('DISCORD_CLIENT_SECRET')) });
     if (key === 'live') return NextResponse.json({ ok: true });
     if (key === 'health') { try { await pool.query('SELECT 1'); return ok(); } catch { return NextResponse.json({ ok: false, error: 'База данных недоступна.' }, { status: 503 }); } }
     if (key === 'me') return NextResponse.json({ user: publicUser(await getCurrentUser()) });
     if (key === 'logout') { const s = await getSession(); const uid = s.userId; await s.destroy(); if (uid) invalidateUserCache(uid); return ok(); }
     if (key === 'oauth') {
-      const client = process.env.DISCORD_CLIENT_ID, uri = redirectUri(); if (!client || !uri) return plain('Вход через Discord не настроен.', 400);
+      const client = runtimeEnv('DISCORD_CLIENT_ID'), uri = redirectUri(); if (!client || !uri) return plain('Вход через Discord не настроен.', 400);
       if (request.nextUrl.searchParams.get('consent') !== '1') return plain('Необходимо подтвердить согласие на обработку персональных данных.', 400);
       const s = await getSession(); const state = crypto.randomBytes(24).toString('hex'); s.discordOAuthState = state; s.discordOAuthReturnTo = request.nextUrl.searchParams.get('returnTo') === 'apply' ? 'apply' : null; await s.save();
       const u = new URL('https://discord.com/api/oauth2/authorize'); u.search = new URLSearchParams({ client_id: client, redirect_uri: uri, response_type: 'code', scope: 'identify', state }).toString(); return NextResponse.redirect(u);
@@ -76,14 +78,23 @@ export async function handle(key: string, request: NextRequest, context: Ctx): P
       const expected = s.discordOAuthState; delete s.discordOAuthState;
       if (!uri || !code) return plain('Discord не передал код авторизации.', 400);
       if (!expected || state !== expected) return plain('Недействительный запрос авторизации (state не совпадает).', 400);
-      const relay = (process.env.DISCORD_RELAY_URL || '').replace(/\/$/, ''), secret = process.env.DISCORD_RELAY_SECRET || '';
+      const relay = runtimeEnv('DISCORD_RELAY_URL').replace(/\/$/, ''), secret = runtimeEnv('DISCORD_RELAY_SECRET');
       let discordUser: { id: string; username: string };
       if (relay) { if (!secret) return plain('DISCORD_RELAY_URL задан, но нет DISCORD_RELAY_SECRET.', 500); const r = await fetch(`${relay}/oauth/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Relay-Secret': secret }, body: JSON.stringify({ code, redirect_uri: uri }), signal: AbortSignal.timeout(15_000) }); const d = await r.json().catch(() => ({})); if (!r.ok || !d.discordUser?.id) return plain(`Не удалось подтвердить вход через Discord (relay): ${d.error || r.status}`, 400); discordUser = d.discordUser; }
-      else { if (!process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_CLIENT_SECRET) return plain('Вход через Discord не настроен на сервере.', 400); const t = await fetch('https://discord.com/api/oauth2/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: process.env.DISCORD_CLIENT_ID, client_secret: process.env.DISCORD_CLIENT_SECRET, grant_type: 'authorization_code', code, redirect_uri: uri }) }); if (!t.ok) return plain('Не удалось подтвердить вход через Discord.', 400); const token = await t.json(); const u = await fetch('https://discord.com/api/users/@me', { headers: { Authorization: `Bearer ${token.access_token}` } }); if (!u.ok) return plain('Не удалось получить данные пользователя Discord.', 400); discordUser = await u.json(); }
+      else {
+        const clientId = runtimeEnv('DISCORD_CLIENT_ID'), clientSecret = runtimeEnv('DISCORD_CLIENT_SECRET');
+        if (!clientId || !clientSecret) return plain('Вход через Discord не настроен на сервере.', 400);
+        const t = await fetch('https://discord.com/api/oauth2/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: 'authorization_code', code, redirect_uri: uri }) });
+        if (!t.ok) return plain('Не удалось подтвердить вход через Discord.', 400);
+        const token = await t.json();
+        const u = await fetch('https://discord.com/api/users/@me', { headers: { Authorization: `Bearer ${token.access_token}` } });
+        if (!u.ok) return plain('Не удалось получить данные пользователя Discord.', 400);
+        discordUser = await u.json();
+      }
       const path = await login(discordUser, s); await s.save();
-      const domain = (process.env.APP_DOMAIN || '').trim();
-      const dest = `${path}${path.includes('?') ? '&' : '?'}authed=1`;
-      return NextResponse.redirect(domain ? `https://${domain}${dest}` : new URL(dest, request.url));
+      const domain = runtimeEnv('APP_DOMAIN');
+      // Без ?authed=1 — кабинет сам читает сессию на сервере.
+      return NextResponse.redirect(domain ? `https://${domain}${path}` : new URL(path, request.url));
     }
     if (key === 'nickname') { const u = await required(); if (u instanceof NextResponse) return u; const nickname = String(b.nickname || '').trim(); if (!nickname || nickname.length > 60) return jsonError(!nickname ? 'Введите никнейм.' : 'Никнейм слишком длинный (максимум 60 символов).', 400); await query('UPDATE users SET nickname=$1 WHERE id=$2', [nickname, u.id]); invalidateUserCache(u.id); return NextResponse.json({ user: publicUser(await loadUserById(u.id)) }); }
     if (key === 'my-avatar') { const u = await required(); if (u instanceof NextResponse) return u; const f = await image(request); if (!f || f instanceof Error) return jsonError(f?.message || 'Файл не получен.', 400); await avatar(u.id, f, u.avatar_public_id); invalidateUserCache(u.id); return NextResponse.json({ user: publicUser(await loadUserById(u.id)) }); }
