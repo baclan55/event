@@ -165,53 +165,11 @@ router.get('/discord', (req, res) => {
 });
 
 /**
- * Завершение входа после того, как Cloudflare Worker сам обменял code
- * на данные Discord (VDS часто не достучится до discord.com → 502 на callback).
- * Заголовок X-Worker-Secret = DISCORD_WORKER_SECRET || SESSION_SECRET.
+ * Завершение Discord OAuth после обмена code → token → @me.
+ * Раньше здесь были обходные эндпоинты для Cloudflare Worker
+ * (/discord/oauth-config, /discord/complete) — больше не используются:
+ * вход идёт напрямую через /discord → /discord/callback на APP_DOMAIN.
  */
-router.get('/discord/oauth-config', (req, res) => {
-  const secret = process.env.DISCORD_WORKER_SECRET || process.env.SESSION_SECRET;
-  if (!secret || req.get('x-worker-secret') !== secret) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-  const clientId = process.env.DISCORD_CLIENT_ID;
-  const clientSecret = process.env.DISCORD_CLIENT_SECRET;
-  const redirectUri = process.env.DISCORD_REDIRECT_URI;
-  if (!clientId || !clientSecret || !redirectUri) {
-    return res.status(500).json({ error: 'Discord OAuth не настроен на VDS.' });
-  }
-  res.json({ clientId, clientSecret, redirectUri });
-});
-
-router.post('/discord/complete', async (req, res, next) => {
-  try {
-    const secret = process.env.DISCORD_WORKER_SECRET || process.env.SESSION_SECRET;
-    if (!secret || req.get('x-worker-secret') !== secret) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-
-    const discordUser = req.body && req.body.discordUser;
-    const state = req.body && req.body.state;
-    if (!discordUser || !discordUser.id || !discordUser.username) {
-      return res.status(400).json({ error: 'Нет данных Discord.' });
-    }
-
-    const expectedState = req.session.discordOAuthState;
-    delete req.session.discordOAuthState;
-    if (!expectedState || !state || state !== expectedState) {
-      return res.status(400).json({ error: 'state не совпадает' });
-    }
-
-    const redirectPath = await finishDiscordLogin(req, discordUser);
-    await new Promise((resolve, reject) => {
-      req.session.save((err) => (err ? reject(err) : resolve()));
-    });
-    res.json({ redirect: redirectPath });
-  } catch (err) {
-    next(err);
-  }
-});
-
 async function finishDiscordLogin(req, discordUser) {
   const isDesignatedOwner =
     !!process.env.DISCORD_OWNER_ID && String(discordUser.id) === String(process.env.DISCORD_OWNER_ID);
@@ -290,7 +248,7 @@ router.get('/discord/callback', async (req, res, next) => {
       return res.status(502).json({
         error:
           'Сервер не может связаться с Discord API. Проверьте исходящий HTTPS (443) ' +
-          'с VDS до discord.com и DNS. Либо входите через workers.dev (OAuth там на стороне Worker).',
+          'с VDS до discord.com и DNS.',
       });
     }
     if (!tokenRes.ok) {

@@ -50,8 +50,7 @@ function resolveSsl(connectionString) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: resolveSsl(process.env.DATABASE_URL),
-  // Neon/Render: не висеть бесконечно на «спящем» compute и мёртвых
-  // соединениях после простоя (иначе в Network видны 40+ с и ERR_CONNECTION_CLOSED).
+  // Не висеть бесконечно на мёртвых/«спящих» соединениях после простоя.
   connectionTimeoutMillis: 15_000,
   idleTimeoutMillis: 20_000,
   max: 10,

@@ -11,9 +11,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-eventportal}
     volumes:
       - db-data:/var/lib/postgresql/data
-    ports:
-      # Проброшен на хост для удобства (psql/DBeaver с компьютера).
-      - "${POSTGRES_PORT:-5432}:5432"
+    # Порт БД наружу не публикуем — доступ только из docker-сети (app/pgadmin).
+    expose:
+      - "5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-eventportal} -d ${POSTGRES_DB:-eventportal}"]
       interval: 5s
@@ -38,12 +38,12 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       DATABASE_SSL: ${DATABASE_SSL:-}
       SESSION_SECRET: ${SESSION_SECRET}
-      # Если пусто — в auth.js берётся SESSION_SECRET. В Worker Secrets задай то же значение.
-      DISCORD_WORKER_SECRET: ${DISCORD_WORKER_SECRET:-}
       DISCORD_OWNER_ID: ${DISCORD_OWNER_ID}
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
-      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI}
+      # Должен совпадать с Discord Developer Portal:
+      # https://event.mjdn.ru/api/auth/discord/callback
+      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI:-https://event.mjdn.ru/api/auth/discord/callback}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
       DISCORD_EVENTS_CHANNEL_ID: ${DISCORD_EVENTS_CHANNEL_ID}
       DISCORD_EVENTS_SOURCE_BOT_ID: ${DISCORD_EVENTS_SOURCE_BOT_ID}
@@ -59,19 +59,21 @@ services:
       WEEKLY_RESET_TZ: ${WEEKLY_RESET_TZ:-Europe/Moscow}
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
+      # Канонический хост — Express отклоняет запросы с другим Host
+      # (на случай, если порт 3000 когда-то случайно опубликуют).
+      APP_DOMAIN: ${APP_DOMAIN:-event.mjdn.ru}
     depends_on:
       db:
         condition: service_healthy
-    # Порт 3000 не публикуем наружу — вход только через Caddy :443.
-    # Для отладки можно временно раскомментировать:
-    # ports:
-    #   - "${APP_PORT:-3000}:3000"
+    # Порт 3000 наружу НЕ публикуем — вход только через Caddy :443.
     expose:
       - "3000"
 
   # Авто-HTTPS (Let's Encrypt) для APP_DOMAIN → reverse_proxy на app:3000.
-  # В Portainer: APP_DOMAIN=events-denver.work.gd
-  # DNS: A → IP VDS, серое облако если Cloudflare. Порты 80 и 443 открыты.
+  # В Portainer: APP_DOMAIN=event.mjdn.ru
+  # DNS: A-запись event.mjdn.ru → IP VDS (если Cloudflare — DNS only / серое облако
+  # на время выпуска сертификата, либо полный прокси с Flexible/Full по ситуации).
+  # Порты 80 и 443 на VDS должны быть открыты.
   # Caddyfile пишется внутри контейнера (без bind-mount — иначе Portainer
   # создаёт пустую папку /data/compose/.../Caddyfile и падает).
   caddy:
@@ -82,8 +84,8 @@ services:
       - "443:443"
       - "443:443/udp"
     environment:
-      APP_DOMAIN: ${APP_DOMAIN:-events-denver.work.gd}
-      ACME_EMAIL: ${ACME_EMAIL:-admin@events-denver.work.gd}
+      APP_DOMAIN: ${APP_DOMAIN:-event.mjdn.ru}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@event.mjdn.ru}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -99,6 +101,9 @@ services:
         		header_up X-Real-IP {remote_host}
         	}
         }
+        :80, :443 {
+        	respond "Not Found" 404
+        }
         EOF
         exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     volumes:
@@ -108,9 +113,8 @@ services:
       - app
 
   # Web-админка PostgreSQL (pgAdmin) → сервис db.
-  # http://IP:5050 — логин PGADMIN_EMAIL / PGADMIN_PASSWORD.
-  # После входа: Add New Server → Host=db, Port=5432,
-  # Username/Password/DB = POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB.
+  # Только внутри docker-сети по умолчанию; наружу не публикуем.
+  # Если нужен доступ с хоста — временно добавьте ports: ["127.0.0.1:5050:80"].
   pgadmin:
     image: dpage/pgadmin4:8
     restart: unless-stopped
@@ -118,8 +122,8 @@ services:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-changeme}
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
-    ports:
-      - "${PGADMIN_PORT:-5050}:80"
+    expose:
+      - "80"
     volumes:
       - pgadmin-data:/var/lib/pgadmin
     depends_on:

@@ -37,9 +37,8 @@ USER node
 
 EXPOSE 3000
 
-# Тот же путь, что и healthCheckPath в render.yaml — не требует БД/сессии,
-# просто отдаёт JSON-конфиг приложения.
+# Тот же путь, что и /api/health в src/server.js — без сессии, только SELECT 1.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD wget -qO- "http://127.0.0.1:${PORT:-3000}/api/config" > /dev/null || exit 1
+  CMD wget -qO- "http://127.0.0.1:${PORT:-3000}/api/health" > /dev/null || exit 1
 
 CMD ["node", "src/server.js"]
