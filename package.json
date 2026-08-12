@@ -10,7 +10,9 @@
     "dev": "next dev",
     "build": "node scripts/split-css.cjs && next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint . --max-warnings=0",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "bot": "tsx bot/standalone.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
@@ -32,12 +34,15 @@
     "undici": "^7.29.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.17.2",
     "@types/pg": "^8.15.5",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "@types/sanitize-html": "^2.16.0",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.23",
     "sharp": "^0.35.3",
     "typescript": "^5.9.2"
   }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/client/api';
 import { useAuth } from '@/components/AuthProvider';
 import { MarkdownEditor } from '@/components/MarkdownEditor';
@@ -14,8 +14,11 @@ export function ContentSection({ section, title }: { section: 'faq' | 'regulatio
   const [body, setBody] = useState('');
   const [error, setError] = useState('');
   const canEdit = !!user && (user.isOwner || ['Chief Event', 'Dep.Chief Event', 'Technical Administrator'].some((role) => user.roles.includes(role)));
-  const load = () => api.get(`/api/content/${section}`).then((data) => setBlocks(data.blocks ?? {})).catch((e) => setError(e.message));
-  useEffect(() => { void load(); }, [section]);
+  const load = useCallback(
+    () => api.get(`/api/content/${section}`).then((data) => setBlocks(data.blocks ?? {})).catch((e) => setError(e.message)),
+    [section],
+  );
+  useEffect(() => { void load(); }, [load]);
   const block = blocks[audience] ?? blocks.general ?? {};
   const beginEdit = () => { setBody(block.bodyRaw ?? ''); setEditing(true); };
   const save = async () => {

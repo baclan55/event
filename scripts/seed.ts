@@ -4,7 +4,7 @@
 // чтобы страницы не были пустыми сразу после установки.
 // Запуск: npm run db:seed  (безопасно запускать повторно — не создаёт дублей)
 import 'dotenv/config';
-import pool from '../lib/db';
+import { scriptPool as pool } from './db-pool';
 
 // Иерархия ролей — от самой высокой (priority 1) до самой низкой.
 const ROLES = [

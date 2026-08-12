@@ -1,4 +1,3 @@
-import { NextResponse } from 'next/server';
 import { handle } from '@/lib/api';
 import type { NextRequest } from 'next/server';
 
