@@ -3,7 +3,7 @@ const pool = require('../db/pool');
 const upload = require('../middleware/upload');
 const { saveImage } = require('../db/images');
 const cloudinary = require('../utils/cloudinary');
-const { requireAnyRole, requireRoleIn } = require('../middleware/auth');
+const { requireAnyRole, requireRoleIn, invalidateUserCache } = require('../middleware/auth');
 const { EDIT_ROLES } = require('../utils/roleAccess');
 const { tierForPriority } = require('../utils/tier');
 const { replaceUserRoles, getRolesForUsers } = require('../db/roles');
@@ -101,6 +101,7 @@ router.put('/:id', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
       [nickname, weeklyEvents, note, roleIds.length > 0, req.params.id]
     );
     await replaceUserRoles(req.params.id, roleIds);
+    invalidateUserCache(req.params.id);
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -123,6 +124,7 @@ router.post('/:id/avatar', requireRoleIn(EDIT_ROLES), upload.single('image'), as
         [url, publicId, req.params.id]
       );
       if (oldPublicId) cloudinary.deleteAvatar(oldPublicId);
+      invalidateUserCache(req.params.id);
       res.json({ ok: true, avatarUrl: url });
     } else {
       if (process.env.NODE_ENV === 'production') {
@@ -130,6 +132,7 @@ router.post('/:id/avatar', requireRoleIn(EDIT_ROLES), upload.single('image'), as
       }
       const imageId = await saveImage(req.file);
       await pool.query('UPDATE users SET avatar_image_id = $1 WHERE id = $2', [imageId, req.params.id]);
+      invalidateUserCache(req.params.id);
       res.json({ ok: true, imageId });
     }
   } catch (err) {
@@ -145,6 +148,7 @@ router.delete('/:id', requireRoleIn(EDIT_ROLES), async (req, res, next) => {
       return res.status(400).json({ error: 'Нельзя удалить владельца из состава.' });
     }
     await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    invalidateUserCache(req.params.id);
     res.json({ ok: true });
   } catch (err) {
     next(err);

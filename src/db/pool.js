@@ -47,13 +47,18 @@ function resolveSsl(connectionString) {
   return { rejectUnauthorized: false };
 }
 
+const connectionString = process.env.DATABASE_URL;
+const isNeon = /\.neon\.tech/i.test(connectionString);
+
+// Neon Free «засыпает» без запросов → первый API после паузы 2–10+ с.
+// Держим compute тёплым и не рвём idle-соединения слишком рано.
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: resolveSsl(process.env.DATABASE_URL),
+  connectionString,
+  ssl: resolveSsl(connectionString),
   connectionTimeoutMillis: 10_000,
-  idleTimeoutMillis: 20_000,
-  max: 10,
-  allowExitOnIdle: true,
+  idleTimeoutMillis: isNeon ? 240_000 : 20_000,
+  max: isNeon ? 5 : 10,
+  allowExitOnIdle: !isNeon,
   keepAlive: true,
   keepAliveInitialDelayMillis: 10_000,
   // Не держать зависшие запросы бесконечно (Neon/сеть).
@@ -64,5 +69,21 @@ const pool = new Pool({
 pool.on('error', (err) => {
   console.error('[db] Неожиданная ошибка пула соединений:', err.message);
 });
+
+// Keepalive: 0 = выкл. По умолчанию 4 мин (Neon suspend ≈ 5 мин на Free).
+const keepaliveMs = Number.parseInt(process.env.DB_KEEPALIVE_MS || '240000', 10);
+if (Number.isFinite(keepaliveMs) && keepaliveMs > 0) {
+  const tick = () => {
+    pool.query('SELECT 1').catch((err) => {
+      console.warn('[db] keepalive:', err.message);
+    });
+  };
+  // Сразу после старта — прогрев после deploy / sleep.
+  setTimeout(tick, 2_000).unref?.();
+  setInterval(tick, keepaliveMs).unref?.();
+  if (isNeon) {
+    console.log(`[db] Neon keepalive каждые ${Math.round(keepaliveMs / 1000)} с`);
+  }
+}
 
 module.exports = pool;

@@ -9,11 +9,40 @@ const BLOCKED_MESSAGE =
 const BLOCK_SYNC_TTL_MS = 60_000;
 const blockSyncAt = new Map();
 
+// Короткий кэш req.user: при переключении разделов не бить БД на каждый /api/*.
+const USER_CACHE_TTL_MS = Number.parseInt(process.env.USER_CACHE_TTL_MS || '30000', 10);
+const userCache = new Map();
+
+function cloneCachedUser(user) {
+  if (!user) return null;
+  const roles = Array.isArray(user.roles) ? user.roles.map((r) => ({ ...r })) : [];
+  return {
+    ...user,
+    roles,
+    roleNames: roles.map((r) => r.name),
+  };
+}
+
+function invalidateUserCache(userId) {
+  if (userId == null) {
+    userCache.clear();
+    return;
+  }
+  userCache.delete(String(userId));
+}
+
 // Подгружает текущего пользователя (если есть активная сессия) в req.user.
 async function attachUser(req, res, next) {
   try {
     if (!req.session || !req.session.userId) {
       req.user = null;
+      return next();
+    }
+
+    const uid = String(req.session.userId);
+    const cached = userCache.get(uid);
+    if (cached && Date.now() - cached.at < USER_CACHE_TTL_MS) {
+      req.user = cloneCachedUser(cached.user);
       return next();
     }
 
@@ -46,16 +75,21 @@ async function attachUser(req, res, next) {
     }
 
     if (req.user && req.user.is_blocked) {
-      const uid = req.user.id;
-      const last = blockSyncAt.get(uid) || 0;
+      const last = blockSyncAt.get(req.user.id) || 0;
       if (Date.now() - last >= BLOCK_SYNC_TTL_MS) {
-        blockSyncAt.set(uid, Date.now());
-        const status = await syncBlockStatus(uid);
+        blockSyncAt.set(req.user.id, Date.now());
+        const status = await syncBlockStatus(req.user.id);
         if (status) {
           req.user.is_blocked = status.blocked;
           if (!status.blocked) req.user.blocked_at = null;
         }
       }
+    }
+
+    if (req.user) {
+      userCache.set(uid, { at: Date.now(), user: cloneCachedUser(req.user) });
+    } else {
+      userCache.delete(uid);
     }
     next();
   } catch (err) {
@@ -105,4 +139,12 @@ function requireRoleIn(roles) {
   };
 }
 
-module.exports = { attachUser, requireAuth, requireAdmin, requireOwner, requireAnyRole, requireRoleIn };
+module.exports = {
+  attachUser,
+  requireAuth,
+  requireAdmin,
+  requireOwner,
+  requireAnyRole,
+  requireRoleIn,
+  invalidateUserCache,
+};

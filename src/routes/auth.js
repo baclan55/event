@@ -4,7 +4,7 @@ const pool = require('../db/pool');
 const upload = require('../middleware/upload');
 const { saveImage } = require('../db/images');
 const cloudinary = require('../utils/cloudinary');
-const { requireAnyRole } = require('../middleware/auth');
+const { requireAnyRole, invalidateUserCache } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -64,6 +64,7 @@ router.put('/me/nickname', requireAnyRole, async (req, res, next) => {
       [nickname, req.user.id]
     );
     const updated = rows[0];
+    invalidateUserCache(req.user.id);
     // role_name/role_priority/roles у UPDATE ... RETURNING не подтянутся
     // джойном, поэтому берём их из уже загруженного req.user (сам набор
     // ролей этим запросом не менялся).
@@ -106,6 +107,7 @@ router.post('/me/avatar', requireAnyRole, upload.single('image'), async (req, re
       ));
     }
     const updated = rows[0];
+    invalidateUserCache(req.user.id);
     res.json({ user: publicUser({ ...updated, role_name: req.user.role_name, role_priority: req.user.role_priority, roles: req.user.roles }) });
   } catch (err) {
     next(err);
@@ -113,7 +115,9 @@ router.post('/me/avatar', requireAnyRole, upload.single('image'), async (req, re
 });
 
 router.post('/logout', (req, res) => {
+  const uid = req.session && req.session.userId;
   req.session.destroy(() => {
+    if (uid) invalidateUserCache(uid);
     res.clearCookie('connect.sid');
     res.json({ ok: true });
   });

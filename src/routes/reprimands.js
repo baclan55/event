@@ -1,6 +1,6 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { requireAnyRole, requireRoleIn } = require('../middleware/auth');
+const { requireAnyRole, requireRoleIn, invalidateUserCache } = require('../middleware/auth');
 const { tierForPriority } = require('../utils/tier');
 const { REPRIMANDS_ROLES } = require('../utils/roleAccess');
 const { getRolesForUsers } = require('../db/roles');
@@ -283,6 +283,7 @@ router.post('/', requireRoleIn(REPRIMANDS_ROLES), async (req, res, next) => {
     }
 
     const status = await syncBlockStatus(userId);
+    invalidateUserCache(userId);
     res.json({ ok: true, blocked: !!(status && status.blocked) });
   } catch (err) {
     next(err);
@@ -300,6 +301,7 @@ router.post('/users/:userId/unblock', requireRoleIn(REPRIMANDS_ROLES), async (re
       'UPDATE users SET is_blocked = FALSE, blocked_at = NULL WHERE id = $1',
       [req.params.userId]
     );
+    invalidateUserCache(req.params.userId);
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -326,7 +328,10 @@ router.delete('/:id', requireRoleIn(REPRIMANDS_ROLES), async (req, res, next) =>
     }
 
     await pool.query('DELETE FROM reprimands WHERE id = $1', [req.params.id]);
-    if (target) await syncBlockStatus(target.user_id);
+    if (target) {
+      await syncBlockStatus(target.user_id);
+      invalidateUserCache(target.user_id);
+    }
     res.json({ ok: true });
   } catch (err) {
     next(err);

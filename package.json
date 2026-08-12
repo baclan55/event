@@ -1,7 +1,7 @@
 {
   "name": "event-department-portal",
   "version": "1.0.0",
-  "description": "Внутренний портал Event-отдела: FAQ, состав, правила, регламент, заявки и выговоры. Backend на Express + PostgreSQL (Neon), готов к деплою на Render.",
+  "description": "Внутренний портал Event-отдела: FAQ, состав, правила, регламент, заявки и выговоры. Express + PostgreSQL (Docker).",
   "private": true,
   "engines": {
     "node": ">=18.0.0"

@@ -1,9 +1,6 @@
 services:
-  # Локальный Postgres — только с профилем local-db:
-  #   docker compose --profile local-db up -d
-  # При Neon (DATABASE_URL на *.neon.tech) профиль не нужен.
+  # Postgres на том же VDS (том db-data). Neon не нужен.
   db:
-    profiles: ["local-db"]
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -26,8 +23,10 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      DATABASE_SSL: ${DATABASE_SSL:-}
+      # Если в Portainer всё ещё указан Neon — удалите DATABASE_URL, иначе
+      # подставится он, а не локальный db.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://eventportal:eventportal@db:5432/eventportal}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
       SESSION_SECRET: ${SESSION_SECRET}
       DISCORD_OWNER_ID: ${DISCORD_OWNER_ID}
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
@@ -52,7 +51,6 @@ services:
       PORT: 3000
       APP_DOMAIN: ${APP_DOMAIN:-event.mjdn.ru}
       DISABLE_EMBEDDED_BOT: ${DISABLE_EMBEDDED_BOT:-1}
-      # Discord OAuth + бот через CF Worker
       DISCORD_RELAY_URL: ${DISCORD_RELAY_URL:-https://hidden-union-525e.majes.workers.dev}
       DISCORD_RELAY_SECRET: ${DISCORD_RELAY_SECRET:-}
       DISCORD_PROXY: ${DISCORD_PROXY:-}
@@ -60,8 +58,10 @@ services:
       HTTP_PROXY: ${HTTP_PROXY:-}
     expose:
       - "3000"
+    depends_on:
+      db:
+        condition: service_healthy
 
-  # Discord-бот учёта посещаемости — отдельный процесс (свой пул/restart).
   event-bot:
     build:
       context: .
@@ -69,8 +69,8 @@ services:
     restart: on-failure
     command: ["node", "src/bot/standalone.js"]
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      DATABASE_SSL: ${DATABASE_SSL:-}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://eventportal:eventportal@db:5432/eventportal}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
       DISCORD_EVENTS_CHANNEL_ID: ${DISCORD_EVENTS_CHANNEL_ID}
       DISCORD_EVENTS_SOURCE_BOT_ID: ${DISCORD_EVENTS_SOURCE_BOT_ID}
@@ -78,12 +78,15 @@ services:
       EVENT_BOT_CATCHUP_DELAY_MS: ${EVENT_BOT_CATCHUP_DELAY_MS:-15000}
       EVENT_BOT_POLL_MS: ${EVENT_BOT_POLL_MS:-30000}
       NODE_ENV: ${NODE_ENV:-production}
-      # Тот же relay, что у app (OAuth + REST для бота)
       DISCORD_RELAY_URL: ${DISCORD_RELAY_URL:-https://hidden-union-525e.majes.workers.dev}
       DISCORD_RELAY_SECRET: ${DISCORD_RELAY_SECRET:-}
       DISCORD_PROXY: ${DISCORD_PROXY:-}
       HTTPS_PROXY: ${HTTPS_PROXY:-}
       HTTP_PROXY: ${HTTP_PROXY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -123,9 +126,9 @@ services:
     depends_on:
       - app
 
-  # Web-админка PostgreSQL — только с профилем local-db.
+  # Опционально: docker compose --profile tools up -d
   pgadmin:
-    profiles: ["local-db"]
+    profiles: ["tools"]
     image: dpage/pgadmin4:8
     restart: unless-stopped
     environment:

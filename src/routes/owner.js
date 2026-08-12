@@ -1,6 +1,6 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { requireRoleIn } = require('../middleware/auth');
+const { requireRoleIn, invalidateUserCache } = require('../middleware/auth');
 const { OWNER_PANEL_ROLES } = require('../utils/roleAccess');
 const { replaceUserRoles, getRolesForUsers } = require('../db/roles');
 
@@ -60,6 +60,7 @@ router.put('/users/:id', async (req, res, next) => {
     if (Array.isArray(roleIds)) {
       await replaceUserRoles(req.params.id, roleIds);
     }
+    invalidateUserCache(req.params.id);
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -72,6 +73,7 @@ router.delete('/users/:id', async (req, res, next) => {
       return res.status(400).json({ error: 'Нельзя удалить самого себя.' });
     }
     await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    invalidateUserCache(req.params.id);
     res.json({ ok: true });
   } catch (err) {
     next(err);
