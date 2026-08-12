@@ -16,7 +16,10 @@ export type SessionData = {
 export function resolveSessionPassword(secret = process.env.SESSION_SECRET): string {
   const raw = (secret || '').trim();
   if (!raw) {
-    if (process.env.NODE_ENV === 'production') {
+    const building =
+      process.env.NEXT_PHASE === 'phase-production-build' ||
+      process.env.npm_lifecycle_event === 'build';
+    if (process.env.NODE_ENV === 'production' && !building) {
       throw new Error('[session] SESSION_SECRET не задан — обязателен в production.');
     }
     return 'dev-secret-change-me-min-32-chars!!';

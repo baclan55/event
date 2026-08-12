@@ -34,6 +34,14 @@ export const PORTAINER_ENV = [
 ] as const;
 
 export function assertRuntimeEnv(): void {
+  // next build / collect page data — не валим образ из‑за отсутствующих секретов.
+  if (
+    process.env.NEXT_PHASE === 'phase-production-build' ||
+    process.env.npm_lifecycle_event === 'build'
+  ) {
+    return;
+  }
+
   const missing = REQUIRED_ENV.filter((key) => !(process.env[key] || '').trim());
   if (missing.length) {
     throw new Error(`[env] Не заданы обязательные переменные: ${missing.join(', ')}`);

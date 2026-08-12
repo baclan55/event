@@ -9,5 +9,7 @@ Caddyfile
 render.yaml
 *.md
 .env
-.env.*
-!.env.example
+.env.local
+.env.*.local
+scripts/port-*.mjs
+scripts/strip-neon.mjs
