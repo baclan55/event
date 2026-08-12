@@ -1,44 +1,43 @@
 # syntax=docker/dockerfile:1
-#
-# Events Denver — Event Department Portal
-# Node.js + Express приложение, статику и API отдаёт один процесс
-# (см. src/server.js). Файлы загружаются в память и пишутся в Postgres,
-# поэтому образу не нужен постоянный диск для аплоадов.
 
 ARG NODE_VERSION=20-alpine
 
-# ---------------------------------------------------------------------------
-# Стадия 1: устанавливаем только production-зависимости.
-# Отдельная стадия нужна, чтобы слой с node_modules кэшировался и
-# пересобирался только при изменении package*.json, а не при каждом
-# изменении исходников.
-# ---------------------------------------------------------------------------
 FROM node:${NODE_VERSION} AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
-# ---------------------------------------------------------------------------
-# Стадия 2: финальный рантайм-образ.
-# ---------------------------------------------------------------------------
-FROM node:${NODE_VERSION} AS runtime
-ENV NODE_ENV=production
+FROM node:${NODE_VERSION} AS builder
 WORKDIR /app
-
 COPY --from=deps /app/node_modules ./node_modules
-COPY package.json package-lock.json ./
-COPY src ./src
-COPY public ./public
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV DB_KEEPALIVE_MS=0
+RUN npm run build
 
-# Официальный образ node уже содержит непривилегированного пользователя
-# "node" — запускаем процесс от него, а не от root.
-RUN chown -R node:node /app
-USER node
+FROM node:${NODE_VERSION} AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 
+RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
+
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/bot ./bot
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+
+USER nextjs
 EXPOSE 3000
 
-# Liveness без БД — см. /api/health/live в src/server.js.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD wget -qO- "http://127.0.0.1:${PORT:-3000}/api/health/live" > /dev/null || exit 1
 
-CMD ["node", "src/server.js"]
+CMD ["node", "server.js"]

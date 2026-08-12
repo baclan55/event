@@ -8,9 +8,8 @@
 **Вход в личный кабинет только через Discord** — отдельной регистрации
 логином/паролем в проекте нет.
 
-Технологии: **Node.js + Express** (backend и API), **PostgreSQL** (для
-Neon), чистый HTML/CSS/JS на фронтенде (без сборки, без фреймворков) —
-можно просто залить на хостинг и запустить.
+Технологии: **Next.js + React + TypeScript**, **PostgreSQL** (Docker Compose на VDS),
+Discord OAuth + бот через Cloudflare Worker relay.
 
 ---
 
@@ -18,7 +17,7 @@ Neon), чистый HTML/CSS/JS на фронтенде (без сборки, б
 
 1. [Структура проекта](#структура-проекта)
 2. [Быстрый старт локально](#быстрый-старт-локально)
-3. [Создание базы данных на Neon](#создание-базы-данных-на-neon)
+3. [База данных PostgreSQL (Docker)](#база-данных-postgresql-docker)
 4. [Настройка входа через Discord](#настройка-входа-через-discord)
 5. [Аватары через Cloudinary (опционально)](#аватары-через-cloudinary-опционально)
 6. [Discord-бот учёта посещаемости мероприятий](#discord-бот-учёта-посещаемости-мероприятий)
@@ -85,9 +84,8 @@ Node-процессом — то есть на Render это **один Web Serv
 ### Требования
 
 - Node.js 18 или новее (проверить: `node -v`)
-- Доступ к PostgreSQL — либо локальный сервер, либо сразу база на Neon
-  (см. следующий раздел — для локальной разработки можно сразу использовать
-  Neon и не ставить Postgres на свой компьютер).
+- Доступ к PostgreSQL — сервис `db` в Docker Compose
+  (`DATABASE_URL=postgresql://eventportal:…@db:5432/eventportal`) или локальный Postgres.
 - Приложение Discord для OAuth-входа (см. раздел [Настройка входа через
   Discord](#настройка-входа-через-discord)) — без него зайти в личный
   кабинет не получится, кнопка входа будет неактивна.
@@ -105,7 +103,7 @@ cp .env.example .env
 Откройте `.env` и укажите как минимум:
 
 ```
-DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
+DATABASE_URL=postgresql://eventportal:eventportal@localhost:5432/eventportal
 SESSION_SECRET=любая-длинная-случайная-строка
 DISCORD_CLIENT_ID=...
 DISCORD_CLIENT_SECRET=...
@@ -113,9 +111,7 @@ DISCORD_REDIRECT_URI=http://localhost:3000/api/auth/discord/callback
 DISCORD_OWNER_ID=ваш-discord-id
 ```
 
-`DATABASE_URL` — либо строка подключения к вашему локальному Postgres
-(`postgresql://postgres:postgres@localhost:5432/eventportal`), либо строка
-из Neon (см. следующий раздел).
+`DATABASE_URL` — строка к Postgres (Docker `db` или локальный инстанс). Neon не используется.
 
 ```bash
 # 3. Создать таблицы и заполнить базу начальными данными (роли, тексты)
@@ -138,30 +134,20 @@ npm run dev
 
 ---
 
-## Создание базы данных на Neon
+## База данных PostgreSQL (Docker)
 
-[Neon](https://neon.tech) — облачный serverless-Postgres с бесплатным
-тарифом, отлично сочетается с Render.
+Продакшен — Postgres в `docker-compose.yml` (сервис `db`, том `db-data`).
 
-1. Зарегистрируйтесь на **neon.tech** и создайте новый проект (Project).
-   Регион можно выбрать ближайший к региону вашего Render-сервиса.
-2. В панели проекта откройте вкладку **Connection Details** / **Connect**.
-3. Выберите вариант строки подключения для **psql / стандартного драйвера**
-   (не «Pooled» и не «.env для Prisma» — просто обычная строка вида
-   `postgresql://...`). Скопируйте её.
-4. Строка должна заканчиваться на `?sslmode=require` — если Neon не добавил
-   этот параметр сам, допишите его вручную.
-5. Вставьте эту строку в `.env` (локально) или в переменные окружения
-   Render (при деплое) как значение `DATABASE_URL`.
-6. Примените схему и сид: локально это `npm run setup` при активной `.env`
-   с этой строкой подключения (см. раздел деплоя ниже — то же самое нужно
-   сделать один раз и для продакшен-базы).
+```bash
+docker compose up -d db
+# внутри сети compose:
+# DATABASE_URL=postgresql://eventportal:eventportal@db:5432/eventportal
+```
 
-Один и тот же проект Neon можно использовать и для локальной разработки,
-и для продакшена — либо создать два отдельных проекта Neon (рекомендуется,
-чтобы не путать тестовые данные с боевыми).
+Схема: при старте (`APPLY_SCHEMA_ON_START=1`) или `npm run db:migrate` / `npm run setup`.
 
 ---
+
 
 ## Настройка входа через Discord
 
@@ -455,7 +441,7 @@ origin ...` и `git push`).
 В разделе **Environment** сервиса добавьте те же переменные, что и в
 `.env.example` (см. таблицу ниже). Обязательно:
 
-- `DATABASE_URL` — строка подключения из Neon (см. выше)
+- `DATABASE_URL` — строка к PostgreSQL (Docker `db`)
 - `SESSION_SECRET` — длинная случайная строка (Render может сгенерировать
   сам, если использовать `render.yaml`)
 - `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` —
@@ -469,7 +455,7 @@ origin ...` и `git push`).
 после первого деплоя). Проще всего — со своего компьютера:
 
 ```bash
-# временно укажите в .env продакшен DATABASE_URL (строку из Neon,
+# временно укажите в .env продакшен DATABASE_URL (к Docker Postgres,
 # ту же, что вписали в Render), затем:
 npm run setup
 ```
@@ -752,7 +738,7 @@ Markdown-эквивалент (`rawBodyForEdit`/`legacyHtmlToMarkdown`) — жи
 
 | Переменная | Обязательна | Описание |
 |---|---|---|
-| `DATABASE_URL` | да | Строка подключения к PostgreSQL (Neon) |
+| `DATABASE_URL` | да | Строка подключения к PostgreSQL (Docker) |
 | `SESSION_SECRET` | да | Случайная строка для подписи сессий |
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` / `DISCORD_REDIRECT_URI` | да | Вход через Discord — без них зайти в личный кабинет нельзя |
 | `DISCORD_OWNER_ID` | рекомендуется | Discord ID аккаунта, который автоматически получает права владельца при входе |
@@ -773,7 +759,7 @@ Markdown-эквивалент (`rawBodyForEdit`/`legacyHtmlToMarkdown`) — жи
 ## Частые проблемы
 
 **«password authentication failed» / ошибка SSL при подключении к базе.**
-Проверьте, что `DATABASE_URL` скопирован из Neon целиком, включая
+Проверьте, что `DATABASE_URL` указывает на сервис `db` в Docker Compose.
 `?sslmode=require`, и без лишних пробелов/переносов строк.
 
 **После деплоя открывается пустая страница или ошибка 500.**

@@ -7,7 +7,7 @@ router.get('/:id', async (c) => {
   const { rows } = await db.query('SELECT mime_type, data FROM images WHERE id = $1', [c.req.param('id')]);
   if (!rows.length) return c.body(null, 404);
   const row = rows[0];
-  // row.data приходит как Buffer-совместимый Uint8Array от Neon-драйвера —
+  // row.data — Buffer/Uint8Array из драйвера БД
   // копируем в чистый ArrayBuffer для тела ответа.
   const bytes = new Uint8Array(row.data);
   return c.body(bytes.buffer, 200, {

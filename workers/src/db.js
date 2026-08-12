@@ -1,8 +1,8 @@
 import { neon } from '@neondatabase/serverless';
 
-// Обёртка над HTTP-драйвером Neon, которая ведёт себя как pg Pool.query():
-// возвращает { rows }. Это позволяет почти не менять SQL-запросы и логику
-// маршрутов при переносе с Express+pg на Hono+Workers.
+// Legacy HTTP-драйвер (пакет @neondatabase/serverless). Прод-сайт его не использует —
+// Next.js ходит в Postgres через node-pg (lib/db.ts).
+// Возвращает { rows }, чтобы SQL в workers/ совпадал с Express+pg.
 export function createDb(databaseUrl) {
   const sql = neon(databaseUrl);
   return {

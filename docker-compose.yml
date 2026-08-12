@@ -1,5 +1,4 @@
 services:
-  # Postgres на том же VDS (том db-data). Neon не нужен.
   db:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -22,42 +21,31 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    ports:
+      - "80:3000"
+    # Переменные из Portainer Stack → Environment подставляются в ${...}.
+    # Локально: скопируйте .env.example → .env рядом с compose.
     environment:
-      # Если в Portainer всё ещё указан Neon — удалите DATABASE_URL, иначе
-      # подставится он, а не локальный db.
       DATABASE_URL: ${DATABASE_URL:-postgresql://eventportal:eventportal@db:5432/eventportal}
-      DATABASE_SSL: ${DATABASE_SSL:-false}
-      SESSION_SECRET: ${SESSION_SECRET}
-      DISCORD_OWNER_ID: ${DISCORD_OWNER_ID}
-      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
-      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
-      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI:-https://event.mjdn.ru/api/auth/discord/callback}
-      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
-      DISCORD_EVENTS_CHANNEL_ID: ${DISCORD_EVENTS_CHANNEL_ID}
-      DISCORD_EVENTS_SOURCE_BOT_ID: ${DISCORD_EVENTS_SOURCE_BOT_ID}
-      EVENT_BOT_CATCHUP_LIMIT: ${EVENT_BOT_CATCHUP_LIMIT}
-      EVENT_BOT_CATCHUP_DELAY_MS: ${EVENT_BOT_CATCHUP_DELAY_MS:-15000}
-      APPLY_SCHEMA_ON_START: ${APPLY_SCHEMA_ON_START:-1}
-      APPLICATIONS_WEBHOOK_URL: ${APPLICATIONS_WEBHOOK_URL}
-      CLOUDINARY_URL: ${CLOUDINARY_URL}
-      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
-      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
-      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET обязателен}
+      DISCORD_OWNER_ID: ${DISCORD_OWNER_ID:-}
       APP_TITLE: ${APP_TITLE:-Events Denver}
       APP_SUBTITLE: ${APP_SUBTITLE:-Ивент-отдел сервера}
       WEEKLY_EVENTS_TARGET: ${WEEKLY_EVENTS_TARGET:-5}
-      WEEKLY_RESET_TZ: ${WEEKLY_RESET_TZ:-Europe/Moscow}
-      NODE_ENV: ${NODE_ENV:-production}
-      PORT: 3000
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI:-https://event.mjdn.ru/api/auth/discord/callback}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      APPLICATIONS_WEBHOOK_URL: ${APPLICATIONS_WEBHOOK_URL:-}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
       APP_DOMAIN: ${APP_DOMAIN:-event.mjdn.ru}
-      DISABLE_EMBEDDED_BOT: ${DISABLE_EMBEDDED_BOT:-1}
-      DISCORD_RELAY_URL: ${DISCORD_RELAY_URL:-https://hidden-union-525e.majes.workers.dev}
       DISCORD_RELAY_SECRET: ${DISCORD_RELAY_SECRET:-}
-      DISCORD_PROXY: ${DISCORD_PROXY:-}
-      HTTPS_PROXY: ${HTTPS_PROXY:-}
-      HTTP_PROXY: ${HTTP_PROXY:-}
-    expose:
-      - "3000"
+      DISCORD_RELAY_URL: ${DISCORD_RELAY_URL:-https://hidden-union-525e.majes.workers.dev}
+      NODE_ENV: production
+      PORT: "3000"
+      APPLY_SCHEMA_ON_START: "1"
     depends_on:
       db:
         condition: service_healthy
@@ -67,66 +55,17 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: on-failure
-    command: ["node", "src/bot/standalone.js"]
+    command: ["npx", "tsx", "bot/standalone.ts"]
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://eventportal:eventportal@db:5432/eventportal}
-      DATABASE_SSL: ${DATABASE_SSL:-false}
-      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
-      DISCORD_EVENTS_CHANNEL_ID: ${DISCORD_EVENTS_CHANNEL_ID}
-      DISCORD_EVENTS_SOURCE_BOT_ID: ${DISCORD_EVENTS_SOURCE_BOT_ID}
-      EVENT_BOT_CATCHUP_LIMIT: ${EVENT_BOT_CATCHUP_LIMIT}
-      EVENT_BOT_CATCHUP_DELAY_MS: ${EVENT_BOT_CATCHUP_DELAY_MS:-15000}
-      EVENT_BOT_POLL_MS: ${EVENT_BOT_POLL_MS:-30000}
-      NODE_ENV: ${NODE_ENV:-production}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       DISCORD_RELAY_URL: ${DISCORD_RELAY_URL:-https://hidden-union-525e.majes.workers.dev}
       DISCORD_RELAY_SECRET: ${DISCORD_RELAY_SECRET:-}
-      DISCORD_PROXY: ${DISCORD_PROXY:-}
-      HTTPS_PROXY: ${HTTPS_PROXY:-}
-      HTTP_PROXY: ${HTTP_PROXY:-}
+      NODE_ENV: production
     depends_on:
       db:
         condition: service_healthy
 
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    environment:
-      APP_DOMAIN: ${APP_DOMAIN:-event.mjdn.ru}
-      ACME_EMAIL: ${ACME_EMAIL:-admin@event.mjdn.ru}
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        cat > /etc/caddy/Caddyfile <<EOF
-        {
-        	email $${ACME_EMAIL}
-        }
-        https://$${APP_DOMAIN} {
-        	encode gzip
-        	reverse_proxy app:3000 {
-        		header_up X-Forwarded-Proto https
-        		header_up X-Forwarded-Host {host}
-        		header_up X-Real-IP {remote_host}
-        	}
-        }
-        http://$${APP_DOMAIN} {
-        	redir https://$${APP_DOMAIN}{uri} permanent
-        }
-        :80, :443 {
-        	respond "Not Found" 404
-        }
-        EOF
-        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
-    volumes:
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      - app
-
-  # Опционально: docker compose --profile tools up -d
   pgadmin:
     profiles: ["tools"]
     image: dpage/pgadmin4:8
@@ -145,6 +84,4 @@ services:
 
 volumes:
   db-data:
-  caddy-data:
-  caddy-config:
   pgadmin-data:

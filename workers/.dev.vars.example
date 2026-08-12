@@ -1,14 +1,9 @@
-# Скопируйте этот файл в .dev.vars (без .example) для локальной разработки
-# через `npx wrangler dev`. Файл .dev.vars не должен попадать в git.
+# Скопируйте в .dev.vars для `npx wrangler dev`. Не коммитьте .dev.vars.
+# Та же Postgres, что у основного приложения (не Neon).
 
-# Строка подключения к той же базе Neon, что используется в Render-версии.
-DATABASE_URL=postgresql://user:password@host.neon.tech/dbname?sslmode=require
+DATABASE_URL=postgresql://eventportal:eventportal@localhost:5432/eventportal
+SESSION_SECRET=change-this-to-a-long-random-string-at-least-32-chars
 
-# Любая длинная случайная строка — секрет для подписи cookie сессии.
-# Например: openssl rand -hex 32
-SESSION_SECRET=change-this-to-a-long-random-string
-
-# Необязательно — только если нужен вход через Discord.
 DISCORD_CLIENT_ID=
 DISCORD_CLIENT_SECRET=
 DISCORD_REDIRECT_URI=http://localhost:8787/api/auth/discord/callback
