@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/split-css.cjs && next build",
     "start": "next start",
     "lint": "next lint",
     "bot": "tsx bot/standalone.ts",

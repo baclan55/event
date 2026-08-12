@@ -1,0 +1,137 @@
+
+.site-header-inner{
+  max-width:1180px; margin:0 auto; padding:14px 28px;
+  display:flex; align-items:center; justify-content:space-between; gap:18px; flex-wrap:wrap;
+}
+.site-brand{ display:flex; align-items:center; gap:10px; }
+.site-brand-mark{
+  width:32px; height:32px; border-radius:9px; flex-shrink:0;
+  background:linear-gradient(155deg, var(--accent) 0%, var(--accent-2) 100%);
+  color:#fff; font-weight:800; font-size:12.5px;
+  display:flex; align-items:center; justify-content:center;
+}
+.site-brand-name{ font-weight:800; font-size:14.5px; color:var(--text-heading); letter-spacing:.03em; }
+.site-nav{ display:flex; align-items:center; gap:26px; }
+.site-nav-link{ font-size:13.5px; font-weight:600; color:var(--text-body); }
+.site-nav-link:hover{ color:var(--text-heading); }
+.site-nav-link.active{ color:var(--text-heading); }
+
+.site-main{ flex:1; }
+
+/* --- Hero ---
+   Раньше блок был высотой в весь экран (min-height:100vh) с текстом по
+   центру — из-за этого на первом экране был виден только заголовок с
+   кнопками, а всё остальное (что мы предлагаем/требуем, важная информация)
+   пряталось ниже без явной подсказки прокрутить. Фон при этом был
+   background-attachment:fixed, из-за чего затемняющий градиент считался
+   относительно окна браузера, а не самого блока — при скролле граница
+   между картинкой горы и следующим блоком "плыла" и было видно нестыковку
+   цвета (просвечивающий фон). Ниже — компактный герой без fixed-фона:
+   градиент теперь всегда красиво доходит до чёрного точно к низу блока,
+   независимо от прокрутки, а сам блок занимает намного меньше высоты. */
+.site-hero{
+  position:relative; padding:84px 24px 60px; text-align:center; overflow:hidden;
+  /* Картинка задаётся inline на главной (data-uri) — CF обрывает /img/mountains-bg.jpg */
+  background-color: var(--bg-page);
+  background-size:cover; background-position:center;
+}
+.site-hero-bg{
+  position:absolute; inset:0; z-index:0; pointer-events:none;
+  background-image:url('/img/mountains-bg-sm.jpg');
+  background-size:cover; background-position:center;
+}
+.site-hero-bg::after{
+  content:''; position:absolute; inset:0;
+  background: linear-gradient(180deg, rgba(40,30,70,.55) 0%, rgba(8,6,15,.92) 70%, var(--bg-page) 100%);
+}
+.site-hero > *{ position:relative; z-index:1; }
+.site-hero h1{ font-size:40px; font-weight:800; margin-bottom:14px; }
+.site-hero-sub{ max-width:560px; margin:0 auto 28px; color:var(--text-body); font-size:14.5px; }
+.site-hero-actions{ display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
+
+/* --- Контентные секции ниже hero --- */
+.site-section{ max-width:760px; margin:0 auto; padding:38px 24px 20px; }
+.site-lead{ text-align:center; font-weight:700; color:var(--text-heading); font-size:15.5px; margin-bottom:4px; }
+.site-h2{ font-size:19px; font-weight:800; margin:32px 0 14px; }
+.site-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:11px; }
+.site-list li{ position:relative; padding-left:20px; color:var(--text-body); font-size:14px; line-height:1.5; }
+.site-list li::before{ content:''; position:absolute; left:2px; top:8px; width:6px; height:6px; border-radius:50%; background:var(--accent-light); }
+
+.site-callout{ margin-top:26px; }
+.site-callout h3{ font-size:16px; margin-bottom:8px; }
+.site-callout-underline{ width:36px; height:3px; border-radius:2px; background:var(--red); margin-bottom:18px; }
+.site-callout .site-list{ margin-bottom:22px; }
+
+.site-footer{
+  margin-top:auto; text-align:center; padding:34px 24px 46px; color:var(--text-faint); font-size:12px;
+  display:flex; flex-direction:column; align-items:center; gap:8px;
+}
+.site-footer a{ display:inline-flex; align-items:center; gap:6px; color:var(--text-muted); font-weight:600; }
+.site-footer a:hover{ color:var(--accent-light); }
+
+/* --- Форма заявки (в стиле опросника) --- */
+.site-page-head{ max-width:640px; margin:0 auto; padding:46px 24px 6px; text-align:center; }
+.site-page-head h1{ font-size:27px; margin-bottom:8px; }
+.site-page-head p{ color:var(--text-muted); font-size:13.5px; }
+
+.qform{ max-width:640px; margin:0 auto; padding:24px 24px 60px; display:flex; flex-direction:column; gap:14px; }
+.qform-card{ background:var(--bg-card); border:1px solid var(--border-soft); border-radius:var(--radius-lg); padding:22px 24px; }
+.qform-label{ display:block; font-size:14.5px; font-weight:700; color:var(--text-heading); margin-bottom:5px; }
+.qform-required{ color:var(--accent-light); margin-left:3px; }
+.qform-hint{ font-size:12px; color:var(--text-muted); margin-bottom:10px; }
+.qform-hint-row{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+.qform-hint-row .qform-hint{ margin-bottom:0; }
+.qform-card .input{ margin-top:2px; }
+.qform .error-text{ text-align:center; }
+
+/* --- ссылка "Как найти свой Discord ID?" рядом с полем Discord в заявке --- */
+.qform-hint-link{
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:12px; font-weight:600; color:var(--accent-light);
+  background:none; border:none; padding:0; cursor:pointer; white-space:nowrap;
+}
+.qform-hint-link:hover{ color:var(--text-heading); text-decoration:underline; }
+
+/* --- гайд "Как найти свой Discord ID" (модалка) --- */
+.dc-guide-steps{ display:flex; flex-direction:column; }
+.dc-guide-step{
+  display:flex; align-items:flex-start; gap:14px;
+  padding:14px 2px; border-bottom:1px solid var(--border-soft);
+}
+.dc-guide-step:last-child{ border-bottom:none; padding-bottom:2px; }
+.dc-guide-num{
+  flex-shrink:0; width:28px; height:28px; border-radius:50%;
+  background:var(--accent); color:#fff; font-weight:800; font-size:13px;
+  display:flex; align-items:center; justify-content:center;
+}
+.dc-guide-text{ padding-top:3px; font-size:13.5px; color:var(--text-body); line-height:1.55; }
+.dc-guide-text b{ color:var(--text-heading); }
+.dc-guide-done{
+  display:flex; align-items:center; gap:12px; margin-top:16px;
+  padding:14px 16px; border-radius:var(--radius-md);
+  background:var(--green-soft); border:1px solid rgba(52,211,153,.25);
+}
+.dc-guide-done svg{ flex-shrink:0; color:var(--green); }
+.dc-guide-done-text{ font-size:13px; color:var(--text-body); line-height:1.5; }
+.dc-guide-done-text b{ color:var(--green); }
+
+/* --- чекбокс согласия на обработку персональных данных (заявка + вход) --- */
+.qform-check-label{
+  display:flex; align-items:flex-start; gap:10px; cursor:pointer;
+  font-size:13px; line-height:1.5; color:var(--text-body); text-align:left;
+}
+.qform-check-label input[type="checkbox"]{
+  width:17px; height:17px; margin-top:2px; flex-shrink:0;
+  accent-color:var(--accent); cursor:pointer;
+}
+.auth-card .qform-check-label{ font-size:12.5px; color:var(--text-muted); margin-bottom:18px; }
+
+@media (max-width:640px){
+  .site-header-inner{ justify-content:center; text-align:center; }
+  .site-nav{ gap:16px; }
+  .site-hero{ padding:52px 18px 40px; }
+  .site-hero h1{ font-size:30px; }
+  .site-section{ padding:30px 18px 10px; }
+  .qform{ padding:18px 16px 48px; }
+  .qform-card{ padding:18px 18px; }
+}

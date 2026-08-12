@@ -1,0 +1,253 @@
+
+
+/* Markdown-редактор (жирный/курсив/зачёркнутый/заголовок/списки/цитата/код +
+   ссылка на Discord + переключатель Написать/Просмотр) — см.
+   public/js/markdownEditor.js. Панель сверху, поле ввода снизу — оформлены
+   как единый блок в стиле .input, чтобы не выбиваться из остальных форм. */
+.mde{
+  border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--bg-input);
+}
+.mde:focus-within{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.mde-toolbar{
+  display:flex; align-items:center; gap:4px; flex-wrap:wrap;
+  padding:7px 8px; background:var(--bg-card-2); border-bottom:1px solid var(--border);
+}
+.mde-btn{
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:29px; height:28px; padding:0 7px; border-radius:7px; border:1px solid transparent;
+  background:none; color:var(--text-body); font-family:inherit; font-size:13px; font-weight:700;
+  cursor:pointer;
+}
+.mde-btn:hover{ background:var(--bg-hover); color:var(--text-heading); }
+.mde-btn-bold{ font-weight:800; }
+.mde-btn-italic{ font-style:italic; }
+.mde-btn-strike{ text-decoration:line-through; }
+.mde-btn-code{ font-family:var(--font-mono); font-size:11px; }
+.mde-sep{ width:1px; height:20px; background:var(--border); margin:0 3px; flex-shrink:0; }
+.mde-btn-discord{ color:#8b93f8; }
+.mde-btn-discord:hover{ color:#fff; background:#5865f2; }
+.mde-toolbar-spacer{ flex:1 1 auto; min-width:8px; }
+.mde-tabs{ padding:3px; flex-shrink:0; }
+.mde-tabs button{ padding:5px 12px; font-size:11.5px; }
+
+/* Панель вставки ссылки на канал Discord — раскрывается прямо в теле
+   редактора между тулбаром и полем ввода, а не в отдельном модальном окне
+   (редактор обычно и так открыт внутри Modal, а тот умеет показывать
+   только одно окно за раз). */
+.mde-discord-pop{
+  padding:14px 14px 2px; background:var(--bg-card-2); border-bottom:1px solid var(--border);
+}
+.mde-discord-pop .field{ margin-bottom:12px; }
+.mde-discord-pop-actions{ display:flex; justify-content:flex-end; gap:8px; margin-bottom:14px; }
+
+.mde-textarea{
+  display:block; width:100%; min-height:180px; max-height:460px; resize:vertical;
+  border:none; border-radius:0; background:none; line-height:1.6; font-family:inherit;
+}
+.mde-textarea:focus{ outline:none; box-shadow:none; }
+.mde-preview{ min-height:180px; max-height:460px; overflow-y:auto; padding:14px 16px; }
+.mde-preview .empty-state{ padding:14px 0; }
+
+/* "Чип" ссылки на канал Discord — то, что реально попадает в отображаемый
+   текст (см. transformDiscordAnchor в src/utils/richText.js на бэке).
+   Оформлен по образцу упоминания канала в самом Discord: приглушённый
+   блёрпл-фон, "#" перед названием, при наведении — сплошная заливка. Класс
+   общий и для предпросмотра в редакторе, и для готовой страницы — стиль
+   совпадает в обоих местах. */
+.discord-chip{
+  display:inline-flex; align-items:center;
+  padding:1px 7px 1px 5px; border-radius:5px; margin:0 1px;
+  background:rgba(88,101,242,.3); color:#c9cdfb;
+  font-weight:600; text-decoration:none; white-space:nowrap; cursor:pointer;
+}
+.discord-chip::before{
+  content:"#"; margin-right:2px; color:#9aa1f5; font-weight:700;
+}
+.discord-chip:hover, .discord-chip:focus-visible{ background:#5865f2; color:#fff; }
+.discord-chip:hover::before, .discord-chip:focus-visible::before{ color:#fff; }
+
+/* Типографика отрендеренного Markdown (FAQ/Регламент/Первые шаги/Правила —
+   вывод renderBody на бэке, и предпросмотр в .mde-preview). Блочные теги
+   сами задают отступы, поэтому в отличие от старого простого текста
+   white-space:pre-wrap здесь не нужен и даже вреден (перенос строк между
+   тегами в разметке стал бы виден как лишние пробелы/пустые строки). */
+.md-body{ color:var(--text-body); font-size:13.5px; line-height:1.65; }
+.md-body > *:first-child{ margin-top:0; }
+.md-body > *:last-child{ margin-bottom:0; }
+.md-body p{ margin:0 0 .85em; }
+.md-body h1, .md-body h2, .md-body h3, .md-body h4, .md-body h5, .md-body h6{
+  color:var(--text-heading); line-height:1.3; margin:1.1em 0 .5em; font-weight:700;
+}
+.md-body h1{ font-size:1.4em; }
+.md-body h2{ font-size:1.25em; }
+.md-body h3{ font-size:1.12em; }
+.md-body h4, .md-body h5, .md-body h6{ font-size:1em; }
+.md-body ul, .md-body ol{ margin:0 0 .85em; padding-left:1.4em; }
+.md-body li{ margin:.25em 0; }
+.md-body li > ul, .md-body li > ol{ margin:.25em 0 0; }
+.md-body blockquote{
+  margin:0 0 .85em; padding:2px 14px; border-left:3px solid var(--accent);
+  color:var(--text-muted); background:var(--accent-soft); border-radius:0 8px 8px 0;
+}
+.md-body blockquote > *:last-child{ margin-bottom:0; }
+.md-body code{
+  background:var(--bg-card-2); border:1px solid var(--border); border-radius:5px;
+  padding:1px 5px; font-family:var(--font-mono); font-size:.92em; color:var(--accent-light);
+}
+.md-body pre{
+  background:var(--bg-card-2); border:1px solid var(--border); border-radius:8px;
+  padding:12px 14px; overflow-x:auto; margin:0 0 .85em;
+}
+.md-body pre code{ background:none; border:none; padding:0; color:var(--text-body); }
+.md-body hr{ border:none; border-top:1px solid var(--border); margin:1.1em 0; }
+.md-body strong{ color:var(--text-heading); }
+.md-body a:not(.discord-chip){ color:var(--accent-light); text-decoration:underline; }
+.md-body table{ width:100%; border-collapse:collapse; margin:0 0 .85em; font-size:.95em; }
+.md-body th, .md-body td{ border:1px solid var(--border); padding:6px 10px; text-align:left; }
+.md-body th{ background:var(--bg-card-2); color:var(--text-heading); }
+
+.form-row-2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+@media (max-width:560px){ .form-row-2{ grid-template-columns:1fr; } }
+
+/* Сегментированный переключатель Event Helper / Event Administrator */
+.segmented{
+  display:inline-flex; background:var(--bg-input); border:1px solid var(--border);
+  border-radius:var(--radius-pill); padding:4px; gap:2px;
+}
+.segmented button{
+  border:none; background:none; color:var(--text-muted); font-weight:700;
+  font-size:12.5px; padding:8px 16px; border-radius:var(--radius-pill); cursor:pointer;
+}
+.segmented button.active{
+  background:linear-gradient(155deg, var(--accent) 0%, var(--accent-2) 100%);
+  color:#fff;
+}
+
+/* Аватары */
+.avatar{
+  width:40px; height:40px; border-radius:50%; flex-shrink:0;
+  background:var(--bg-card-2); color:var(--text-heading);
+  display:flex; align-items:center; justify-content:center;
+  font-weight:700; font-size:14px; overflow:hidden;
+  border:1px solid var(--border);
+}
+.avatar img{ width:100%; height:100%; object-fit:cover; }
+
+/* =============================================================================
+   Список-аккордеон (Правила МП) — в шапке всегда видно только фото и
+   название, текст правила выезжает вниз по клику на шапку.
+   Классы с префиксом "rules-", а не "rule-", специально: "rule-card" /
+   "rule-body" / "rule-text" / "rule-actions" уже заняты другой вёрсткой
+   (карточки заявок в applications.js) — переиспользовать их сюда нельзя.
+   ============================================================================= */
+.rules-card{
+  border-radius:var(--radius-md); background:var(--bg-card);
+  border:1px solid var(--border-soft); margin-bottom:12px; overflow:hidden;
+}
+.rules-card-header{
+  display:flex; align-items:center; gap:16px; padding:14px 16px;
+  cursor:pointer; user-select:none;
+}
+.rules-card-header:hover{ background:var(--bg-hover); }
+.rules-thumb{
+  width:60px; height:60px; border-radius:var(--radius-sm); flex-shrink:0;
+  background:var(--bg-card-2); overflow:hidden; border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center; color:var(--text-faint);
+}
+.rules-thumb img{ width:100%; height:100%; object-fit:cover; }
+.rules-title{ flex:1; min-width:0; font-size:18px; font-weight:700; line-height:1.3; color:var(--text-heading); }
+.rules-card-actions{ display:flex; gap:6px; flex-shrink:0; }
+.rules-chevron{
+  display:flex; flex-shrink:0; color:var(--text-muted); transition:transform .25s ease;
+}
+.rules-card.open .rules-chevron{ transform:rotate(180deg); color:var(--accent-light); }
+
+/* Выезжающая снизу панель с текстом правила: анимация через grid-template-rows,
+   работает без JS-расчёта высоты и корректно подстраивается под любой объём текста. */
+.rules-panel{
+  display:grid; grid-template-rows:0fr; transition:grid-template-rows .28s ease;
+}
+.rules-card.open .rules-panel{ grid-template-rows:1fr; }
+.rules-panel-inner{ overflow:hidden; }
+.rules-panel-text{
+  padding:2px 16px 18px 92px;
+}
+@media (max-width:560px){
+  .rules-panel-text{ padding-left:16px; }
+}
+
+/* =============================================================================
+   Состав (ростер)
+   ============================================================================= */
+.role-group-label{
+  font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-faint); margin:22px 0 8px; padding-left:4px;
+}
+.role-group-label:first-child{ margin-top:0; }
+.roster-row{
+  display:flex; align-items:center; gap:14px; padding:12px 14px;
+  border-radius:var(--radius-md); background:var(--bg-card);
+  border:1px solid var(--border-soft); margin-bottom:8px;
+}
+.roster-row .who{ min-width:0; flex:1; display:flex; align-items:center; gap:12px; }
+.roster-row .nickname{ font-weight:700; color:var(--text-heading); font-size:13.5px; }
+.roster-row .role-tag{ font-size:11.5px; color:var(--text-muted); }
+.roster-row .events-count{
+  font-family:var(--font-mono); font-weight:700; font-size:12.5px;
+  padding:5px 11px; border-radius:var(--radius-pill); flex-shrink:0;
+}
+.roster-row .row-actions{ display:flex; gap:4px; flex-shrink:0; }
+
+/* Клик по сотруднику открывает его профиль (карточка + история выговоров,
+   см. public/js/memberProfile.js) — виден только ролям, которым доступна
+   "Система выговоров" (Auth.ROLE_GROUPS.reprimands). */
+.roster-row .who-clickable{ cursor:pointer; border-radius:var(--radius-sm); margin:-4px -6px; padding:4px 6px; transition:background .15s ease; }
+.roster-row .who-clickable:hover{ background:var(--bg-hover); }
+.roster-row .who-clickable:hover .nickname{ color:var(--accent-light); }
+.roster-row .who-clickable:focus-visible{ outline:2px solid var(--accent-light); outline-offset:2px; }
+
+/* Общие классы для "кто это" — переиспользуются и в .roster-row, и в
+   карточках заявок/кандидатов ниже (там своего родителя-обёртки нет). */
+.who{ display:flex; align-items:center; gap:12px; min-width:0; }
+.nickname{ font-weight:700; color:var(--text-heading); font-size:13.5px; }
+.role-tag{ font-size:11.5px; color:var(--text-muted); }
+
+/* =============================================================================
+   Карточки заявок и кандидатов (разделы "Заявки" и "Кандидаты")
+   ============================================================================= */
+.rule-card{
+  display:flex; gap:18px; align-items:flex-start;
+  background:var(--bg-card); border:1px solid var(--border-soft);
+  border-radius:var(--radius-md); padding:18px 20px; margin-bottom:12px;
+}
+.rule-body{ flex:1; min-width:0; }
+.rule-body h4{
+  margin:0 0 12px; font-size:15px; font-weight:700; color:var(--text-heading);
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+}
+.rule-text{ font-size:13px; color:var(--text-body); line-height:1.6; }
+.rule-text b{ color:var(--text-heading); font-weight:600; }
+.rule-actions{ display:flex; gap:8px; flex-shrink:0; }
+@media (max-width:640px){
+  .rule-card{ flex-direction:column; }
+  .rule-actions{ width:100%; }
+  .rule-actions .btn{ flex:1; }
+}
+
+/* =============================================================================
+   Пустые состояния
+   ============================================================================= */
+.empty-state{
+  text-align:center; padding:48px 20px; color:var(--text-muted);
+}
+.empty-state h3{ color:var(--text-heading); margin-bottom:6px; font-size:15px; }
+.empty-state p{ font-size:13px; }
+.empty-state .blocked-icon{ display:inline-flex; color:var(--red); margin-bottom:12px; }
+.empty-state .blocked-icon svg{ width:34px; height:34px; }
+
+.section-image{
+  margin-top:18px; border-radius:var(--radius-md); overflow:hidden;
+  border:1px solid var(--border-soft); max-width:520px;
+}
+
+.meta-line{ font-size:11.5px; color:var(--text-faint); margin-top:14px; }
