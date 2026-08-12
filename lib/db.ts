@@ -1,3 +1,4 @@
+import 'server-only';
 import { Pool, type QueryResult, type QueryResultRow } from 'pg';
 import { runtimeEnv } from '@/lib/runtimeEnv';
 
@@ -57,6 +58,9 @@ function getPool(): Pool {
     globalForDb.__eventPortalPool.on('error', (err) => {
       console.error('[db] Неожиданная ошибка пула соединений:', err.message);
     });
+    void import('@/lib/weeklyReset')
+      .then((m) => m.startWeeklyResetScheduler())
+      .catch((err) => console.error('[db] weekly reset:', (err as Error).message));
   }
   return globalForDb.__eventPortalPool;
 }

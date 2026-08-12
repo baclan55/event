@@ -3,8 +3,8 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   output: 'standalone',
   poweredByHeader: false,
-  // Сжатие делает Cloudflare; на origin мешает и даёт HTTP/2 protocol error.
   compress: false,
+  serverExternalPackages: ['pg', 'cloudinary', 'discord.js'],
   async headers() {
     return [
       {

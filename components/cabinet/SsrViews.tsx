@@ -1,6 +1,6 @@
 import type { PublicUser } from '@/lib/auth';
 import { fmtDate } from '@/lib/cabinetData';
-import { ProfileNicknameForm } from '@/components/cabinet/ProfileNicknameForm';
+import { updateNicknameAction } from '@/lib/actions/nickname';
 
 type Row = Record<string, any>;
 
@@ -39,20 +39,23 @@ export function DashboardView({ members, target }: { members: Row[]; target: num
   );
 }
 
-export function ProfileView({
-  user,
-  reprimands,
-}: {
-  user: PublicUser;
-  reprimands: Row[];
-}) {
+export function ProfileView({ user, reprimands }: { user: PublicUser; reprimands: Row[] }) {
   return (
     <div className="top-grid">
       <div className="card card-pad">
         <div className="card-header"><h3>Мой профиль</h3></div>
-        <ProfileNicknameForm initialNickname={user.nickname || ''} />
+        <p>Никнейм: <b>{user.nickname || '—'}</b></p>
+        <p>Discord: <b>{user.discordUsername || '—'}</b></p>
         <p>Роли: <b>{user.roles.join(' · ') || 'не назначены'}</b></p>
         <p>Мероприятий за неделю: <b>{user.weeklyEvents}</b></p>
+        <hr style={{ border: 0, borderTop: '1px solid var(--border-soft)', margin: '16px 0' }} />
+        <form action={updateNicknameAction}>
+          <div className="field">
+            <label>Изменить никнейм</label>
+            <input className="input" name="nickname" defaultValue={user.nickname || ''} required maxLength={60} />
+          </div>
+          <button className="btn btn-primary" type="submit">Сохранить</button>
+        </form>
       </div>
       <div className="card card-pad">
         <div className="card-header"><h3>Мои выговоры</h3></div>
@@ -70,13 +73,7 @@ export function ProfileView({
   );
 }
 
-export function ContentView({
-  title,
-  blocks,
-}: {
-  title: string;
-  blocks: Record<string, { body?: string; imageId?: number | null }>;
-}) {
+export function ContentView({ title, blocks }: { title: string; blocks: Record<string, { body?: string; imageId?: number | null }> }) {
   const block = blocks.general || Object.values(blocks)[0] || {};
   return (
     <div className="card card-pad">
@@ -177,11 +174,7 @@ export function ApplicationsView({ rows, candidates = false }: { rows: Row[]; ca
   );
 }
 
-export function ReprimandsView({
-  reprimands,
-}: {
-  reprimands: Row[];
-}) {
+export function ReprimandsView({ reprimands }: { reprimands: Row[] }) {
   return (
     <div className="card card-pad">
       <div className="card-header"><h3>История выговоров</h3></div>

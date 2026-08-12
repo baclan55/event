@@ -66,7 +66,17 @@ export async function handle(key: string, request: NextRequest, context: Ctx): P
     if (key === 'live') return NextResponse.json({ ok: true });
     if (key === 'health') { try { await pool.query('SELECT 1'); return ok(); } catch { return NextResponse.json({ ok: false, error: 'База данных недоступна.' }, { status: 503 }); } }
     if (key === 'me') return NextResponse.json({ user: publicUser(await getCurrentUser()) });
-    if (key === 'logout') { const s = await getSession(); const uid = s.userId; await s.destroy(); if (uid) invalidateUserCache(uid); return ok(); }
+    if (key === 'logout') {
+      const s = await getSession();
+      const uid = s.userId;
+      await s.destroy();
+      if (uid) invalidateUserCache(uid);
+      if (method === 'GET') {
+        const domain = runtimeEnv('APP_DOMAIN');
+        return NextResponse.redirect(domain ? `https://${domain}/` : new URL('/', request.url));
+      }
+      return ok();
+    }
     if (key === 'oauth') {
       const client = runtimeEnv('DISCORD_CLIENT_ID'), uri = redirectUri(); if (!client || !uri) return plain('Вход через Discord не настроен.', 400);
       if (request.nextUrl.searchParams.get('consent') !== '1') return plain('Необходимо подтвердить согласие на обработку персональных данных.', 400);

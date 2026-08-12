@@ -1,23 +1,36 @@
-'use client';
+import { getCurrentUser, publicUser } from '@/lib/auth';
+import { runtimeEnv } from '@/lib/runtimeEnv';
+import { getHeroBgDataUri } from '@/lib/heroBgData';
 
-import Link from 'next/link';
-import { useAuth } from '@/components/AuthProvider';
+export const dynamic = 'force-dynamic';
 
-export default function HomePage() {
-  const { user, config } = useAuth();
+export default async function HomePage() {
+  let user = null;
+  try {
+    user = publicUser(await getCurrentUser());
+  } catch {
+    user = null;
+  }
+  const subtitle = runtimeEnv('APP_SUBTITLE') || 'Ивент-отдел сервера Denver';
+  const heroBg = getHeroBgDataUri();
 
   return (
     <>
       <section className="site-hero">
+        <div
+          className="site-hero-bg"
+          style={{ backgroundImage: `url(${heroBg})` }}
+          aria-hidden
+        />
         <h1>Events Denver</h1>
-        <p className="site-hero-sub">{config?.appSubtitle || 'Ивент-отдел сервера Denver'}</p>
+        <p className="site-hero-sub">{subtitle}</p>
         <div className="site-hero-actions">
           {user ? (
-            <Link className="btn btn-primary" href="/app/dashboard">Открыть кабинет</Link>
+            <a className="btn btn-primary" href="/app/dashboard">Открыть кабинет</a>
           ) : (
             <a className="btn btn-primary" href="/api/auth/discord?consent=1">Войти через Discord</a>
           )}
-          <Link className="btn btn-ghost" href="/apply">Оставить заявку</Link>
+          <a className="btn btn-ghost" href="/apply">Оставить заявку</a>
         </div>
       </section>
       <section className="site-section">
@@ -31,7 +44,7 @@ export default function HomePage() {
         <div className="site-callout">
           <h3>Хотите стать частью команды?</h3>
           <div className="site-callout-underline" />
-          <Link className="btn btn-primary" href="/apply">Подать заявку</Link>
+          <a className="btn btn-primary" href="/apply">Подать заявку</a>
         </div>
       </section>
     </>
