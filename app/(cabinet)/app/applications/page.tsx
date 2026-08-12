@@ -1,10 +1,10 @@
 import { loadApplications, requirePortalUser } from '@/lib/cabinetData';
-import { ApplicationsView } from '@/components/cabinet/SsrViews';
+import { ApplicationsInteractive } from '@/components/cabinet/InteractiveCore';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ApplicationsPage() {
   await requirePortalUser();
   const rows = await loadApplications();
-  return <ApplicationsView rows={rows} />;
+  return <ApplicationsInteractive initialRows={rows} />;
 }

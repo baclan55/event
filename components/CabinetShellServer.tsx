@@ -1,3 +1,6 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import type { PublicUser } from '@/lib/auth';
 import { NavIcon } from '@/components/NavIcons';
 
@@ -21,13 +24,36 @@ export function CabinetShellServer({
   pathname: string;
   children: React.ReactNode;
 }) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [topbarHidden, setTopbarHidden] = useState(false);
+  const [topbarScrolled, setTopbarScrolled] = useState(false);
   const active = (key: string) =>
     pathname === `/app/${key}` || (key === 'dashboard' && (pathname === '/app' || pathname === '/app/dashboard'));
+
+  useEffect(() => {
+    let lastY = window.scrollY;
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const y = window.scrollY;
+        setTopbarHidden(y > 80 && y > lastY);
+        setTopbarScrolled(y > 80);
+        lastY = y;
+        ticking = false;
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   return (
     <div id="app">
       <div className="bg-decor" />
-      <aside className="sidebar">
+      <button aria-label="Закрыть меню" className={`sidebar-scrim${sidebarOpen ? ' show' : ''}`} onClick={() => setSidebarOpen(false)} />
+      <aside className={`sidebar${sidebarOpen ? ' open' : ''}`}>
         <div className="brand">
           <div className="brand-mark">ED</div>
           <div className="brand-text">
@@ -45,6 +71,7 @@ export function CabinetShellServer({
               key={item.key}
               href={`/app/${item.key}`}
               className={`nav-item${active(item.key) ? ' active' : ''}`}
+              onClick={() => setSidebarOpen(false)}
             >
               <NavIcon name={item.key} />
               <span>{item.label}</span>
@@ -75,14 +102,21 @@ export function CabinetShellServer({
         </div>
       </aside>
       <main className="main">
-        <header className="topbar">
+        <header className={`topbar${topbarHidden ? ' topbar-hidden' : ''}${topbarScrolled ? ' topbar-scrolled' : ''}`}>
           <div className="topbar-titles">
-            <h1>{title}</h1>
-            <div className="sub">{subtitle}</div>
+            <button type="button" className="icon-btn menu-toggle" aria-label="Открыть меню" onClick={() => setSidebarOpen(true)}><NavIcon name="menu" /></button>
+            <div><h1>{title}</h1><div className="sub">{subtitle}</div></div>
           </div>
-          <a className="account-widget" href="/app/profile">
+          <button type="button" className="account-widget" onClick={() => setAccountOpen(!accountOpen)}>
+            <div className="avatar">{user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : (user.nickname || '?').slice(0, 1)}</div>
             <span className="name">{user.nickname}</span>
-          </a>
+            <span className="chev">⌄</span>
+          </button>
+          {accountOpen && <div className="card account-dropdown">
+            <a className="nav-item" href="/app/profile"><NavIcon name="profile" /><span>Моя страница</span></a>
+            {showOwner && <a className="nav-item" href="/app/owner"><NavIcon name="owner" /><span>Панель владельца</span></a>}
+            <a className="nav-item" href="/api/auth/logout"><NavIcon name="logout" /><span>Выйти</span></a>
+          </div>}
         </header>
         <div className="content">{children}</div>
       </main>

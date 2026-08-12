@@ -1,10 +1,11 @@
 import { loadContent, requirePortalUser } from '@/lib/cabinetData';
-import { ContentView } from '@/components/cabinet/SsrViews';
+import { ContentInteractive } from '@/components/cabinet/InteractiveCore';
+import { EDIT_ROLES, userHasRoleIn } from '@/lib/roleAccess';
 
 export const dynamic = 'force-dynamic';
 
 export default async function FaqPage() {
-  await requirePortalUser();
-  const blocks = await loadContent('faq');
-  return <ContentView title="FAQ" blocks={blocks} />;
+  const user = await requirePortalUser();
+  const blocks = await loadContent('faq', user);
+  return <ContentInteractive section="faq" title="FAQ" initialBlocks={blocks} canEdit={userHasRoleIn({ is_owner: user.isOwner, roleNames: user.roles }, EDIT_ROLES)} />;
 }

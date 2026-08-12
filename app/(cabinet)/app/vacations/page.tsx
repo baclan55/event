@@ -1,10 +1,17 @@
 import { loadVacations, requirePortalUser } from '@/lib/cabinetData';
-import { VacationsView } from '@/components/cabinet/SsrViews';
+import { VacationsInteractive } from '@/components/cabinet/InteractiveCore';
+import { VACATIONS_REVIEW_ROLES, userHasRoleIn } from '@/lib/roleAccess';
 
 export const dynamic = 'force-dynamic';
 
 export default async function VacationsPage() {
-  await requirePortalUser();
-  const rows = await loadVacations();
-  return <VacationsView rows={rows} />;
+  const user = await requirePortalUser();
+  const rows = await loadVacations(user);
+  return (
+    <VacationsInteractive
+      initialRows={rows}
+      currentUserId={user.id}
+      canReview={userHasRoleIn({ is_owner: user.isOwner, roleNames: user.roles }, VACATIONS_REVIEW_ROLES)}
+    />
+  );
 }

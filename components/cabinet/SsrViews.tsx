@@ -1,5 +1,6 @@
 import type { PublicUser } from '@/lib/auth';
 import { fmtDate } from '@/lib/cabinetData';
+import { NavIcon } from '@/components/NavIcons';
 
 type Row = Record<string, any>;
 
@@ -10,29 +11,35 @@ function Avatar({ row }: { row: Row }) {
 }
 
 export function DashboardView({ members, target }: { members: Row[]; target: number }) {
-  const top = [...members].sort((a, b) => (b.weekly_events || 0) - (a.weekly_events || 0)).slice(0, 7);
-  const done = members.filter((m) => (m.weekly_events || 0) >= target).length;
+  const withRole = members.filter((m) => m.role_id);
+  const candidates = members.filter((m) => m.status === 'candidate');
+  const withoutRole = members.length - withRole.length - candidates.length;
+  const top = (tier: string) => [...members]
+    .filter((m) => m.tier === tier && (m.weekly_events || 0) > 0)
+    .sort((a, b) => (b.weekly_events || 0) - (a.weekly_events || 0))
+    .slice(0, 3);
+  const rating = (rows: Row[], empty: string) => rows.length ? rows.map((m, i) => (
+    <div className="top-row" key={m.id}>
+      <b className="top-rank">{['🥇', '🥈', '🥉'][i]}</b>
+      <Avatar row={m} />
+      <div style={{ flex: 1 }}>
+        <b>{m.nickname}</b>
+        <div className="role-tag">{(m.roles || []).map((r: Row) => r.name).join(' · ') || m.role_name}</div>
+      </div>
+      <span className={`badge ${m.weekly_events >= target ? 'badge-green' : 'badge-amber'}`}>{m.weekly_events} мп / нед.</span>
+    </div>
+  )) : <div className="empty-state"><p>{empty}</p></div>;
   return (
     <>
-      <div className="stat-grid">
-        <div className="card card-pad stat-card"><div className="stat-value">{members.length}</div><div className="stat-label">Сотрудников</div></div>
-        <div className="card card-pad stat-card"><div className="stat-value">{done}</div><div className="stat-label">Выполнили недельный план</div></div>
-        <div className="card card-pad stat-card"><div className="stat-value">{target}</div><div className="stat-label">Цель на неделю</div></div>
+      <div className="stat-grid stat-grid-4">
+        <div className="card card-pad stat-card"><div className="stat-value">{members.length}</div><div className="stat-label">Всего людей в составе</div></div>
+        <div className="card card-pad stat-card"><div className="stat-value">{withRole.length}</div><div className="stat-label">Людей с ролями</div></div>
+        <div className="card card-pad stat-card"><div className="stat-value">{withoutRole}</div><div className="stat-label">Без роли</div></div>
+        <div className="card card-pad stat-card"><div className="stat-value">{candidates.length}</div><div className="stat-label">Кандидатов</div></div>
       </div>
-      <div className="card card-pad" style={{ marginTop: 20 }}>
-        <div className="card-header"><h3>Активность за неделю</h3></div>
-        {top.map((m, i) => (
-          <div className="top-row" key={m.id}>
-            <b className="top-rank">{i + 1}</b>
-            <Avatar row={m} />
-            <div style={{ flex: 1 }}>
-              <b>{m.nickname}</b>
-              <div className="role-tag">{(m.roles || []).map((r: Row) => r.name).join(' · ') || m.role_name}</div>
-            </div>
-            <span className="badge badge-purple">{m.weekly_events || 0} событий</span>
-          </div>
-        ))}
-        {!top.length && <div className="empty-state"><p>Пока нет данных.</p></div>}
+      <div className="top-grid" style={{ marginTop: 20 }}>
+        <div className="card card-pad"><div className="card-header"><h3>Топ-3 администраторов за неделю</h3></div>{rating(top('admin'), 'У администраторов пока нет мероприятий.')}</div>
+        <div className="card card-pad"><div className="card-header"><h3>Топ-3 хелперов за неделю</h3></div>{rating(top('helper'), 'У хелперов пока нет мероприятий.')}</div>
       </div>
     </>
   );
@@ -213,15 +220,22 @@ export function OwnerView({ users }: { users: Row[] }) {
   );
 }
 
-export function AccessView({ blocked }: { blocked: boolean }) {
+export function AccessView({ blocked, blockedAt }: { blocked: boolean; blockedAt?: string | null }) {
   return (
-    <div className="empty-state" style={{ maxWidth: 520, margin: '80px auto' }}>
-      <h3>{blocked ? 'Учётная запись заблокирована' : 'Доступ пока закрыт'}</h3>
-      <p>
-        {blocked
-          ? 'Обратитесь к руководству отдела для разблокировки.'
-          : 'Личный кабинет откроется после назначения роли в составе.'}
-      </p>
-    </div>
+    <>
+      <header className="site-header"><div className="site-header-inner"><a className="site-brand" href="/"><span className="site-brand-mark">ED</span><span className="site-brand-name">EVENTS DENVER</span></a><nav className="site-nav"><a className="site-nav-link" href="/">Главная</a><a className="btn btn-ghost btn-sm" href="/api/auth/logout">Выйти</a></nav></div></header>
+      <main className="site-main">
+        <div className="empty-state access-card">
+          <div className="blocked-icon"><NavIcon name={blocked ? 'reprimands' : 'profile'} /></div>
+          <h3>{blocked ? 'Учётная запись заблокирована' : 'Доступ пока закрыт'}</h3>
+          <p>
+            {blocked
+              ? `Личный кабинет закрыт по системе выговоров${blockedAt ? ` с ${fmtDate(blockedAt)}` : ''}. Аккаунт и история сохранены. Обратитесь к руководству отдела для разблокировки.`
+              : 'Личный кабинет откроется после назначения роли в составе.'}
+          </p>
+          <a className="btn btn-primary" href="/">Вернуться на сайт</a>
+        </div>
+      </main>
+    </>
   );
 }

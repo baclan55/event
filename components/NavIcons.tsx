@@ -127,6 +127,16 @@ export function NavIcon({ name }: { name: string }) {
           <line x1="21" y1="12" x2="9" y2="12" />
         </svg>
       );
+    case 'edit':
+      return <svg {...svgProps}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" /></svg>;
+    case 'trash':
+      return <svg {...svgProps}><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="m6 7 1 14h10l1-14" /><path d="M10 11v6M14 11v6" /></svg>;
+    case 'plus':
+      return <svg {...svgProps}><path d="M12 5v14M5 12h14" /></svg>;
+    case 'image':
+      return <svg {...svgProps}><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="m21 15-4-4L5 20" /></svg>;
+    case 'menu':
+      return <svg {...svgProps}><path d="M4 7h16M4 12h16M4 17h16" /></svg>;
     default:
       return (
         <svg {...svgProps}>

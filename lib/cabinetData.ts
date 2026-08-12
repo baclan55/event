@@ -2,9 +2,10 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser, publicUser, type PublicUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { runtimeEnv } from '@/lib/runtimeEnv';
-import { renderBody } from '@/lib/richText';
+import { rawBodyForEdit, renderBody } from '@/lib/richText';
 import { getRolesForUsers } from '@/lib/roles';
 import { tierForPriority } from '@/lib/tier';
+import { VACATIONS_REVIEW_ROLES, userHasRoleIn } from '@/lib/roleAccess';
 
 export async function requirePortalUser(): Promise<PublicUser> {
   const user = publicUser(await getCurrentUser());
@@ -14,13 +15,15 @@ export async function requirePortalUser(): Promise<PublicUser> {
 
 export async function loadDashboard() {
   const r = await query<Record<string, unknown>>(
-    `SELECT u.id, u.nickname, u.avatar_url, u.weekly_events, r.name AS role_name, r.priority AS role_priority
+    `SELECT u.id, u.nickname, u.avatar_image_id, u.avatar_url, u.weekly_events,
+            u.role_id, u.status, r.name AS role_name, r.priority AS role_priority
      FROM users u LEFT JOIN roles r ON r.id = u.role_id
      ORDER BY COALESCE(r.priority, 999), u.nickname`
   );
   const roles = await getRolesForUsers(r.rows.map((x) => x.id as number));
   const members = r.rows.map((x) => ({
     ...x,
+    tier: tierForPriority(x.role_priority as number),
     roles: roles.get(x.id as number) || [],
   }));
   const target = Number.parseInt(runtimeEnv('WEEKLY_EVENTS_TARGET') || '5', 10) || 5;
@@ -47,7 +50,7 @@ export async function loadReprimandsMe(userId: number) {
   }
 }
 
-export async function loadContent(section: string) {
+export async function loadContent(section: string, viewer?: PublicUser) {
   const r = await query<Record<string, unknown>>(
     `SELECT c.audience, c.body, c.image_id, c.updated_at, u.nickname AS updated_by_name
      FROM content_blocks c
@@ -56,11 +59,15 @@ export async function loadContent(section: string) {
     [section]
   );
   return Object.fromEntries(
-    r.rows.map((x) => [
+    r.rows
+      .filter((x) => x.audience !== 'administrator' || !viewer || viewer.isOwner || viewer.rolePriority != null && tierForPriority(viewer.rolePriority) === 'admin')
+      .map((x) => [
       x.audience as string,
       {
         body: renderBody(x.body),
+        bodyRaw: rawBodyForEdit(x.body),
         imageId: x.image_id as number | null,
+        updatedAt: x.updated_at as string | null,
         updatedBy: x.updated_by_name as string | null,
       },
     ])
@@ -71,12 +78,17 @@ export async function loadRules() {
   const r = await query<Record<string, unknown>>(
     `SELECT id, position, title, body, image_id, updated_at FROM rules ORDER BY position, id`
   );
-  return r.rows.map((x) => ({ ...x, bodyHtml: renderBody(x.body) }));
+  return r.rows.map((x) => ({
+    ...x,
+    bodyHtml: renderBody(x.body),
+    bodyRaw: rawBodyForEdit(x.body),
+  }));
 }
 
 export async function loadRoster() {
   const r = await query<Record<string, unknown>>(
-    `SELECT u.id, u.nickname, u.discord_username, u.avatar_url, u.weekly_events, u.note,
+    `SELECT u.id, u.nickname, u.discord_username, u.avatar_image_id, u.avatar_url,
+            u.weekly_events, u.note, u.status, u.is_blocked, u.blocked_at,
             u.role_id, r.name AS role_name, r.priority AS role_priority
      FROM users u LEFT JOIN roles r ON r.id = u.role_id
      ORDER BY COALESCE(r.priority, 999), u.nickname`
@@ -94,7 +106,7 @@ export async function loadRoster() {
   };
 }
 
-export async function loadVacations() {
+export async function loadVacations(viewer?: PublicUser) {
   const r = await query<Record<string, unknown>>(
     `SELECT v.id, v.user_id, v.start_date, v.end_date, v.reason, v.status, v.created_at,
             u.nickname, u.avatar_url
@@ -102,20 +114,35 @@ export async function loadVacations() {
      JOIN users u ON u.id = v.user_id
      ORDER BY v.start_date`
   );
-  return r.rows;
+  const canReview = viewer && userHasRoleIn(
+    { is_owner: viewer.isOwner, roleNames: viewer.roles },
+    VACATIONS_REVIEW_ROLES
+  );
+  return r.rows.map((row) => ({
+    ...row,
+    reason: !viewer || viewer.isOwner || canReview || row.user_id === viewer.id ? row.reason : '',
+  }));
 }
 
 export async function loadApplications() {
   const r = await query<Record<string, unknown>>(
-    `SELECT * FROM applications ORDER BY created_at DESC LIMIT 100`
+    `SELECT a.*, rb.nickname AS reviewed_by_nickname
+     FROM applications a LEFT JOIN users rb ON rb.id = a.reviewed_by
+     ORDER BY a.created_at DESC LIMIT 100`
   );
   return r.rows;
 }
 
 export async function loadCandidates() {
   const r = await query<Record<string, unknown>>(
-    `SELECT a.id, a.applicant_name, a.discord, a.nickname_static, a.status, a.created_at, a.candidate_user_id
-     FROM applications a WHERE a.status='approved' ORDER BY a.created_at ASC`
+    `SELECT a.id, a.applicant_name, a.discord, a.nickname_static, a.status, a.created_at,
+            a.candidate_user_id, cu.nickname AS candidate_nickname,
+            cu.avatar_image_id AS candidate_avatar_image_id, cu.avatar_url AS candidate_avatar_url,
+            rb.nickname AS reviewed_by_nickname
+     FROM applications a
+     LEFT JOIN users cu ON cu.id = a.candidate_user_id
+     LEFT JOIN users rb ON rb.id = a.reviewed_by
+     WHERE a.status='approved' ORDER BY a.created_at ASC`
   );
   return r.rows;
 }

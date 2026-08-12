@@ -25,6 +25,22 @@ const TITLES: Record<string, string> = {
   '/app/pending': 'Ожидание роли',
 };
 
+const SUBTITLES: Record<string, string> = {
+  '/app': 'Обзор состава и присутствия на мероприятиях',
+  '/app/dashboard': 'Обзор состава и присутствия на мероприятиях',
+  '/app/profile': 'Ваши мероприятия за неделю и выговоры',
+  '/app/faq': 'Последовательность проведения мероприятий',
+  '/app/roster': 'Иерархия сотрудников и мероприятия за неделю',
+  '/app/rules': 'Правила проведения мероприятий и их суть',
+  '/app/regulations': 'Регламент работы по ролям',
+  '/app/first-steps': 'С чего начать новому сотруднику',
+  '/app/vacations': 'Календарь отпусков и подача заявки',
+  '/app/reprimands': 'Учёт дисциплинарных взысканий',
+  '/app/applications': 'Заявки на роль Event Helper',
+  '/app/candidates': 'Кандидаты, ожидающие результата обзвона',
+  '/app/owner': 'Управление пользователями и правами',
+};
+
 export default async function CabinetLayout({ children }: { children: React.ReactNode }) {
   let user = null;
   try {
@@ -54,6 +70,15 @@ export default async function CabinetLayout({ children }: { children: React.Reac
   }
 
   const roleCtx = { is_owner: user.isOwner, roleNames: user.roles };
+  const protectedRoutes: Record<string, readonly string[]> = {
+    '/app/reprimands': REPRIMANDS_ROLES,
+    '/app/applications': APPLICATIONS_ROLES,
+    '/app/candidates': CANDIDATES_ROLES,
+    '/app/owner': OWNER_PANEL_ROLES,
+  };
+  if (protectedRoutes[pathname] && !userHasRoleIn(roleCtx, protectedRoutes[pathname])) {
+    redirect('/app/dashboard');
+  }
   const nav = [
     ['dashboard', 'Главная', true],
     ['profile', 'Моя страница', true],
@@ -70,7 +95,8 @@ export default async function CabinetLayout({ children }: { children: React.Reac
 
   const showOwner = userHasRoleIn(roleCtx, OWNER_PANEL_ROLES);
   const title = TITLES[pathname] || 'Кабинет';
-  const subtitle = runtimeEnv('APP_SUBTITLE') || 'Ивент-отдел сервера';
+  const appTitle = runtimeEnv('APP_TITLE') || 'Events Denver';
+  const subtitle = `${SUBTITLES[pathname] || runtimeEnv('APP_SUBTITLE') || 'Ивент-отдел сервера'} · ${appTitle}`;
 
   return (
     <CabinetShellServer

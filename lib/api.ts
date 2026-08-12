@@ -39,7 +39,7 @@ async function avatar(userId: number, file: { mimetype: string; buffer: Buffer }
   await query('UPDATE users SET avatar_image_id=$1, avatar_url=NULL, avatar_public_id=NULL WHERE id=$2', [imageId, userId]);
   return { imageId };
 }
-function active(rows: Record<string, unknown>[]) {
+function active<T extends Record<string, unknown>>(rows: T[]): Array<T & { active: boolean; expires_at: string | null }> {
   return rows.map((r) => ({ ...r, active: r.type === 'point' ? adminPointActive(r.created_at as string) : !(r.type === 'verbal' && r.converted), expires_at: r.type === 'point' ? new Date(new Date(r.created_at as string).getTime() + ADMIN_POINT_DECAY_DAYS * 864e5).toISOString() : null }));
 }
 async function login(discordUser: { id: string; username: string }, session: Awaited<ReturnType<typeof getSession>>) {
@@ -175,7 +175,17 @@ export async function handle(key: string, request: NextRequest, context: Ctx): P
         const members = await query<Record<string, unknown>>(`SELECT u.id, u.nickname, u.is_blocked,
           r.name AS role_name, r.priority AS role_priority FROM users u LEFT JOIN roles r ON r.id=u.role_id
           WHERE u.status='member' OR u.role_id IS NOT NULL ORDER BY u.nickname`);
-        return NextResponse.json({ reprimands: active(r.rows), members: members.rows, limits: LIMITS_PAYLOAD });
+        return NextResponse.json({
+          reprimands: active(r.rows).map((row) => ({
+            ...row,
+            tier: tierForPriority(row.role_priority as number),
+          })),
+          members: members.rows.map((row) => ({
+            ...row,
+            tier: tierForPriority(row.role_priority as number),
+          })),
+          limits: LIMITS_PAYLOAD,
+        });
       }
       const userId = Number(b.userId);
       const reason = String(b.reason || '').trim();
@@ -227,8 +237,13 @@ export async function handle(key: string, request: NextRequest, context: Ctx): P
       }
       if (key === 'candidates') {
         const u = await required(CANDIDATES_ROLES); if (u instanceof NextResponse) return u;
-        const r = await query(`SELECT a.id, a.applicant_name, a.discord, a.nickname_static, a.status, a.created_at, a.candidate_user_id
-          FROM applications a WHERE a.status='approved' ORDER BY a.created_at ASC`);
+        const r = await query(`SELECT a.id, a.applicant_name, a.discord, a.nickname_static, a.status, a.created_at,
+          a.candidate_user_id, cu.nickname AS candidate_nickname, cu.avatar_image_id AS candidate_avatar_image_id,
+          cu.avatar_url AS candidate_avatar_url, rb.nickname AS reviewed_by_nickname
+          FROM applications a
+          LEFT JOIN users cu ON cu.id=a.candidate_user_id
+          LEFT JOIN users rb ON rb.id=a.reviewed_by
+          WHERE a.status='approved' ORDER BY a.created_at ASC`);
         return NextResponse.json({ candidates: r.rows });
       }
       if (key === 'application-call') {
@@ -292,7 +307,9 @@ export async function handle(key: string, request: NextRequest, context: Ctx): P
       }
       if (method === 'GET') {
         const u = await required(APPLICATIONS_ROLES); if (u instanceof NextResponse) return u;
-        const r = await query('SELECT * FROM applications ORDER BY created_at DESC');
+        const r = await query(`SELECT a.*, rb.nickname AS reviewed_by_nickname
+          FROM applications a LEFT JOIN users rb ON rb.id=a.reviewed_by
+          ORDER BY a.created_at DESC`);
         const s = await query<{ is_open: boolean }>('SELECT is_open FROM applications_settings WHERE id=1');
         return NextResponse.json({ applications: r.rows, isOpen: s.rows[0]?.is_open ?? true });
       }

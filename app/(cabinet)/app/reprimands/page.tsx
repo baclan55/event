@@ -1,10 +1,9 @@
-import { loadReprimandsAdmin, requirePortalUser } from '@/lib/cabinetData';
-import { ReprimandsView } from '@/components/cabinet/SsrViews';
+import { requirePortalUser } from '@/lib/cabinetData';
+import { ReprimandsInteractive } from '@/components/cabinet/InteractiveCore';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ReprimandsPage() {
   await requirePortalUser();
-  const data = await loadReprimandsAdmin();
-  return <ReprimandsView reprimands={data.reprimands} />;
+  return <ReprimandsInteractive />;
 }
