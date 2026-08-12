@@ -1,0 +1,46 @@
+{
+	email {$ACME_EMAIL}
+}
+
+https://{$APP_DOMAIN} {
+	encode gzip
+
+	# Статика Next — с диска, без Node (иначе 15–20с и ERR_CONNECTION_RESET).
+	handle /_next/static/* {
+		root * /srv
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	handle /css/* {
+		root * /srv/public
+		header Cache-Control "public, max-age=86400"
+		file_server
+	}
+
+	handle /img/* {
+		root * /srv/public
+		header Cache-Control "public, max-age=86400"
+		file_server
+	}
+
+	handle {
+		reverse_proxy app:3000 {
+			header_up X-Forwarded-Proto https
+			header_up X-Forwarded-Host {host}
+			header_up X-Real-IP {remote_host}
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 30s
+			}
+		}
+	}
+}
+
+http://{$APP_DOMAIN} {
+	redir https://{$APP_DOMAIN}{uri} permanent
+}
+
+:80, :443 {
+	respond "Not Found" 404
+}

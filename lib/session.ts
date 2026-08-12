@@ -30,12 +30,11 @@ export function resolveSessionPassword(secret = process.env.SESSION_SECRET): str
 
 export const sessionOptions: SessionOptions = {
   password: resolveSessionPassword(),
-  // Новое имя cookie: старый connect.sid больше не читается → один раз войти заново.
   cookieName: 'event_portal_session',
   cookieOptions: {
-    // За CF (HTTPS у браузера) Secure-cookie корректны.
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
+    // lax: cookie уходит при возврате с Discord (top-level GET на callback).
     sameSite: 'lax',
     maxAge: 30 * 24 * 60 * 60,
     path: '/',

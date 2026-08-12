@@ -1,30 +1,98 @@
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/client/api';
 
 export type PortalUser = {
-  id: number; nickname: string | null; discordUsername: string | null;
-  avatarImageId: number | null; avatarUrl: string | null; isOwner: boolean; isAdmin: boolean;
-  weeklyEvents: number; roleId: number | null; roleName: string | null; rolePriority: number | null;
-  roles: string[]; isBlocked: boolean; blockedAt: string | null;
+  id: number;
+  nickname: string | null;
+  discordUsername: string | null;
+  avatarImageId: number | null;
+  avatarUrl: string | null;
+  isOwner: boolean;
+  isAdmin: boolean;
+  weeklyEvents: number;
+  roleId: number | null;
+  roleName: string | null;
+  rolePriority: number | null;
+  roles: string[];
+  isBlocked: boolean;
+  blockedAt: string | null;
 };
-type Config = { appTitle: string; appSubtitle: string; weeklyEventsTarget: number; discordEnabled: boolean };
-type AuthState = { user: PortalUser | null; config: Config | null; loading: boolean; refresh: () => Promise<void>; setUser: (user: PortalUser | null) => void };
+
+type Config = {
+  appTitle: string;
+  appSubtitle: string;
+  weeklyEventsTarget: number;
+  discordEnabled: boolean;
+};
+
+type AuthState = {
+  user: PortalUser | null;
+  config: Config | null;
+  loading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
+  setUser: (user: PortalUser | null) => void;
+};
+
 const AuthContext = createContext<AuthState | null>(null);
+
+const defaultConfig: Config = {
+  appTitle: 'Events Denver',
+  appSubtitle: 'Ивент-отдел сервера',
+  weeklyEventsTarget: 5,
+  discordEnabled: true,
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<PortalUser | null>(null);
-  const [config, setConfig] = useState<Config | null>(null);
+  const [config, setConfig] = useState<Config | null>(defaultConfig);
+  // Не блокируем публичные страницы: кабинет сам ждёт loading.
   const [loading, setLoading] = useState(true);
-  const refresh = async () => {
-    const [configResult, meResult] = await Promise.allSettled([api.get('/api/config'), api.get('/api/auth/me')]);
-    if (configResult.status === 'fulfilled') setConfig(configResult.value);
-    if (meResult.status === 'fulfilled') setUser(meResult.value.user ?? null);
-    setLoading(false);
-  };
-  useEffect(() => { void refresh(); }, []);
-  const value = useMemo(() => ({ user, config, loading, refresh, setUser }), [user, config, loading]);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setError(null);
+    try {
+      const [configResult, meResult] = await Promise.allSettled([
+        api.get('/api/config'),
+        api.get('/api/auth/me'),
+      ]);
+      if (configResult.status === 'fulfilled') setConfig(configResult.value);
+      if (meResult.status === 'fulfilled') {
+        setUser(meResult.value.user ?? null);
+      } else {
+        setUser(null);
+        setError((meResult.reason as Error)?.message || 'Не удалось проверить сессию.');
+      }
+    } catch (err) {
+      setUser(null);
+      setError((err as Error).message || 'Ошибка загрузки.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('authed')) return;
+    url.searchParams.delete('authed');
+    window.history.replaceState({}, '', url.pathname + url.search);
+    setLoading(true);
+    void refresh();
+  }, [refresh]);
+
+  const value = useMemo(
+    () => ({ user, config, loading, error, refresh, setUser }),
+    [user, config, loading, error, refresh]
+  );
+
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

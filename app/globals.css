@@ -1,3 +1,6 @@
-@import url('/css/style.css');
+@import url('/css/style.css?v=4');
 
-body { font-family: 'Inter', -apple-system, 'Segoe UI', Arial, sans-serif; }
+/* Без внешних Google Fonts — они держат индикатор загрузки браузера при таймаутах. */
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, Roboto, Arial, sans-serif;
+}

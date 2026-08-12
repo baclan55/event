@@ -1,6 +1,6 @@
 'use client';
 
-const TIMEOUT_MS = 12_000;
+const TIMEOUT_MS = 8_000;
 
 export class ApiError extends Error {
   constructor(message: string, public status = 0) {

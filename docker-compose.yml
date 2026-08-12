@@ -22,7 +22,6 @@ services:
       dockerfile: Dockerfile
       target: app
     restart: unless-stopped
-    # Порт наружу не публикуем — только через Caddy.
     expose:
       - "3000"
     environment:
@@ -45,7 +44,9 @@ services:
       DISCORD_RELAY_URL: ${DISCORD_RELAY_URL:-https://hidden-union-525e.majes.workers.dev}
       NODE_ENV: production
       PORT: "3000"
-      APPLY_SCHEMA_ON_START: "1"
+      # Схему применяйте отдельно (npm run db:migrate), не на каждый старт —
+      # иначе первые запросы конкурируют с тяжёлым SQL.
+      APPLY_SCHEMA_ON_START: ${APPLY_SCHEMA_ON_START:-0}
     depends_on:
       db:
         condition: service_healthy
@@ -66,9 +67,11 @@ services:
       db:
         condition: service_healthy
 
-  # HTTPS + прокси на Next (app:3000). Cloudflare → VDS:80/443 → Caddy → app.
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: caddy
     restart: unless-stopped
     ports:
       - "80:80"
@@ -77,29 +80,6 @@ services:
     environment:
       APP_DOMAIN: ${APP_DOMAIN:-event.mjdn.ru}
       ACME_EMAIL: ${ACME_EMAIL:-admin@event.mjdn.ru}
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        cat > /etc/caddy/Caddyfile <<EOF
-        {
-        	email $${ACME_EMAIL}
-        }
-        https://$${APP_DOMAIN} {
-        	encode gzip
-        	reverse_proxy app:3000 {
-        		header_up X-Forwarded-Proto https
-        		header_up X-Forwarded-Host {host}
-        		header_up X-Real-IP {remote_host}
-        	}
-        }
-        http://$${APP_DOMAIN} {
-        	redir https://$${APP_DOMAIN}{uri} permanent
-        }
-        :80, :443 {
-        	respond "Not Found" 404
-        }
-        EOF
-        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     volumes:
       - caddy-data:/data
       - caddy-config:/config
