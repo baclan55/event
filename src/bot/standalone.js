@@ -1,5 +1,4 @@
-// Отдельный процесс Discord-бота (не делит event loop / пул с HTTP).
-// Запуск: node src/bot/standalone.js  или сервис event-bot в docker-compose.
+// Отдельный процесс Discord-бота.
 require('dotenv').config();
 require('../utils/outboundProxy').applyOutboundProxy();
 
@@ -11,18 +10,18 @@ if (!process.env.DATABASE_URL) {
 const pool = require('../db/pool');
 const { startEventAttendanceBot } = require('./eventAttendanceBot');
 
-const client = startEventAttendanceBot(pool);
-if (!client) {
-  // Токена нет — exit 0; в compose у event-bot restart: on-failure (не зациклит).
+const bot = startEventAttendanceBot(pool);
+if (!bot) {
   process.exit(0);
 }
 
-process.on('SIGTERM', async () => {
-  console.log('[event-bot] SIGTERM — останавливаюсь.');
-  try { await client.destroy(); } catch (_) { /* ignore */ }
+async function shutdown() {
+  console.log('[event-bot] Останавливаюсь…');
+  try {
+    if (typeof bot.destroy === 'function') await bot.destroy();
+  } catch (_) { /* ignore */ }
   process.exit(0);
-});
-process.on('SIGINT', async () => {
-  try { await client.destroy(); } catch (_) { /* ignore */ }
-  process.exit(0);
-});
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

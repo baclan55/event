@@ -205,16 +205,19 @@ async function creditParticipants(pool, { messageId, eventLabel, discordIds }) {
 
 async function handleMessage(pool, rawMessage, { channelId, sourceBotId }) {
   try {
-    if (!rawMessage || rawMessage.channelId !== channelId) return;
+    if (!rawMessage) return;
+    // discord.js: channelId; REST JSON через relay: channel_id
+    const msgChannelId = rawMessage.channelId || rawMessage.channel_id;
+    if (msgChannelId !== channelId) return;
     if (!rawMessage.author || rawMessage.author.id !== sourceBotId) return;
 
     let message = rawMessage;
-    if (message.partial) {
+    if (message.partial && typeof message.fetch === 'function') {
       message = await message.fetch();
     }
 
     const text = extractText(message);
-    if (!isClosedEventMessage(text)) return; // сбор ещё открыт — ждём следующего изменения
+    if (!isClosedEventMessage(text)) return;
 
     const participantIds = extractParticipantIds(text);
     const adminId = extractAdminId(text);
@@ -244,7 +247,109 @@ async function handleMessage(pool, rawMessage, { channelId, sourceBotId }) {
   }
 }
 
-// --- Запуск бота ------------------------------------------------------------
+function normalizeRestMessage(m, channelId) {
+  return {
+    id: m.id,
+    channelId: m.channel_id || channelId,
+    channel_id: m.channel_id || channelId,
+    author: m.author,
+    content: m.content || '',
+    embeds: m.embeds || [],
+    components: m.components || [],
+    partial: false,
+  };
+}
+
+/** Режим через Cloudflare relay: REST-опрос канала (без Gateway — с VDS WS всё равно не проходит). */
+function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }) {
+  const relayUrl = (process.env.DISCORD_RELAY_URL || '').trim().replace(/\/$/, '');
+  const relaySecret = (process.env.DISCORD_RELAY_SECRET || '').trim();
+  if (!relayUrl || !relaySecret) {
+    console.error('[event-bot] Для relay нужны DISCORD_RELAY_URL и DISCORD_RELAY_SECRET.');
+    return null;
+  }
+
+  const pollMs = Math.max(10_000, parseInt(process.env.EVENT_BOT_POLL_MS, 10) || 30_000);
+  let stopped = false;
+  let timer = null;
+  const seen = new Map(); // messageId -> content hash (ловить edits)
+
+  async function discordGet(path) {
+    const res = await fetch(`${relayUrl}/api/v10${path}`, {
+      headers: {
+        Authorization: `Bot ${token}`,
+        'X-Relay-Secret': relaySecret,
+      },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Discord relay ${res.status}: ${text.slice(0, 200)}`);
+    }
+    return res.json();
+  }
+
+  function contentKey(m) {
+    return `${m.id}:${m.content || ''}:${JSON.stringify(m.embeds || [])}:${JSON.stringify(m.components || [])}`;
+  }
+
+  async function pollOnce(label) {
+    const list = await discordGet(
+      `/channels/${channelId}/messages?limit=${catchupLimit}`
+    );
+    const fromSource = (Array.isArray(list) ? list : [])
+      .filter((m) => m.author && m.author.id === sourceBotId)
+      .reverse();
+
+    let processed = 0;
+    for (const raw of fromSource) {
+      const key = contentKey(raw);
+      if (seen.get(raw.id) === key) continue;
+      seen.set(raw.id, key);
+      await handleMessage(pool, normalizeRestMessage(raw, channelId), { channelId, sourceBotId });
+      processed += 1;
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    // Не раздуваем Map бесконечно
+    if (seen.size > catchupLimit * 4) {
+      const keep = new Set(fromSource.map((m) => m.id));
+      for (const id of seen.keys()) {
+        if (!keep.has(id)) seen.delete(id);
+      }
+    }
+    console.log(`[event-bot] ${label}: сообщений источника ${fromSource.length}, новых/изменённых ${processed}.`);
+  }
+
+  console.log(
+    `[event-bot] Режим Cloudflare relay: ${relayUrl}, канал ${channelId}, опрос каждые ${pollMs / 1000}с.`
+  );
+
+  (async () => {
+    try {
+      await pollOnce('старт');
+    } catch (err) {
+      console.error('[event-bot] Первый опрос через relay не удался:', err.message);
+    }
+    const tick = async () => {
+      if (stopped) return;
+      try {
+        await pollOnce('опрос');
+      } catch (err) {
+        console.error('[event-bot] Опрос через relay:', err.message);
+      }
+      if (!stopped) timer = setTimeout(tick, pollMs);
+    };
+    timer = setTimeout(tick, pollMs);
+  })();
+
+  return {
+    mode: 'relay-poll',
+    async destroy() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    },
+  };
+}
 
 function startEventAttendanceBot(pool) {
   const token = process.env.DISCORD_BOT_TOKEN;
@@ -259,6 +364,12 @@ function startEventAttendanceBot(pool) {
   const channelId = process.env.DISCORD_EVENTS_CHANNEL_ID || DEFAULT_CHANNEL_ID;
   const sourceBotId = process.env.DISCORD_EVENTS_SOURCE_BOT_ID || DEFAULT_SOURCE_BOT_ID;
   const catchupLimit = Math.min(parseInt(process.env.EVENT_BOT_CATCHUP_LIMIT, 10) || 50, 100);
+  const relayUrl = (process.env.DISCORD_RELAY_URL || '').trim();
+
+  // Если задан relay — только REST-опрос через Worker (рекомендуемый режим на VDS).
+  if (relayUrl) {
+    return startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit });
+  }
 
   const restAgent = getRestAgent();
   const clientOptions = {
@@ -274,8 +385,6 @@ function startEventAttendanceBot(pool) {
   client.once(Events.ClientReady, async (c) => {
     console.log(`[event-bot] Подключен как ${c.user.tag}. Слежу за каналом ${channelId}.`);
 
-    // Catchup откладываем и обрабатываем по одному — не забиваем пул Postgres
-    // в момент старта сайта / первых запросов пользователей.
     const catchupDelayMs = Math.max(0, parseInt(process.env.EVENT_BOT_CATCHUP_DELAY_MS, 10) || 15_000);
     setTimeout(async () => {
       try {
@@ -306,8 +415,7 @@ function startEventAttendanceBot(pool) {
     const viaProxy = resolveProxyUrl() ? 'через DISCORD_PROXY/HTTPS_PROXY' : 'напрямую (прокси не задан)';
     console.error(
       `[event-bot] Не удалось войти в Discord ${viaProxy}: ${err.message}. ` +
-      'Обычно это блокировка 162.159.*:443 с VDS, а не неверный токен. ' +
-      'Задайте DISCORD_PROXY=http://user:pass@host:port или запустите event-bot на хосте с доступом к Discord.'
+      'На VDS задайте DISCORD_RELAY_URL (Cloudflare) или DISCORD_PROXY.'
     );
   });
 

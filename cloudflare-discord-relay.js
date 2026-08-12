@@ -1,16 +1,13 @@
-// Cloudflare Worker: только OAuth Discord (token + @me).
-// Сайт на VDS не достаёт discord.com — колбэк ходит сюда.
+// Cloudflare Worker: Discord OAuth + REST-прокси для бота.
+// Сайт/бот на VDS не ходят на discord.com напрямую.
 //
-// Секреты (wrangler secret put):
-//   DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_RELAY_SECRET
+// Поддомен: discord-relay.event.mjdn.ru
+// Секреты в Cloudflare: DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_RELAY_SECRET
 //
-// На VDS:
-//   DISCORD_RELAY_URL=https://<имя>.<subdomain>.workers.dev
-//   DISCORD_RELAY_SECRET=<тот же секрет>
-//
-// Деплой: скопируйте файл в отдельный worker или:
-//   npx wrangler deploy cloudflare-discord-relay.js --name event-denver-discord-relay
-// (нужен wrangler.toml с main — см. комментарий внизу README-эквивалент в шапке)
+// Маршруты:
+//   GET  /health
+//   POST /oauth/complete          — вход на сайт
+//   *    /api/*  → discord.com/api/*  — бот (нужен Authorization: Bot …)
 
 export default {
   async fetch(request, env) {
@@ -32,9 +29,41 @@ export default {
       return handleOAuthComplete(request, env);
     }
 
+    if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
+      return proxyDiscordApi(request, url);
+    }
+
     return json({ error: 'Not Found' }, 404);
   },
 };
+
+async function proxyDiscordApi(request, url) {
+  const target = 'https://discord.com' + url.pathname + url.search;
+  const headers = new Headers();
+  const auth = request.headers.get('Authorization');
+  if (auth) headers.set('Authorization', auth);
+  const ct = request.headers.get('Content-Type');
+  if (ct) headers.set('Content-Type', ct);
+  headers.set('User-Agent', 'DiscordBot (event-denver-relay, 1.0)');
+
+  const init = {
+    method: request.method,
+    headers,
+    redirect: 'manual',
+  };
+  if (!['GET', 'HEAD'].includes(request.method)) {
+    init.body = await request.arrayBuffer();
+  }
+
+  const upstream = await fetch(target, init);
+  const outHeaders = new Headers(upstream.headers);
+  outHeaders.set('Access-Control-Allow-Origin', '*');
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: outHeaders,
+  });
+}
 
 async function handleOAuthComplete(request, env) {
   try {
@@ -98,7 +127,7 @@ function json(data, status = 200) {
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Relay-Secret',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Relay-Secret, Authorization',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   };
 }
