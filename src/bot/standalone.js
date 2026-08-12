@@ -1,6 +1,7 @@
 // Отдельный процесс Discord-бота (не делит event loop / пул с HTTP).
 // Запуск: node src/bot/standalone.js  или сервис event-bot в docker-compose.
 require('dotenv').config();
+require('../utils/outboundProxy').applyOutboundProxy();
 
 if (!process.env.DATABASE_URL) {
   console.error('[event-bot] DATABASE_URL не задан.');

@@ -1,4 +1,7 @@
 require('dotenv').config();
+// Прокси до Discord — до fetch/пула/бота (см. DISCORD_PROXY в compose).
+require('./utils/outboundProxy').applyOutboundProxy();
+
 const path = require('path');
 const express = require('express');
 const session = require('express-session');

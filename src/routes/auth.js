@@ -231,9 +231,18 @@ router.get('/discord/callback', async (req, res, next) => {
     const clientId = process.env.DISCORD_CLIENT_ID;
     const clientSecret = process.env.DISCORD_CLIENT_SECRET;
     const redirectUri = getDiscordRedirectUri();
+    const relayUrl = (process.env.DISCORD_RELAY_URL || '').trim().replace(/\/$/, '');
+    const relaySecret = (process.env.DISCORD_RELAY_SECRET || '').trim();
     const { code, state } = req.query;
-    if (!clientId || !clientSecret || !redirectUri) {
+    if (!redirectUri) {
       return res.status(400).send('Вход через Discord не настроен на сервере.');
+    }
+    // Прямой обмен с Discord нужен client_secret; через CF-relay секрет на Worker.
+    if (!relayUrl && (!clientId || !clientSecret)) {
+      return res.status(400).send('Вход через Discord не настроен на сервере.');
+    }
+    if (relayUrl && !relaySecret) {
+      return res.status(500).send('DISCORD_RELAY_URL задан, но нет DISCORD_RELAY_SECRET.');
     }
     if (!code) {
       return res.status(400).send('Discord не передал код авторизации.');
@@ -245,60 +254,83 @@ router.get('/discord/callback', async (req, res, next) => {
       return res.status(400).send('Недействительный запрос авторизации (state не совпадает). Попробуйте войти ещё раз.');
     }
 
-    let tokenRes;
-    try {
-      tokenRes = await fetch('https://discord.com/api/oauth2/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          client_id: clientId,
-          client_secret: clientSecret,
-          grant_type: 'authorization_code',
-          code: String(code),
-          redirect_uri: redirectUri,
-        }),
-        signal: AbortSignal.timeout(10_000),
-      });
-    } catch (err) {
-      console.error('[discord] token exchange network error:', err.message);
-      return res.status(502).json({
-        error:
-          'Сервер не может связаться с Discord API. Проверьте исходящий HTTPS (443) ' +
-          'с VDS до discord.com и DNS.',
-      });
-    }
-    if (!tokenRes.ok) {
-      const text = await tokenRes.text();
-      console.error('[discord] token exchange failed:', text);
-      return res.status(400).send('Не удалось подтвердить вход через Discord.');
-    }
-    const tokenData = await tokenRes.json();
+    let discordUser;
+    if (relayUrl) {
+      // VDS → Cloudflare Worker → Discord (Worker в сети, где Discord доступен).
+      let relayRes;
+      try {
+        relayRes = await fetch(`${relayUrl}/oauth/complete`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Relay-Secret': relaySecret,
+          },
+          body: JSON.stringify({ code: String(code), redirect_uri: redirectUri }),
+          signal: AbortSignal.timeout(15_000),
+        });
+      } catch (err) {
+        console.error('[discord] relay network error:', err.message);
+        return res.status(502).send(
+          'Не удалось связаться с Discord OAuth relay. Проверьте DISCORD_RELAY_URL.'
+        );
+      }
+      const relayData = await relayRes.json().catch(() => ({}));
+      if (!relayRes.ok || !relayData.discordUser || !relayData.discordUser.id) {
+        console.error('[discord] relay failed:', relayRes.status, relayData);
+        return res.status(400).send('Не удалось подтвердить вход через Discord (relay).');
+      }
+      discordUser = relayData.discordUser;
+    } else {
+      let tokenRes;
+      try {
+        tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: clientId,
+            client_secret: clientSecret,
+            grant_type: 'authorization_code',
+            code: String(code),
+            redirect_uri: redirectUri,
+          }),
+          signal: AbortSignal.timeout(10_000),
+        });
+      } catch (err) {
+        console.error('[discord] token exchange network error:', err.message);
+        return res.status(502).send(
+          'Сервер не может связаться с Discord API. Задайте DISCORD_RELAY_URL (Cloudflare relay) ' +
+          'или DISCORD_PROXY, либо разместите app в сети с доступом к discord.com.'
+        );
+      }
+      if (!tokenRes.ok) {
+        const text = await tokenRes.text();
+        console.error('[discord] token exchange failed:', text);
+        return res.status(400).send('Не удалось подтвердить вход через Discord.');
+      }
+      const tokenData = await tokenRes.json();
 
-    let userRes;
-    try {
-      userRes = await fetch('https://discord.com/api/users/@me', {
-        headers: { Authorization: `Bearer ${tokenData.access_token}` },
-        signal: AbortSignal.timeout(10_000),
-      });
-    } catch (err) {
-      console.error('[discord] users/@me network error:', err.message);
-      return res.status(502).json({
-        error:
-          'Сервер не может связаться с Discord API. Проверьте исходящий HTTPS (443) ' +
-          'с VDS до discord.com и DNS.',
-      });
+      let userRes;
+      try {
+        userRes = await fetch('https://discord.com/api/users/@me', {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+          signal: AbortSignal.timeout(10_000),
+        });
+      } catch (err) {
+        console.error('[discord] users/@me network error:', err.message);
+        return res.status(502).send(
+          'Сервер не может связаться с Discord API. Задайте DISCORD_RELAY_URL или DISCORD_PROXY.'
+        );
+      }
+      if (!userRes.ok) {
+        return res.status(400).send('Не удалось получить данные пользователя Discord.');
+      }
+      discordUser = await userRes.json();
     }
-    if (!userRes.ok) {
-      return res.status(400).send('Не удалось получить данные пользователя Discord.');
-    }
-    const discordUser = await userRes.json();
 
     const redirectPath = await finishDiscordLogin(req, discordUser);
     await new Promise((resolve, reject) => {
       req.session.save((err) => (err ? reject(err) : resolve()));
     });
-    // Абсолютный https-редирект: если Discord вернул колбэк на http://
-    // (устаревший redirect URI), не оставляем пользователя на незащищённом URL.
     const domain = (process.env.APP_DOMAIN || '').trim().toLowerCase();
     if (domain) {
       return res.redirect(302, `https://${domain}${redirectPath}`);

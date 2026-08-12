@@ -20,6 +20,7 @@
 // не нужна.
 
 const { Client, GatewayIntentBits, Partials, Events } = require('discord.js');
+const { getRestAgent, resolveProxyUrl } = require('../utils/outboundProxy');
 
 // ID канала со сборами и ID бота-источника сообщений — заданы по умолчанию
 // под текущий сервер, но их можно переопределить через переменные окружения
@@ -259,10 +260,16 @@ function startEventAttendanceBot(pool) {
   const sourceBotId = process.env.DISCORD_EVENTS_SOURCE_BOT_ID || DEFAULT_SOURCE_BOT_ID;
   const catchupLimit = Math.min(parseInt(process.env.EVENT_BOT_CATCHUP_LIMIT, 10) || 50, 100);
 
-  const client = new Client({
+  const restAgent = getRestAgent();
+  const clientOptions = {
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
     partials: [Partials.Message, Partials.Channel],
-  });
+  };
+  if (restAgent) {
+    clientOptions.rest = { agent: restAgent };
+  }
+
+  const client = new Client(clientOptions);
 
   client.once(Events.ClientReady, async (c) => {
     console.log(`[event-bot] Подключен как ${c.user.tag}. Слежу за каналом ${channelId}.`);
@@ -296,7 +303,12 @@ function startEventAttendanceBot(pool) {
   client.on(Events.Error, (err) => console.error('[event-bot] Ошибка клиента Discord:', err));
 
   client.login(token).catch((err) => {
-    console.error('[event-bot] Не удалось войти в Discord (проверьте DISCORD_BOT_TOKEN):', err.message);
+    const viaProxy = resolveProxyUrl() ? 'через DISCORD_PROXY/HTTPS_PROXY' : 'напрямую (прокси не задан)';
+    console.error(
+      `[event-bot] Не удалось войти в Discord ${viaProxy}: ${err.message}. ` +
+      'Обычно это блокировка 162.159.*:443 с VDS, а не неверный токен. ' +
+      'Задайте DISCORD_PROXY=http://user:pass@host:port или запустите event-bot на хосте с доступом к Discord.'
+    );
   });
 
   return client;

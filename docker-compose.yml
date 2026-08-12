@@ -51,8 +51,16 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
       APP_DOMAIN: ${APP_DOMAIN:-event.mjdn.ru}
-      # Бот вынесен в сервис event-bot — в app его не поднимаем.
       DISABLE_EMBEDDED_BOT: ${DISABLE_EMBEDDED_BOT:-1}
+      # Вход Discord с VDS без доступа к discord.com:
+      # 1) задеплойте cloudflare-discord-relay.js (wrangler.discord-relay.toml)
+      # 2) DISCORD_RELAY_URL=https://event-denver-discord-relay.<sub>.workers.dev
+      # 3) DISCORD_RELAY_SECRET=<тот же, что secret на Worker>
+      DISCORD_RELAY_URL: ${DISCORD_RELAY_URL:-}
+      DISCORD_RELAY_SECRET: ${DISCORD_RELAY_SECRET:-}
+      DISCORD_PROXY: ${DISCORD_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
     expose:
       - "3000"
 
@@ -72,7 +80,12 @@ services:
       EVENT_BOT_CATCHUP_LIMIT: ${EVENT_BOT_CATCHUP_LIMIT}
       EVENT_BOT_CATCHUP_DELAY_MS: ${EVENT_BOT_CATCHUP_DELAY_MS:-15000}
       NODE_ENV: ${NODE_ENV:-production}
+      DISCORD_PROXY: ${DISCORD_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
     # Без токена process.exit(0) — on-failure не зациклит.
+    # Без доступа к Discord: задайте DISCORD_PROXY или гоняйте сервис на другом VPS
+    # с тем же DATABASE_URL.
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped

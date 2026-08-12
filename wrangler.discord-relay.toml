@@ -1,0 +1,9 @@
+# Cloudflare Worker — Discord OAuth relay (только для VDS без доступа к discord.com)
+name = "event-denver-discord-relay"
+main = "cloudflare-discord-relay.js"
+compatibility_date = "2026-08-05"
+
+# Секреты (не в git):
+#   npx wrangler secret put DISCORD_CLIENT_ID
+#   npx wrangler secret put DISCORD_CLIENT_SECRET
+#   npx wrangler secret put DISCORD_RELAY_SECRET
