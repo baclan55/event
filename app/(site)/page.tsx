@@ -15,7 +15,9 @@ export default async function HomePage() {
   return (
     <>
       <section className="site-hero">
-        <div className="site-hero-bg" aria-hidden />
+        <div className="site-hero-bg" aria-hidden>
+          <img src="/img/mountains-bg-sm.jpg?v=3" alt="" fetchPriority="high" />
+        </div>
         <h1>Events Denver</h1>
         <p className="site-hero-sub">{subtitle}</p>
         <div className="site-hero-actions">

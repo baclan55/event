@@ -118,9 +118,8 @@ export function ProfileInteractive({
 }) {
   const router = useRouter();
   const [user, setUser] = useState(initialUser);
-  const [mode, setMode] = useState<'nickname' | 'avatar' | null>(null);
+  const [mode, setMode] = useState<'nickname' | null>(null);
   const [nickname, setNickname] = useState(user.nickname || '');
-  const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [rpData, setRpData] = useState({
@@ -158,33 +157,10 @@ export function ProfileInteractive({
     }
   }
 
-  async function saveAvatar(event: FormEvent) {
-    event.preventDefault();
-    if (!file) return setError('Выберите изображение.');
-    const body = new FormData();
-    body.append('image', file);
-    setSaving(true); setError('');
-    try {
-      const data = await request('/api/auth/me/avatar', { method: 'POST', body });
-      setUser(data.user);
-      setMode(null);
-      router.refresh();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
     <>
       <div className="card card-pad profile-hero">
-        <div className="profile-avatar-wrap">
-          <Avatar row={user} size={68} />
-          <button className="icon-btn profile-avatar-edit" type="button" title="Изменить аватар" onClick={() => setMode('avatar')}>
-            <NavIcon name="image" />
-          </button>
-        </div>
+        <div className="profile-avatar-wrap"><Avatar row={user} size={68} /></div>
         <div className="profile-main">
           <div className="profile-name-line">
             <h2>{user.nickname || 'Без никнейма'}</h2>
@@ -231,15 +207,6 @@ export function ProfileInteractive({
             <ErrorText value={error} />
             <div className="field"><label>Никнейм</label><input className="input" maxLength={60} value={nickname} onChange={(e) => setNickname(e.target.value)} /></div>
             <div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={() => setMode(null)}>Отмена</button><button className="btn btn-primary" disabled={saving}>Сохранить</button></div>
-          </form>
-        </Modal>
-      )}
-      {mode === 'avatar' && (
-        <Modal title="Изменить аватар" onClose={() => setMode(null)}>
-          <form onSubmit={saveAvatar}>
-            <ErrorText value={error} />
-            <div className="field"><label>Изображение</label><input className="input" type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] || null)} /></div>
-            <div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={() => setMode(null)}>Отмена</button><button className="btn btn-primary" disabled={saving}>Загрузить</button></div>
           </form>
         </Modal>
       )}
@@ -301,11 +268,6 @@ export function RosterInteractive({
       } else {
         const result = await request('/api/roster', { method: 'POST', body: JSON.stringify(payload) });
         id = result.id;
-      }
-      const file = form.get('avatar');
-      if (file instanceof File && file.size && id) {
-        const body = new FormData(); body.append('image', file);
-        await request(`/api/roster/${id}/avatar`, { method: 'POST', body });
       }
       setEditing(undefined);
       await reload();
@@ -382,7 +344,7 @@ export function RosterInteractive({
               <div className="field"><label>МП за неделю</label><input className="input" name="weeklyEvents" type="number" min="0" defaultValue={editing?.weekly_events || 0} /></div>
             </div>
             <div className="field"><label>Заметка</label><textarea className="input" name="note" defaultValue={editing?.note || ''} /></div>
-            <div className="field"><label>Аватар</label><input className="input" name="avatar" type="file" accept="image/*" /></div>
+            <div className="field-hint">Аватар синхронизируется автоматически при входе пользователя через Discord.</div>
             <div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={() => setEditing(undefined)}>Отмена</button><button className="btn btn-primary">Сохранить</button></div>
           </form>
         </Modal>

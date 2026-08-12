@@ -106,16 +106,16 @@
   background-color: var(--bg-page);
   background-size:cover; background-position:center;
 }
-.site-hero-bg{
+.site-hero > .site-hero-bg{
   position:absolute; inset:0; z-index:0; pointer-events:none;
-  background-image:url('/img/mountains-bg-sm.jpg');
-  background-size:cover; background-position:center;
+  overflow:hidden;
 }
+.site-hero-bg img{ width:100%; height:100%; object-fit:cover; object-position:center 28%; }
 .site-hero-bg::after{
   content:''; position:absolute; inset:0;
   background: linear-gradient(180deg, rgba(40,30,70,.55) 0%, rgba(8,6,15,.92) 70%, var(--bg-page) 100%);
 }
-.site-hero > *{ position:relative; z-index:1; }
+.site-hero > :not(.site-hero-bg){ position:relative; z-index:1; }
 .site-hero h1{ font-size:40px; font-weight:800; margin-bottom:14px; }
 .site-hero-sub{ max-width:560px; margin:0 auto 28px; color:var(--text-body); font-size:14.5px; }
 .site-hero-actions{ display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
