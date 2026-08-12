@@ -8,6 +8,11 @@
 }
 
 (static_files) {
+	# Cloudflare периодически обрывает несжатый origin-response после первых
+	# 3–4 КБ. Сжатие выполняется Caddy до отправки в CF и удерживает HTML/CSS/JS
+	# в одном небольшом ответе; соединение с origin остаётся HTTP/1.1.
+	encode gzip
+
 	@nextstatic path /_next/static*
 	handle @nextstatic {
 		root * /srv
