@@ -92,6 +92,13 @@ img{ max-width:100%; display:block; }
   mask-image: radial-gradient(1200px circle at 20% 0%, black, transparent 70%);
 }
 
+/* Декор не должен перекрывать обычный контент. Без явного слоя Chromium
+   рисует fixed z-index:0 поверх карточек; hover/filter временно возвращает их. */
+#app > .sidebar{ z-index:2; }
+#app > .main{ position:relative; z-index:1; }
+.site > .site-main,
+.site > .site-footer{ position:relative; z-index:1; }
+
 /* =============================================================================
    Каркас приложения
    ============================================================================= */
