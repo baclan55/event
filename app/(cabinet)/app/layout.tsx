@@ -20,6 +20,7 @@ const TITLES: Record<string, string> = {
   '/app/vacations': 'Отпуска',
   '/app/reprimands': 'Система выговоров',
   '/app/applications': 'Заявки',
+  '/app/application-history': 'История заявок',
   '/app/candidates': 'Кандидаты',
   '/app/roles': 'Роли и доступы',
   '/app/blacklist': 'Чёрный список',
@@ -43,6 +44,7 @@ const SUBTITLES: Record<string, string> = {
   '/app/vacations': 'Календарь отпусков и подача заявки',
   '/app/reprimands': 'Учёт дисциплинарных взысканий',
   '/app/applications': 'Заявки на роль Event Helper',
+  '/app/application-history': 'Одобренные и отклонённые заявки с сайта',
   '/app/candidates': 'Кандидаты, ожидающие результата обзвона',
   '/app/roles': 'Создание ролей, доступы и вес в иерархии',
   '/app/blacklist': 'Запрет выдачи ролей и автоотклонение заявок',
@@ -119,6 +121,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
   const protectedRoutes: Array<[string, Parameters<typeof userHasPermission>[1]]> = [
     ['/app/reprimands', 'reprimands'],
     ['/app/applications', 'applications'],
+    ['/app/application-history', 'application_history'],
     ['/app/candidates', 'candidates'],
     ['/app/events', 'manage_events'],
     ['/app/roles', 'manage_roles'],
@@ -167,6 +170,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
       label: 'Набор',
       items: [
         ['applications', 'Заявки', userHasPermission(roleCtx, 'applications')],
+        ['application-history', 'История заявок', userHasPermission(roleCtx, 'application_history')],
         ['candidates', 'Кандидаты', userHasPermission(roleCtx, 'candidates')],
       ],
     },

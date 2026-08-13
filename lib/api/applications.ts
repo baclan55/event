@@ -137,6 +137,20 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     );
     return NextResponse.json({ candidates: result.rows });
   }
+
+  if (key === 'applications-history') {
+    const user = await requiredPerm('application_history');
+    if (user instanceof NextResponse) return user;
+    const result = await query(
+      `SELECT a.*, rb.nickname AS reviewed_by_nickname
+        FROM applications a LEFT JOIN users rb ON rb.id=a.reviewed_by
+        WHERE a.status IN ('approved', 'rejected', 'call_passed', 'call_failed')
+        ORDER BY a.created_at DESC
+        LIMIT 500`,
+    );
+    return NextResponse.json({ applications: result.rows });
+  }
+
   if (key === 'application-call') {
     const user = await requiredPerm('candidates', { level: 'edit' });
     if (user instanceof NextResponse) return user;
@@ -287,6 +301,7 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     const result = await query(
       `SELECT a.*, rb.nickname AS reviewed_by_nickname
         FROM applications a LEFT JOIN users rb ON rb.id=a.reviewed_by
+        WHERE a.status='pending'
         ORDER BY a.created_at DESC`,
     );
     const settings = await query<{ is_open: boolean; closed_message: string | null }>(

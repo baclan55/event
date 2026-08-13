@@ -35,6 +35,7 @@ const groups: Array<{ label: string; items: Array<[string, string, Permission | 
     label: 'Набор',
     items: [
       ['applications', 'Заявки', 'applications'],
+      ['application-history', 'История заявок', 'application_history'],
       ['candidates', 'Кандидаты', 'candidates'],
     ],
   },

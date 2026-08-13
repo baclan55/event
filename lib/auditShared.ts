@@ -56,7 +56,7 @@ export function auditHref(entry: {
     return `/app/roster?user=${userId}`;
   }
   if (entityType === 'application' || entityType.startsWith('application')) {
-    return entityId ? `/app/applications#app-${entityId}` : '/app/applications';
+    return entityId ? `/app/application-history#app-${entityId}` : '/app/application-history';
   }
   if (entityType === 'applications_settings') return '/app/applications';
   if (entityType === 'vacation') return '/app/vacations';

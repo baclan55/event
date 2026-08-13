@@ -64,7 +64,7 @@ export function DashboardView({
             </div>
             <div className="card card-pad stat-card">
               <div className="stat-value">{weekMpCount}</div>
-              <div className="stat-label">МП за неделю (пн–вс)</div>
+              <div className="stat-label">МП за неделю</div>
             </div>
           </div>
           <div className="card card-pad dash-today-mp" style={{ marginTop: 14 }}>

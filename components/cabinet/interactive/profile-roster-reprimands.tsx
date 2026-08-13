@@ -1,12 +1,12 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { PublicUser } from '@/lib/authShared';
 import { AUDIT_LABELS } from '@/lib/auditShared';
 import { NavIcon } from '@/components/NavIcons';
-import { Avatar, DEFAULT_LIMITS, ErrorText, Modal, ReprimandBadge, ReprimandLegend, ReprimandSummary, request, Select, type Row } from './shared';
+import { Avatar, DEFAULT_LIMITS, ErrorText, matchesSearch, Modal, ReprimandBadge, ReprimandLegend, ReprimandSummary, request, SearchBox, Select, type Row } from './shared';
 import {
   ProfileAchievementsPanel,
   catalogFromPayload,
@@ -267,14 +267,12 @@ export function ProfileInteractive({
         <div className="profile-weekly-group">
           <div className="profile-weekly profile-stat">
             <div className="stat-value">{user.weeklyEvents}</div>
-            <div className="stat-label">мп за неделю (пн–вс)</div>
-            {hasNorm ? (
+            <div className="stat-label">мп за неделю</div>
+                        {hasNorm ? (
               <span className={`badge ${done ? 'badge-green' : 'badge-red'}`}>
                 {done ? 'норма' : `цель ${target}`}
               </span>
-            ) : (
-              <span className="badge badge-muted">без нормы</span>
-            )}
+            ) : null}
           </div>
           <div className="profile-weekly profile-stat">
             <div className="stat-value">{gmpWeekCount}</div>
@@ -515,6 +513,7 @@ export function RosterInteractive({
   const [tab, setTab] = useState<'with' | 'without' | 'candidates'>('with');
   const [editing, setEditing] = useState<Row | null | undefined>(undefined);
   const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
 
   function canAssignRole(role: Row) {
     if (actorIsOwner || actorRolePriority == null) return true;
@@ -584,9 +583,14 @@ export function RosterInteractive({
     }
   }
 
-  const candidates = members.filter((m) => m.status === 'candidate');
-  const without = members.filter((m) => !m.role_id && m.status !== 'candidate');
-  const withRoles = members.filter((m) => m.role_id);
+  const matchMember = (m: Row) => matchesSearch([
+    m.nickname, m.first_name, m.last_name, m.static_id, m.discord_id, m.discord_username,
+    m.role_name, m.note, m.weekly_events,
+    ...(Array.isArray(m.roles) ? m.roles.map((r: Row) => r.name) : []),
+  ], query);
+  const candidates = members.filter((m) => m.status === 'candidate' && matchMember(m));
+  const without = members.filter((m) => !m.role_id && m.status !== 'candidate' && matchMember(m));
+  const withRoles = members.filter((m) => m.role_id && matchMember(m));
   const shown = tab === 'with' ? withRoles : tab === 'without' ? without : candidates;
   const roleGroups = [...new Map(withRoles.map((member) => [
     member.role_id,
@@ -638,7 +642,10 @@ export function RosterInteractive({
   return (
     <>
       <div className="toolbar">
-        <div className="toolbar-left">{members.length} участников · норма по ролям (неделя пн–вс)</div>
+        <div className="toolbar-left" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span>{members.length} участников · норма по ролям</span>
+          <SearchBox value={query} onChange={setQuery} placeholder="Ник, роль, Discord, Static…" />
+        </div>
         {canEdit && <button className="btn btn-primary btn-sm" onClick={() => setEditing(null)}><NavIcon name="plus" /> Добавить участника</button>}
       </div>
       <div className="segmented roster-tabs">
@@ -650,7 +657,7 @@ export function RosterInteractive({
       {tab === 'with'
         ? roleGroups.map((group) => <section key={group.id}><div className="role-group-label">{group.label} · {group.members.length}</div>{group.members.map((member) => memberRow(member))}</section>)
         : shown.map((member) => memberRow(member, tab === 'candidates'))}
-      {!shown.length && <div className="empty-state"><h3>Здесь никого нет</h3></div>}
+      {!shown.length && <div className="empty-state"><h3>{query.trim() ? 'Никого не найдено' : 'Здесь никого нет'}</h3></div>}
 
       {editing !== undefined && (
         <Modal title={editing ? 'Редактирование участника' : 'Новый участник'} onClose={() => setEditing(undefined)} wide>
@@ -764,6 +771,7 @@ export function ReprimandsInteractive() {
   const [adding, setAdding] = useState(false);
   const [tab, setTab] = useState<'helper' | 'admin'>('helper');
   const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
 
   async function load() {
     try { setData(await request('/api/reprimands')); }
@@ -809,23 +817,29 @@ export function ReprimandsInteractive() {
     },
   ])).values()].sort((a, b) => String(a.nickname).localeCompare(String(b.nickname), 'ru'));
 
+  const filteredGroups = groups.filter((group) => matchesSearch([
+    group.nickname,
+    group.role,
+    ...group.entries.flatMap((item) => [item.reason, item.issued_by_nickname]),
+  ], query));
+
   return (
     <>
-      <div className="toolbar"><div className="toolbar-left">{data.reprimands.length} записей всего</div><button className="btn btn-primary btn-sm" disabled={!tabMembers.length} onClick={() => setAdding(true)}><NavIcon name="plus" /> Добавить выговор</button></div>
+      <div className="toolbar"><div className="toolbar-left" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}><span>{data.reprimands.length} записей всего</span><SearchBox value={query} onChange={setQuery} placeholder="Ник, причина…" /></div><button className="btn btn-primary btn-sm" disabled={!tabMembers.length} onClick={() => setAdding(true)}><NavIcon name="plus" /> Добавить выговор</button></div>
       <div className="segmented roster-tabs">
         <button className={tab === 'helper' ? 'active' : ''} onClick={() => setTab('helper')}>Хелперы · {data.reprimands.filter((item) => item.tier === 'helper').length}</button>
         <button className={tab === 'admin' ? 'active' : ''} onClick={() => setTab('admin')}>Администраторы · {data.reprimands.filter((item) => item.tier === 'admin').length}</button>
       </div>
       <ErrorText value={error} />
       <ReprimandLegend tier={tab} limits={limits} />
-      {groups.map((group) => <section className="rp-group" key={group.id}>
+      {filteredGroups.map((group) => <section className="rp-group" key={group.id}>
         <div className="rp-group-head">
           <div className="who"><Avatar row={{ ...group, nickname: group.nickname }} /><div><div className="nickname">{group.nickname} {group.isBlocked && <span className="badge badge-red">Заблокирован</span>}</div><div className="role-tag">{group.role || 'Без роли'}</div></div></div>
           <div className="rp-group-badges"><ReprimandSummary items={group.entries} tier={tab} limits={limits} />{group.isBlocked && <button className="btn btn-ghost btn-sm" onClick={() => void unblock(group.id)}>Разблокировать</button>}</div>
         </div>
         <div className="rp-group-entries">{group.entries.map((item) => <div className={`roster-row rp-entry${item.active === false || item.converted ? ' rp-expired' : ''}`} key={item.id}><ReprimandBadge item={item} /><div className="who"><div><div className="nickname">{item.reason}</div><div className="role-tag">{new Date(item.created_at).toLocaleString('ru-RU')}{item.issued_by_nickname ? ` · выдал ${item.issued_by_nickname}` : ''}</div></div></div><button className="icon-btn danger" onClick={() => void remove(item.id)}><NavIcon name="trash" /></button></div>)}</div>
       </section>)}
-      {!groups.length && <div className="empty-state"><h3>Выговоров нет</h3><p>В выбранной группе записей пока нет.</p></div>}
+      {!filteredGroups.length && <div className="empty-state"><h3>Выговоров нет</h3><p>В выбранной группе записей пока нет.</p></div>}
       {adding && <Modal title="Новый выговор" onClose={() => setAdding(false)}><form onSubmit={add}><ErrorText value={error} /><div className="field"><label>Сотрудник</label><Select
             name="userId"
             required

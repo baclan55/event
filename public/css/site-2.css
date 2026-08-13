@@ -1,4 +1,8 @@
 
+textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
+textarea.input.input-compact{ min-height:56px; line-height:1.4; }
+.input:focus, textarea.input:focus, select.input:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.input::placeholder{ color:var(--text-faint); }
 select.input{
   appearance:none; -webkit-appearance:none;
   background-image:linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
@@ -273,13 +277,3 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 }
 .discord-chip:hover, .discord-chip:focus-visible{ background:#5865f2; color:#fff; }
 .discord-chip:hover::before, .discord-chip:focus-visible::before{ color:#fff; }
-
-/* Типографика отрендеренного Markdown (FAQ/Регламент/Первые шаги/Правила —
-   вывод renderBody на бэке, и предпросмотр в .mde-preview). Блочные теги
-   сами задают отступы, поэтому в отличие от старого простого текста
-   white-space:pre-wrap здесь не нужен и даже вреден (перенос строк между
-   тегами в разметке стал бы виден как лишние пробелы/пустые строки). */
-.md-body{ color:var(--text-body); font-size:13.5px; line-height:1.65; }
-.md-body > *:first-child{ margin-top:0; }
-.md-body > *:last-child{ margin-bottom:0; }
-.md-body p{ margin:0 0 .85em; }

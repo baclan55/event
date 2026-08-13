@@ -16,6 +16,36 @@ import { MarkdownEditor } from '@/components/MarkdownEditor';
 
 export type Row = Record<string, any>;
 
+/** Поиск: все слова запроса должны встретиться в любом из полей. */
+export function matchesSearch(fields: unknown[], query: string): boolean {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return true;
+  const hay = fields.map((v) => String(v ?? '').toLowerCase()).join(' · ');
+  return q.split(/\s+/).filter(Boolean).every((token) => hay.includes(token));
+}
+
+export function SearchBox({
+  value,
+  onChange,
+  placeholder = 'Поиск…',
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="search-input">
+      <span aria-hidden>⌕</span>
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+    </label>
+  );
+}
+
 export async function request(url: string, init?: RequestInit) {
   const response = await fetch(url, {
     credentials: 'same-origin',

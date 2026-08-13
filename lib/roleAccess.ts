@@ -46,6 +46,7 @@ export const EDIT_ROLES = [
 export const PERMISSIONS = [
   'reprimands',
   'applications',
+  'application_history',
   'candidates',
   'vacations_review',
   'edit_content',
@@ -143,6 +144,7 @@ export const PROFILE_VIEW_CAP_LABELS: Record<ProfileViewCap, string> = {
 export const PERMISSION_LABELS: Record<Permission, string> = {
   reprimands: 'Система выговоров',
   applications: 'Заявки на набор',
+  application_history: 'История заявок',
   candidates: 'Кандидаты / обзвон',
   vacations_review: 'Рассмотрение отпусков',
   edit_content: 'Контент и состав',
@@ -158,11 +160,16 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
 };
 
 /** У каких функций нет смысла в «редактировании» — только просмотр. */
-export const VIEW_ONLY_PERMISSIONS: ReadonlySet<Permission> = new Set(['view_audit', 'view_profile']);
+export const VIEW_ONLY_PERMISSIONS: ReadonlySet<Permission> = new Set([
+  'view_audit',
+  'view_profile',
+  'application_history',
+]);
 
 export const PERMISSION_FALLBACK_ROLES: Record<Permission, readonly string[]> = {
   reprimands: REPRIMANDS_ROLES,
   applications: APPLICATIONS_ROLES,
+  application_history: APPLICATIONS_ROLES,
   candidates: CANDIDATES_ROLES,
   vacations_review: VACATIONS_REVIEW_ROLES,
   edit_content: EDIT_ROLES,

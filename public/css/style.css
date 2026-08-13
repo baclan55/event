@@ -282,8 +282,13 @@ img{ max-width:100%; display:block; }
   display:flex; align-items:center; gap:8px;
   background:var(--bg-input); border:1px solid var(--border);
   border-radius:var(--radius-pill); padding:8px 14px; color:var(--text-muted); font-size:13px;
+  min-width:min(260px, 100%);
 }
-.search-input input{ background:none; border:none; color:var(--text-body); outline:none; font-size:13px; width:140px; }
+.search-input input{
+  background:none; border:none; color:var(--text-body); outline:none;
+  font-size:13px; width:100%; min-width:0;
+}
+.search-input input::placeholder{ color:var(--text-faint); }
 
 .badge{
   display:inline-flex; align-items:center; gap:5px;
@@ -296,6 +301,14 @@ img{ max-width:100%; display:block; }
 .badge-red{ background:var(--red-soft); color:var(--red); }
 .badge-amber{ background:var(--amber-soft); color:var(--amber); }
 .badge-muted{ background:var(--bg-card-2); color:var(--text-muted); }
+
+.gmp-closed-note{
+  display:block; width:100%; box-sizing:border-box;
+  margin:0 0 14px; padding:10px 12px;
+  background:var(--bg-card-2); color:var(--text-muted);
+  border:1px solid var(--border); border-radius:10px;
+  font-size:12.5px; line-height:1.45; font-weight:600;
+}
 
 .field{ margin-bottom:16px; }
 .field label{

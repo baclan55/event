@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
 import {
   ACHIEVEMENT_TRIGGER_LABELS,
@@ -10,7 +10,7 @@ import {
   type AchievementTrigger,
   type GmpPeriod,
 } from '@/lib/achievementsShared';
-import { askConfirm, ErrorText, Modal, request, Select, type Row } from './shared';
+import { askConfirm, ErrorText, matchesSearch, Modal, request, SearchBox, Select, type Row } from './shared';
 
 function roleIdsFromConfig(cfg: Row, maxGrade: number): string[] {
   const fromArray = Array.isArray(cfg.roleIds) ? cfg.roleIds.map(String) : [];
@@ -38,6 +38,17 @@ export function AchievementsInteractive() {
   const [gmpPeriod, setGmpPeriod] = useState<GmpPeriod>('week');
   const [uploading, setUploading] = useState<number | null>(null);
   const [canEdit, setCanEdit] = useState(true);
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(
+    () => items.filter((item) => matchesSearch([
+      item.name,
+      item.description,
+      item.trigger_type,
+      ACHIEVEMENT_TRIGGER_LABELS[item.trigger_type as AchievementTrigger],
+    ], query)),
+    [items, query],
+  );
 
   async function load() {
     const [ach, roster] = await Promise.all([
@@ -165,13 +176,16 @@ export function AchievementsInteractive() {
   return (
     <>
       <div className="toolbar">
-        <div className="toolbar-left">{items.length} достижений</div>
+        <div className="toolbar-left" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span>{filtered.length}{query.trim() ? ` / ${items.length}` : ''} достижений</span>
+          <SearchBox value={query} onChange={setQuery} placeholder="Название, тип…" />
+        </div>
         {canEdit ? (
           <button className="btn btn-primary btn-sm" onClick={() => setEditing(null)}><NavIcon name="plus" /> Создать</button>
         ) : null}
       </div>
       <ErrorText value={error} />
-      {items.map((item) => {
+      {filtered.map((item) => {
         const preview = (Array.isArray(item.grade_icons) && item.grade_icons[0]) || item.icon;
         return (
           <div className="roster-row" key={item.id}>
@@ -196,7 +210,7 @@ export function AchievementsInteractive() {
           </div>
         );
       })}
-      {!items.length && <div className="empty-state"><h3>Достижений нет</h3></div>}
+      {!filtered.length && <div className="empty-state"><h3>{query.trim() ? 'Ничего не найдено' : 'Достижений нет'}</h3></div>}
 
       {editing !== undefined && (
         <Modal title={editing ? 'Редактирование достижения' : 'Новое достижение'} onClose={() => setEditing(undefined)} wide>

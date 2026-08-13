@@ -1,20 +1,36 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
 import { DEFAULT_CLOSED_MESSAGE } from '@/lib/auditShared';
-import { askConfirm, Avatar, ErrorText, request, type Row } from './shared';
+import { askConfirm, Avatar, ErrorText, matchesSearch, request, SearchBox, type Row } from './shared';
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'На рассмотрении',
+  approved: 'Одобрена',
+  rejected: 'Отклонена',
+  call_passed: 'Обзвон пройден',
+  call_failed: 'Обзвон не пройден',
+};
+
+function statusBadgeClass(status: string) {
+  if (status === 'approved' || status === 'call_passed') return 'badge-green';
+  if (status === 'rejected' || status === 'call_failed') return 'badge-red';
+  return 'badge-muted';
+}
 
 export function ApplicationsInteractive({
   initialRows,
   initialIsOpen = true,
   initialClosedMessage = DEFAULT_CLOSED_MESSAGE,
   candidates = false,
+  history = false,
 }: {
   initialRows: Row[];
   initialIsOpen?: boolean;
   initialClosedMessage?: string;
   candidates?: boolean;
+  history?: boolean;
 }) {
   const [rows, setRows] = useState(initialRows);
   const [isOpen, setIsOpen] = useState(initialIsOpen);
@@ -22,10 +38,35 @@ export function ApplicationsInteractive({
   const [draftMessage, setDraftMessage] = useState(initialClosedMessage);
   const [error, setError] = useState('');
   const [savingMessage, setSavingMessage] = useState(false);
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(
+    () => rows.filter((item) => matchesSearch([
+      item.nickname_static,
+      item.applicant_name,
+      item.discord,
+      item.static_id,
+      item.first_name,
+      item.last_name,
+      item.age,
+      item.avg_online,
+      item.motivation,
+      item.status,
+      STATUS_LABEL[String(item.status)],
+      item.reject_reason,
+      item.reviewed_by_nickname,
+    ], query)),
+    [rows, query],
+  );
 
   const reload = useCallback(async () => {
     try {
-      const data = await request(candidates ? '/api/applications/candidates' : '/api/applications');
+      const url = candidates
+        ? '/api/applications/candidates'
+        : history
+          ? '/api/applications/history'
+          : '/api/applications';
+      const data = await request(url);
       setRows(candidates ? data.candidates || [] : data.applications || []);
       if (typeof data.isOpen === 'boolean') setIsOpen(data.isOpen);
       if (typeof data.closedMessage === 'string') {
@@ -33,7 +74,7 @@ export function ApplicationsInteractive({
         setDraftMessage(data.closedMessage);
       }
     } catch (err) { setError((err as Error).message); }
-  }, [candidates]);
+  }, [candidates, history]);
   useEffect(() => { void reload(); }, [reload]);
 
   async function update(id: number, status: string) {
@@ -84,11 +125,20 @@ export function ApplicationsInteractive({
     }
   }
 
+  const listLabel = candidates ? 'кандидатов' : history ? 'в истории' : 'заявок';
+
   return (
     <>
       <div className="toolbar">
-        <div className="toolbar-left">{rows.length} {candidates ? 'кандидатов ожидают обзвона' : 'заявок'}</div>
-        {!candidates && (
+        <div className="toolbar-left" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span>{filtered.length}{query.trim() ? ` / ${rows.length}` : ''} {listLabel}</span>
+          <SearchBox
+            value={query}
+            onChange={setQuery}
+            placeholder={candidates ? 'Ник, Discord, Static…' : 'Ник, Discord, статус…'}
+          />
+        </div>
+        {!candidates && !history && (
           <div className="toolbar-right">
             <span className={`badge ${isOpen ? 'badge-green' : 'badge-red'}`}>{isOpen ? 'Набор открыт' : 'Набор закрыт'}</span>
             <button className="btn btn-ghost btn-sm" onClick={() => void toggle()}>{isOpen ? 'Закрыть набор' : 'Открыть набор'}</button>
@@ -96,7 +146,7 @@ export function ApplicationsInteractive({
         )}
       </div>
       <ErrorText value={error} />
-      {!candidates && (
+      {!candidates && !history && (
         <form className="card card-pad" style={{ marginBottom: 16 }} onSubmit={saveMessage}>
           <div className="card-header">
             <h3>Сообщение при закрытом наборе</h3>
@@ -118,8 +168,11 @@ export function ApplicationsInteractive({
           </button>
         </form>
       )}
+      {history && rows.length > 0 && (
+        <div className="rp-legend">Архив одобренных и отклонённых заявок с сайта. Только просмотр.</div>
+      )}
       {candidates && rows.length > 0 && <div className="rp-legend">После обзвона кандидат получает роль <b>Mini Event Helper</b> и автоматически попадает в состав либо снимается с рассмотрения.</div>}
-      {rows.map((item) => (
+      {filtered.map((item) => (
         <article className="rule-card" id={`app-${item.id}`} key={item.id}>
           <div className="rule-body">
             {candidates ? (
@@ -132,7 +185,12 @@ export function ApplicationsInteractive({
               </div>
             ) : (
               <>
-                <h4>{item.nickname_static || item.applicant_name} <span className="badge badge-muted">{item.status}</span></h4>
+                <h4>
+                  {item.nickname_static || item.applicant_name}{' '}
+                  <span className={`badge ${statusBadgeClass(String(item.status))}`}>
+                    {STATUS_LABEL[String(item.status)] || item.status}
+                  </span>
+                </h4>
                 <div className="rule-text">
                   <b>Discord:</b> {item.discord}<br />
                   <b>Имя:</b> {item.first_name || '—'} · <b>Фамилия:</b> {item.last_name || '—'} · <b>StaticID:</b> {item.static_id || '—'}<br />
@@ -150,23 +208,29 @@ export function ApplicationsInteractive({
               {item.reviewed_by_nickname ? ` · рассмотрел ${item.reviewed_by_nickname}` : ''}
             </div>
           </div>
-          <div className="rule-actions">
-            {candidates ? (
-              <>
-                <button className="btn btn-primary btn-sm" onClick={() => void call(item.id, true)}>Прошёл обзвон</button>
-                <button className="btn btn-danger btn-sm" onClick={() => void call(item.id, false)}>Не прошёл</button>
-              </>
-            ) : (
-              <>
-                <button className="btn btn-primary btn-sm" onClick={() => void update(item.id, 'approved')}>Одобрить</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => void update(item.id, 'rejected')}>Отклонить</button>
-                <button className="icon-btn danger" onClick={() => void remove(item.id)}><NavIcon name="trash" /></button>
-              </>
-            )}
-          </div>
+          {!history && (
+            <div className="rule-actions">
+              {candidates ? (
+                <>
+                  <button className="btn btn-primary btn-sm" onClick={() => void call(item.id, true)}>Прошёл обзвон</button>
+                  <button className="btn btn-danger btn-sm" onClick={() => void call(item.id, false)}>Не прошёл</button>
+                </>
+              ) : (
+                <>
+                  <button className="btn btn-primary btn-sm" onClick={() => void update(item.id, 'approved')}>Одобрить</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => void update(item.id, 'rejected')}>Отклонить</button>
+                  <button className="icon-btn danger" onClick={() => void remove(item.id)}><NavIcon name="trash" /></button>
+                </>
+              )}
+            </div>
+          )}
         </article>
       ))}
-      {!rows.length && <div className="empty-state"><h3>{candidates ? 'Кандидатов нет' : 'Заявок нет'}</h3></div>}
+      {!filtered.length && (
+        <div className="empty-state">
+          <h3>{query.trim() ? 'Ничего не найдено' : (candidates ? 'Кандидатов нет' : history ? 'История пуста' : 'Заявок нет')}</h3>
+        </div>
+      )}
     </>
   );
 }

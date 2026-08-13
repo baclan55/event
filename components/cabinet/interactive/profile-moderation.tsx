@@ -1,11 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { ErrorText, request, type Row } from './shared';
+import { useEffect, useMemo, useState } from 'react';
+import { ErrorText, matchesSearch, request, SearchBox, type Row } from './shared';
 
 export function ProfileModerationInteractive() {
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(
+    () => rows.filter((item) => matchesSearch([
+      item.nickname,
+      item.discord_username,
+      item.first_name,
+      item.last_name,
+      item.static_id,
+    ], query)),
+    [rows, query],
+  );
 
   async function load() {
     const data = await request('/api/profile/moderation');
@@ -30,8 +42,14 @@ export function ProfileModerationInteractive() {
 
   return (
     <>
+      <div className="toolbar">
+        <div className="toolbar-left" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span>{filtered.length}{query.trim() ? ` / ${rows.length}` : ''} заявок</span>
+          <SearchBox value={query} onChange={setQuery} placeholder="Ник, имя, Static…" />
+        </div>
+      </div>
       <ErrorText value={error} />
-      {rows.map((item) => (
+      {filtered.map((item) => (
         <div className="roster-row" key={item.id}>
           <div className="who">
             <div>
@@ -49,7 +67,7 @@ export function ProfileModerationInteractive() {
           </div>
         </div>
       ))}
-      {!rows.length && <div className="empty-state"><h3>Заявок нет</h3></div>}
+      {!filtered.length && <div className="empty-state"><h3>{query.trim() ? 'Ничего не найдено' : 'Заявок нет'}</h3></div>}
     </>
   );
 }

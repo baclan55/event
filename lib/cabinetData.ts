@@ -251,6 +251,7 @@ export async function loadApplications() {
   const applications = await query<Record<string, unknown>>(
     `SELECT a.*, rb.nickname AS reviewed_by_nickname
      FROM applications a LEFT JOIN users rb ON rb.id = a.reviewed_by
+     WHERE a.status='pending'
      ORDER BY a.created_at DESC LIMIT 100`,
   );
   return {
@@ -258,6 +259,16 @@ export async function loadApplications() {
     isOpen: settings.isOpen,
     closedMessage: settings.closedMessage,
   };
+}
+
+export async function loadApplicationHistory() {
+  const applications = await query<Record<string, unknown>>(
+    `SELECT a.*, rb.nickname AS reviewed_by_nickname
+     FROM applications a LEFT JOIN users rb ON rb.id = a.reviewed_by
+     WHERE a.status IN ('approved', 'rejected', 'call_passed', 'call_failed')
+     ORDER BY a.created_at DESC LIMIT 500`,
+  );
+  return applications.rows;
 }
 
 export async function loadCandidates() {

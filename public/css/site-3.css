@@ -1,4 +1,14 @@
 
+
+/* Типографика отрендеренного Markdown (FAQ/Регламент/Первые шаги/Правила —
+   вывод renderBody на бэке, и предпросмотр в .mde-preview). Блочные теги
+   сами задают отступы, поэтому в отличие от старого простого текста
+   white-space:pre-wrap здесь не нужен и даже вреден (перенос строк между
+   тегами в разметке стал бы виден как лишние пробелы/пустые строки). */
+.md-body{ color:var(--text-body); font-size:13.5px; line-height:1.65; }
+.md-body > *:first-child{ margin-top:0; }
+.md-body > *:last-child{ margin-bottom:0; }
+.md-body p{ margin:0 0 .85em; }
 .md-body h1, .md-body h2, .md-body h3, .md-body h4, .md-body h5, .md-body h6{
   color:var(--text-heading); line-height:1.3; margin:1.1em 0 .5em; font-weight:700;
 }
@@ -331,21 +341,3 @@
   .rule-actions{ width:100%; }
   .rule-actions .btn{ flex:1; }
 }
-
-/* =============================================================================
-   Пустые состояния
-   ============================================================================= */
-.empty-state{
-  text-align:center; padding:48px 20px; color:var(--text-muted);
-}
-.empty-state h3{ color:var(--text-heading); margin-bottom:6px; font-size:15px; }
-.empty-state p{ font-size:13px; }
-.empty-state .blocked-icon{ display:inline-flex; color:var(--red); margin-bottom:12px; }
-.empty-state .blocked-icon svg{ width:34px; height:34px; }
-
-.section-image{
-  margin-top:18px; border-radius:var(--radius-md); overflow:hidden;
-  border:1px solid var(--border-soft); max-width:520px;
-}
-
-.meta-line{ font-size:11.5px; color:var(--text-faint); margin-top:14px; }

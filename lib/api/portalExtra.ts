@@ -629,20 +629,45 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
     const status = String(request.nextUrl.searchParams.get('status') || 'completed').trim();
     const allowed = new Set(['completed', 'open', 'abandoned', 'all']);
     const filter = allowed.has(status) ? status : 'completed';
+    const q = String(request.nextUrl.searchParams.get('q') || '').trim();
     const pageSizeRaw = Number.parseInt(String(request.nextUrl.searchParams.get('pageSize') || '20'), 10);
     const pageSize = Number.isFinite(pageSizeRaw) ? Math.min(Math.max(pageSizeRaw, 5), 50) : 20;
     const pageRaw = Number.parseInt(String(request.nextUrl.searchParams.get('page') || '1'), 10);
     const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+    const searchSql = q
+      ? `AND (
+           e.title ILIKE '%' || $2 || '%'
+           OR COALESCE(e.event_key, '') ILIKE '%' || $2 || '%'
+           OR e.message_id ILIKE '%' || $2 || '%'
+           OR EXISTS (
+             SELECT 1 FROM discord_gather_participants p
+             LEFT JOIN users u ON u.discord_id = p.discord_id
+             WHERE p.message_id = e.message_id
+               AND (
+                 p.discord_id ILIKE '%' || $2 || '%'
+                 OR COALESCE(p.discord_username, '') ILIKE '%' || $2 || '%'
+                 OR COALESCE(u.nickname, '') ILIKE '%' || $2 || '%'
+                 OR COALESCE(u.first_name, '') ILIKE '%' || $2 || '%'
+               )
+           )
+         )`
+      : '';
+    const countParams: unknown[] = q ? [filter, q] : [filter];
     const totalRow = await query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
        FROM discord_gather_events e
-       WHERE ($1::text = 'all' OR e.status = $1)`,
-      [filter],
+       WHERE ($1::text = 'all' OR e.status = $1)
+       ${searchSql}`,
+      countParams,
     );
     const total = Number(totalRow.rows[0]?.count || 0);
-    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
     const safePage = Math.min(page, totalPages);
     const offset = (safePage - 1) * pageSize;
+    const listParams: unknown[] = q
+      ? [filter, q, pageSize, offset]
+      : [filter, pageSize, offset];
+    const limitSql = q ? 'LIMIT $3 OFFSET $4' : 'LIMIT $2 OFFSET $3';
     const events = await query<{
       message_id: string;
       event_key: string | null;
@@ -658,9 +683,10 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
               (SELECT COUNT(*)::text FROM discord_gather_participants p WHERE p.message_id=e.message_id) AS participant_count
        FROM discord_gather_events e
        WHERE ($1::text = 'all' OR e.status = $1)
+       ${searchSql}
        ORDER BY e.message_created_at DESC
-       LIMIT $2 OFFSET $3`,
-      [filter, pageSize, offset],
+       ${limitSql}`,
+      listParams,
     );
     const ids = events.rows.map((e) => e.message_id);
     type ParticipantRow = {

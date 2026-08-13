@@ -1,9 +1,9 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { NavIcon } from '@/components/NavIcons';
-import { askConfirm, ErrorText, Modal, request, Select, type Row } from './shared';
+import { askConfirm, ErrorText, matchesSearch, Modal, request, SearchBox, Select, type Row } from './shared';
 
 type FormState = {
   discordId: string;
@@ -68,6 +68,7 @@ export function BlacklistInteractive() {
   const [historyFor, setHistoryFor] = useState<Row | null>(null);
   const [history, setHistory] = useState<Row[]>([]);
   const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState('');
 
   async function load() {
     const data = await request('/api/blacklist');
@@ -167,11 +168,28 @@ export function BlacklistInteractive() {
     label: `${m.nickname}${m.role_name ? ` · ${m.role_name}` : ''}`,
   }));
 
+  const filtered = useMemo(
+    () => items.filter((item) => matchesSearch([
+      item.discord_id,
+      item.static_id,
+      item.reason,
+      item.user_nickname,
+      item.created_by_nickname,
+      item.user_id,
+    ], query)),
+    [items, query],
+  );
+
   return (
     <>
       <div className="toolbar" style={{ marginBottom: 16 }}>
-        <div className="toolbar-left">
-          <span className="badge badge-muted">{items.length}</span>
+        <div className="toolbar-left" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span className="badge badge-muted">{filtered.length}{query.trim() ? ` / ${items.length}` : ''}</span>
+          <SearchBox
+            value={query}
+            onChange={setQuery}
+            placeholder="Discord, Static, причина, кто добавил…"
+          />
         </div>
         {canEdit ? (
           <button type="button" className="btn btn-primary btn-sm" onClick={openAdd}>
@@ -182,7 +200,7 @@ export function BlacklistInteractive() {
 
       <ErrorText value={error} />
 
-      {items.map((item) => {
+      {filtered.map((item) => {
         const title = item.reason
           ? String(item.reason)
           : (item.user_nickname ? String(item.user_nickname) : 'Запись в ЧС');
@@ -257,7 +275,7 @@ export function BlacklistInteractive() {
           </article>
         );
       })}
-      {!items.length && <div className="empty-state"><h3>Список пуст</h3></div>}
+      {!filtered.length && <div className="empty-state"><h3>{query.trim() ? 'Ничего не найдено' : 'Список пуст'}</h3></div>}
 
       {modal ? (
         <Modal

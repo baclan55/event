@@ -1,8 +1,8 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
-import { askConfirm, Avatar, ErrorText, request, Select, type Row } from './shared';
+import { askConfirm, Avatar, ErrorText, request, SearchBox, Select, type Row } from './shared';
 
 const STATUS_LABEL: Record<string, string> = {
   completed: 'Проведено',
@@ -28,6 +28,7 @@ const PAGE_SIZE = 20;
 export function DiscordEventsInteractive() {
   const [events, setEvents] = useState<Row[]>([]);
   const [status, setStatus] = useState('completed');
+  const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -45,12 +46,13 @@ export function DiscordEventsInteractive() {
   const [busyDedupe, setBusyDedupe] = useState(false);
   const [busyId, setBusyId] = useState('');
 
-  async function load(nextStatus = status, nextPage = page) {
+  async function load(nextStatus = status, nextPage = page, nextQuery = query) {
     const params = new URLSearchParams({
       status: nextStatus,
       page: String(nextPage),
       pageSize: String(PAGE_SIZE),
     });
+    if (nextQuery.trim()) params.set('q', nextQuery.trim());
     const data = await request(`/api/discord-events?${params}`);
     setEvents(data.events || []);
     setCanResync(!!data.canResync);
@@ -76,7 +78,22 @@ export function DiscordEventsInteractive() {
       void load().catch(() => undefined);
     }, 5000);
     return () => clearInterval(timer);
-  }, [resyncJob?.status, status, page]);
+  }, [resyncJob?.status, status, page, query]);
+
+  const searchReady = useRef(false);
+  useEffect(() => {
+    if (!searchReady.current) {
+      searchReady.current = true;
+      return;
+    }
+    const timer = setTimeout(() => {
+      setPage(1);
+      setExpanded(null);
+      void load(status, 1, query).catch((err) => setError((err as Error).message));
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
 
   async function requestResync() {
     if (!(await askConfirm(
@@ -214,6 +231,11 @@ export function DiscordEventsInteractive() {
           {total ? ` · ${total} всего` : ''}
         </div>
         <div className="row-actions" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <SearchBox
+            value={query}
+            onChange={setQuery}
+            placeholder="Название, ID, участник…"
+          />
           <div style={{ minWidth: 200 }}>
             <Select
               value={status}
@@ -221,7 +243,7 @@ export function DiscordEventsInteractive() {
                 setStatus(v);
                 setPage(1);
                 setExpanded(null);
-                void load(v, 1).catch((err) => setError((err as Error).message));
+                void load(v, 1, query).catch((err) => setError((err as Error).message));
               }}
               options={[
                 { value: 'completed', label: 'Проведённые' },

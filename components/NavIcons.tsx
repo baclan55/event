@@ -108,6 +108,7 @@ export function NavIcon({ name }: { name: string }) {
         </svg>
       );
     case 'applications':
+    case 'application-history':
       return (
         <svg {...svgProps}>
           <path d="M4 13V6a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v7" />

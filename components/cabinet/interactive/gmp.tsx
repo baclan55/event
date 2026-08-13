@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { NavIcon } from '@/components/NavIcons';
-import { askConfirm, ErrorText, MarkdownFormField, Modal, request, Select, type Row } from './shared';
+import { askConfirm, ErrorText, MarkdownFormField, matchesSearch, Modal, request, SearchBox, Select, type Row } from './shared';
 
 const STATUS_LABEL: Record<string, string> = {
   draft: 'Черновик',
@@ -430,6 +430,18 @@ export function GmpInteractive() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [authorFilter, setAuthorFilter] = useState('');
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(
+    () => events.filter((item) => matchesSearch([
+      item.title,
+      item.status,
+      STATUS_LABEL[String(item.status)],
+      item.written_by_nickname,
+      item.body,
+    ], query)),
+    [events, query],
+  );
 
   async function load(writtenBy?: string) {
     const qs = writtenBy ? `?writtenBy=${encodeURIComponent(writtenBy)}` : '';
@@ -473,8 +485,9 @@ export function GmpInteractive() {
   return (
     <>
       <div className="toolbar">
-        <div className="toolbar-left">
-          {canViewAll ? 'Все ГМП' : 'Мои ГМП'} · {events.length}
+        <div className="toolbar-left" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span>{canViewAll ? 'Все ГМП' : 'Мои ГМП'} · {filtered.length}{query.trim() ? ` / ${events.length}` : ''}</span>
+          <SearchBox value={query} onChange={setQuery} placeholder="Название, статус, автор…" />
         </div>
         {canCreate ? (
           <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}>
@@ -511,7 +524,7 @@ export function GmpInteractive() {
       ) : null}
 
       <ErrorText value={error} />
-      {events.map((item) => (
+      {filtered.map((item) => (
         <div className="roster-row" key={item.id}>
           <div className="who">
             <div>
@@ -541,10 +554,12 @@ export function GmpInteractive() {
           </div>
         </div>
       ))}
-      {!events.length && (
+      {!filtered.length && (
         <div className="empty-state">
-          <h3>ГМП пока нет</h3>
-          <p>Создайте первое мероприятие или дождитесь назначения в состав.</p>
+          <h3>{query.trim() ? 'Ничего не найдено' : 'ГМП пока нет'}</h3>
+          {!query.trim() ? (
+            <p>Создайте первое мероприятие или дождитесь назначения в состав.</p>
+          ) : null}
         </div>
       )}
 
@@ -862,7 +877,7 @@ export function GmpDetailInteractive({ eventId }: { eventId: number }) {
       <ErrorText value={error} />
 
       {isClosed ? (
-        <div className="badge badge-muted" style={{ marginBottom: 12, display: 'inline-block' }}>
+        <div className="gmp-closed-note">
           ГМП закрыто: отметки и игроки заблокированы. Награды выдаются вручную по списку победителей.
         </div>
       ) : null}
