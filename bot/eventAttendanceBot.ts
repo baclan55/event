@@ -4,8 +4,8 @@
  *
  * Слушает канал с сообщениями бота-источника («Сбор на мероприятие: …»).
  * - Есть кнопки (components) → мероприятие ещё идёт (status=open).
- * - Кнопки сняты → completed: участники в БД + уникальный +1 к weekly_events.
- * - Сообщение удалено или кнопки висят >24ч → abandoned (в статистику не идёт).
+ * - Кнопки сняты → completed: участники + администратор из эмбеда в БД + уникальный +1 к weekly_events.
+ * - Сообщение удалено или open >24ч с даты сообщения → abandoned (в статистику не идёт).
  */
 
 import { Client, GatewayIntentBits, Partials, Events } from 'discord.js';
@@ -123,9 +123,30 @@ function extractParticipantIds(text) {
   return [...new Set(ids)];
 }
 
-/** ID участников + username из mentions (если есть в сообщении). */
+/**
+ * Discord ID из поля «Администратор» (ведущий МП).
+ * В списке «Участники» его обычно нет — без этого блок статистика админа не идёт.
+ */
+function extractAdministratorIds(text) {
+  const headingIdx = text.search(/администратор\w*\s*:?/i);
+  if (headingIdx === -1) return [];
+  let section = text.slice(headingIdx);
+  const endIdx = section.search(/\n\s*участники\s*:/i);
+  if (endIdx !== -1) section = section.slice(0, endIdx);
+  else {
+    const end2 = section.search(/победител|id\s*меропри[ия]ти[яе]|фото\s+победител/i);
+    if (end2 !== -1) section = section.slice(0, end2);
+  }
+  const ids = section.match(/\b\d{17,20}\b/g) || [];
+  return [...new Set(ids)];
+}
+
+/** ID участников + администратор(ы) + username из mentions. */
 function extractParticipants(text, message) {
-  const ids = extractParticipantIds(text);
+  const ids = [...new Set([
+    ...extractAdministratorIds(text),
+    ...extractParticipantIds(text),
+  ])];
   const namesById = new Map();
   const mentions = message?.mentions?.users;
   if (mentions) {
@@ -287,52 +308,10 @@ async function completeGather(pool, { messageId, eventLabel, discordIds, usernam
     // Финальный состав (в т.ч. для тех, кто ещё не на сайте).
     await replaceParticipants(client, messageId, discordIds, usernames);
 
-    let newIds = [];
-    if (discordIds.length > 0) {
-      const linked = await client.query(
-        `INSERT INTO event_bot_credits (message_id, discord_id)
-         SELECT $1, x FROM UNNEST($2::text[]) AS x
-         ON CONFLICT (message_id, discord_id) DO NOTHING
-         RETURNING discord_id`,
-        [messageId, discordIds],
-      );
-      newIds = linked.rows.map((r) => r.discord_id);
-    }
-
-    // +1 к weekly_events только если сбор относится к текущей календарной неделе
-    // (по дате сообщения). Иначе пересборка старых МП раздувает счётчик.
-    const tz = process.env.WEEKLY_RESET_TZ || 'Europe/Moscow';
-    const inWeek = await client.query(
-      `SELECT (
-         (message_created_at AT TIME ZONE $2) >= date_trunc('week', now() AT TIME ZONE $2)
-         AND (message_created_at AT TIME ZONE $2) < date_trunc('week', now() AT TIME ZONE $2) + interval '7 days'
-       ) AS ok
-       FROM discord_gather_events WHERE message_id=$1`,
-      [messageId, tz],
-    );
-    const countsTowardWeek = !!inWeek.rows[0]?.ok;
-
-    let creditedRows = [];
-    if (newIds.length > 0 && countsTowardWeek) {
-      const { rows } = await client.query(
-        `UPDATE users SET weekly_events = weekly_events + 1
-         WHERE discord_id = ANY($1::text[])
-         RETURNING discord_id, nickname`,
-        [newIds],
-      );
-      creditedRows = rows;
-      const creditedIds = new Set(rows.map((r) => r.discord_id));
-      const missing = newIds.filter((id) => !creditedIds.has(id));
-      if (missing.length) {
-        console.log(
-          `[event-bot] Пока нет на сайте (кредит в леджере, начислят при входе/привязке Discord): ${missing.join(', ')}`,
-        );
-      }
-    } else if (newIds.length > 0 && !countsTowardWeek) {
-      console.log(
-        `[event-bot] Сбор ${messageId} вне текущей недели — в леджер записано, weekly_events не трогаем.`,
-      );
-    }
+    const { creditedRows, newIds, countsTowardWeek } = await creditDiscordIds(client, {
+      messageId,
+      discordIds,
+    });
 
     await client.query(
       `INSERT INTO event_bot_processed_messages (message_id, event_label, participant_count, credited_count)
@@ -350,6 +329,8 @@ async function completeGather(pool, { messageId, eventLabel, discordIds, usernam
       credited: creditedRows,
       skipped: false,
       title: locked.rows[0].title,
+      newCreditIds: newIds,
+      countsTowardWeek,
     };
   } catch (err) {
     await client.query('ROLLBACK');
@@ -357,6 +338,110 @@ async function completeGather(pool, { messageId, eventLabel, discordIds, usernam
   } finally {
     client.release();
   }
+}
+
+/**
+ * Дозачёт по уже completed: админ / новые участники из текста Discord.
+ * ON CONFLICT — без двойного +1.
+ */
+async function backfillCompletedGather(pool, { messageId, eventLabel, discordIds, usernames = [] }) {
+  if (!discordIds.length) return { credited: [], skipped: true, title: null };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const locked = await client.query(
+      `SELECT message_id, title, status FROM discord_gather_events
+       WHERE message_id=$1 FOR UPDATE`,
+      [messageId],
+    );
+    if (locked.rows[0]?.status !== 'completed') {
+      await client.query('COMMIT');
+      return { credited: [], skipped: true, title: null };
+    }
+
+    await replaceParticipants(client, messageId, discordIds, usernames);
+    const { creditedRows, newIds, countsTowardWeek } = await creditDiscordIds(client, {
+      messageId,
+      discordIds,
+    });
+
+    if (newIds.length) {
+      await client.query(
+        `INSERT INTO event_bot_processed_messages (message_id, event_label, participant_count, credited_count)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (message_id) DO UPDATE SET
+           event_label = EXCLUDED.event_label,
+           participant_count = GREATEST(event_bot_processed_messages.participant_count, EXCLUDED.participant_count),
+           credited_count = event_bot_processed_messages.credited_count + EXCLUDED.credited_count,
+           processed_at = now()`,
+        [messageId, eventLabel, discordIds.length, creditedRows.length],
+      );
+    }
+
+    await client.query('COMMIT');
+    return {
+      credited: creditedRows,
+      skipped: false,
+      title: locked.rows[0].title,
+      newCreditIds: newIds,
+      countsTowardWeek,
+    };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/** Леджер + weekly_events для новых discord_id (без дублей по message_id). */
+async function creditDiscordIds(client, { messageId, discordIds }) {
+  let newIds = [];
+  if (discordIds.length > 0) {
+    const linked = await client.query(
+      `INSERT INTO event_bot_credits (message_id, discord_id)
+       SELECT $1, x FROM UNNEST($2::text[]) AS x
+       ON CONFLICT (message_id, discord_id) DO NOTHING
+       RETURNING discord_id`,
+      [messageId, discordIds],
+    );
+    newIds = linked.rows.map((r) => r.discord_id);
+  }
+
+  const tz = process.env.WEEKLY_RESET_TZ || 'Europe/Moscow';
+  const inWeek = await client.query(
+    `SELECT (
+       (message_created_at AT TIME ZONE $2) >= date_trunc('week', now() AT TIME ZONE $2)
+       AND (message_created_at AT TIME ZONE $2) < date_trunc('week', now() AT TIME ZONE $2) + interval '7 days'
+     ) AS ok
+     FROM discord_gather_events WHERE message_id=$1`,
+    [messageId, tz],
+  );
+  const countsTowardWeek = !!inWeek.rows[0]?.ok;
+
+  let creditedRows = [];
+  if (newIds.length > 0 && countsTowardWeek) {
+    const { rows } = await client.query(
+      `UPDATE users SET weekly_events = weekly_events + 1
+       WHERE discord_id = ANY($1::text[])
+       RETURNING discord_id, nickname`,
+      [newIds],
+    );
+    creditedRows = rows;
+    const creditedIds = new Set(rows.map((r) => r.discord_id));
+    const missing = newIds.filter((id) => !creditedIds.has(id));
+    if (missing.length) {
+      console.log(
+        `[event-bot] Пока нет на сайте (кредит в леджере, начислят при входе/привязке Discord): ${missing.join(', ')}`,
+      );
+    }
+  } else if (newIds.length > 0 && !countsTowardWeek) {
+    console.log(
+      `[event-bot] Сбор ${messageId} вне текущей недели — в леджер записано, weekly_events не трогаем.`,
+    );
+  }
+
+  return { creditedRows, newIds, countsTowardWeek };
 }
 
 async function abandonGather(pool, messageId, reason) {
@@ -431,6 +516,25 @@ async function handleMessage(pool, rawMessage, { channelId, sourceBotId, force =
     const ageMs = Date.now() - createdAt.getTime();
     if (status === 'open' && ageMs >= ABANDON_AFTER_MS) {
       await abandonGather(pool, message.id, 'прошло 24ч с отправки сообщения');
+      return;
+    }
+
+    // Уже проведено: дозачёт администратора / новых ID из текста (без двойного +1).
+    if (status === 'completed') {
+      const result = await backfillCompletedGather(pool, {
+        messageId: message.id,
+        eventLabel,
+        discordIds: participantIds,
+        usernames: participantUsernames,
+      });
+      if (!result.skipped && result.newCreditIds?.length) {
+        console.log(
+          `[event-bot] Дозачёт "${result.title}" (${message.id}): +${result.newCreditIds.length}` +
+          (result.credited.length
+            ? `, на сайте: ${result.credited.map((r) => r.nickname).join(', ')}`
+            : ''),
+        );
+      }
       return;
     }
 
