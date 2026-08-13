@@ -1,5 +1,5 @@
-import type { PublicUser } from '@/lib/auth';
-import { fmtDate } from '@/lib/cabinetData';
+import type { PublicUser } from '@/lib/authShared';
+import { fmtDate } from '@/lib/formatDate';
 import { NavIcon } from '@/components/NavIcons';
 
 type Row = Record<string, any>;

@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import type { PublicUser } from '@/lib/auth';
+import type { PublicUser } from '@/lib/authShared';
 import { requiresLastName } from '@/lib/profileGame';
 
 /** Незакрываемое окно первого заполнения игрового профиля. */

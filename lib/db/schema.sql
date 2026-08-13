@@ -318,6 +318,37 @@ CREATE TABLE IF NOT EXISTS event_bot_processed_messages (
   processed_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Сборы МП из Discord-канала (парсинг сообщений бота-источника).
+-- status: open — ещё есть кнопки; completed — кнопки сняты, засчитано;
+-- abandoned — 24ч с кнопками / сообщение удалено, в статистику не идёт.
+CREATE TABLE IF NOT EXISTS discord_gather_events (
+  message_id         TEXT PRIMARY KEY,
+  channel_id         TEXT NOT NULL,
+  source_bot_id      TEXT,
+  event_key          TEXT,
+  title              TEXT NOT NULL DEFAULT '',
+  message_created_at TIMESTAMPTZ NOT NULL,
+  status             TEXT NOT NULL DEFAULT 'open'
+                     CHECK (status IN ('open', 'completed', 'abandoned')),
+  has_buttons        BOOLEAN NOT NULL DEFAULT TRUE,
+  completed_at       TIMESTAMPTZ,
+  abandoned_at       TIMESTAMPTZ,
+  last_seen_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_discord_gather_events_status
+  ON discord_gather_events(status, message_created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_discord_gather_events_created
+  ON discord_gather_events(message_created_at DESC);
+
+CREATE TABLE IF NOT EXISTS discord_gather_participants (
+  message_id TEXT NOT NULL REFERENCES discord_gather_events(message_id) ON DELETE CASCADE,
+  discord_id TEXT NOT NULL,
+  PRIMARY KEY (message_id, discord_id)
+);
+CREATE INDEX IF NOT EXISTS idx_discord_gather_participants_discord
+  ON discord_gather_participants(discord_id);
+
 -- ---------------------------------------------------------------------------
 -- Классификация роли (не доступ к функциям) + блоки главной.
 -- ---------------------------------------------------------------------------

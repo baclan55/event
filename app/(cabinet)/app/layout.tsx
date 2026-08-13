@@ -25,6 +25,7 @@ const TITLES: Record<string, string> = {
   '/app/blacklist': 'Чёрный список',
   '/app/achievements': 'Достижения',
   '/app/gmp': 'ГМП',
+  '/app/events': 'Мероприятия',
   '/app/profile-moderation': 'Модерация профиля',
   '/app/blocked': 'Доступ закрыт',
   '/app/pending': 'Ожидание роли',
@@ -47,6 +48,7 @@ const SUBTITLES: Record<string, string> = {
   '/app/blacklist': 'Запрет выдачи ролей и автоотклонение заявок',
   '/app/achievements': 'Создание достижений и триггеры',
   '/app/gmp': 'Большие мероприятия: чекпоинты, staff и награды',
+  '/app/events': 'Сборы МП из Discord: название, дата и участники',
   '/app/profile-moderation': 'Заявки на смену имени, фамилии и StaticID',
 };
 
@@ -154,6 +156,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
       items: [
         ['roster', 'Состав', true],
         ['vacations', 'Отпуска', true],
+        ['events', 'Мероприятия', true],
         ['gmp', userHasPermission(roleCtx, 'manage_gmp') ? 'ГМП' : 'Мои ГМП', canSeeGmpNav],
         ['reprimands', 'Система выговоров', userHasPermission(roleCtx, 'reprimands')],
       ],

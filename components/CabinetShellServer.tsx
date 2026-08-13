@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { PublicUser } from '@/lib/auth';
+import type { PublicUser } from '@/lib/authShared';
 import { NavIcon } from '@/components/NavIcons';
 import { ProfileGate } from '@/components/ProfileGate';
 import { ConfirmHost } from '@/components/cabinet/interactive/shared';

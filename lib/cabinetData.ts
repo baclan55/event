@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
-import { getCurrentUser, publicUser, type PublicUser } from '@/lib/auth';
+import { getCurrentUser, publicUser } from '@/lib/auth';
+import type { PublicUser } from '@/lib/authShared';
 import { query } from '@/lib/db';
 import { runtimeEnv } from '@/lib/runtimeEnv';
 import { rawBodyForEdit, renderBody } from '@/lib/richText';
@@ -8,6 +9,8 @@ import { tierForPriority } from '@/lib/tier';
 import { roleCtxFromPublic, userHasPermission } from '@/lib/roleAccess';
 import { ADMIN_POINT_DECAY_DAYS, adminPointActive } from '@/lib/reprimandRules';
 import { DEFAULT_CLOSED_MESSAGE } from '@/lib/audit';
+
+export { fmtDate } from '@/lib/formatDate';
 
 export async function requirePortalUser(): Promise<PublicUser> {
   const user = publicUser(await getCurrentUser());
@@ -220,7 +223,3 @@ export async function loadOwnerUsers() {
   };
 }
 
-export function fmtDate(value?: string | Date | null) {
-  if (!value) return '—';
-  return new Intl.DateTimeFormat('ru-RU').format(new Date(value));
-}

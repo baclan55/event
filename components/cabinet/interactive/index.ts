@@ -9,3 +9,4 @@ export { BlacklistInteractive } from './blacklist';
 export { AchievementsInteractive } from './achievements';
 export { ProfileModerationInteractive } from './profile-moderation';
 export { GmpInteractive, GmpDetailInteractive } from './gmp';
+export { DiscordEventsInteractive } from './discord-events';

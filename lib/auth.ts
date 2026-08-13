@@ -18,9 +18,12 @@ import {
   normalizeDashboardBlocks,
   type DashboardBlock,
 } from '@/lib/roleMeta';
+import type { PublicUser } from '@/lib/authShared';
 import { isGameProfileComplete } from '@/lib/profileGame';
 import { syncBlockStatus } from '@/lib/reprimandRules';
 import { NextResponse } from 'next/server';
+
+export type { PublicUser } from '@/lib/authShared';
 
 export type DbRole = {
   id: number;
@@ -162,33 +165,6 @@ export function invalidateUserCache(userId?: number | string | null) {
   }
   userCache.delete(String(userId));
 }
-
-export type PublicUser = {
-  id: number;
-  nickname: string | null;
-  discordUsername: string | null;
-  avatarImageId: number | null;
-  avatarUrl: string | null;
-  isOwner: boolean;
-  isAdmin: boolean;
-  weeklyEvents: number;
-  roleId: number | null;
-  roleName: string | null;
-  rolePriority: number | null;
-  roles: string[];
-  permissions: Permission[];
-  editPermissions: Permission[];
-  gmpCaps: GmpCap[];
-  isBlocked: boolean;
-  blockedAt: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  staticId: string | null;
-  isEventHelper: boolean;
-  isAdministrator: boolean;
-  dashboardBlocks: Record<DashboardBlock, boolean>;
-  profileComplete: boolean;
-};
 
 export function publicUser(u: DbUser | null | undefined): PublicUser | null {
   if (!u) return null;

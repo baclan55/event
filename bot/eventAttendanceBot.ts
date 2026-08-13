@@ -1,44 +1,20 @@
 // @ts-nocheck
-// Бот учёта посещаемости мероприятий.
-//
-// Что делает: слушает канал Discord, в котором бот сервера (Majestic RP |
-// Denver и т.п.) публикует и редактирует сообщения о сборе на мероприятие
-// ("Сбор на мероприятие: ..."). Когда сообщение переходит в состояние
-// "сбор закрыт" (администратор подтвердил список участников — в тексте
-// появляется "Победитель:" / "успешно подтвердили список участников"),
-// бот вытаскивает Discord ID всех участников из раздела "Участники:" и
-// прибавляет +1 к users.weekly_events каждому, кто найден в "Составе" по
-// discord_id. Работает в том же Node-процессе, что и сам сайт — отдельный
-// сервер/хостинг не нужен, только токен Discord-бота.
-//
-// Требования на стороне Discord (см. README.md):
-//  — включённый "Message Content Intent" в настройках приложения бота;
-//  — бот добавлен на сервер и видит нужный канал (права "Просмотр канала" и
-//    "История сообщений" достаточно — писать в канал бот не должен).
-//
-// Не запускается вовсе, если не задан DISCORD_BOT_TOKEN — то есть эта
-// функция полностью опциональна и не ломает существующий деплой, если она
-// не нужна.
+/**
+ * Discord-бот учёта сборов на мероприятия.
+ *
+ * Слушает канал с сообщениями бота-источника («Сбор на мероприятие: …»).
+ * - Есть кнопки (components) → мероприятие ещё идёт (status=open).
+ * - Кнопки сняты → completed: участники в БД + уникальный +1 к weekly_events.
+ * - Сообщение удалено или кнопки висят >24ч → abandoned (в статистику не идёт).
+ */
 
 import { Client, GatewayIntentBits, Partials, Events } from 'discord.js';
 import { getRestAgent, resolveProxyUrl } from './outboundProxy';
 
-// ID канала со сборами и ID бота-источника сообщений — заданы по умолчанию
-// под текущий сервер, но их можно переопределить через переменные окружения
-// (например, если сборы переедут в другой канал).
 const DEFAULT_CHANNEL_ID = '1446581838100430878';
 const DEFAULT_SOURCE_BOT_ID = '1468289401795903690';
+const ABANDON_AFTER_MS = 24 * 60 * 60 * 1000;
 
-// Фразы-маркеры того, что сбор ЗАКРЫТ (список участников подтверждён).
-// Проверяются по всему тексту сообщения (content + embed + компоненты) —
-// не важно, в каком именно поле сообщения бот-источник их разместит.
-const CLOSED_MARKERS = /успешно подтвердили список участников|победител/i;
-
-// --- Разбор текста сообщения -------------------------------------------
-
-// Рекурсивно собирает все текстовые строки из произвольной структуры
-// (embed, компоненты и т.п.) — так извлечение не зависит от того, использует
-// бот-источник классические embed'ы или новые Components V2.
 function collectStrings(node, out) {
   if (node == null) return;
   if (typeof node === 'string') {
@@ -50,20 +26,9 @@ function collectStrings(node, out) {
     return;
   }
   if (typeof node === 'object') {
-    // Поле embed'а (и опция select-меню) имеет форму { name, value } /
-    // { label, value }, где value — это СОДЕРЖИМОЕ, а name/label — его
-    // ЗАГОЛОВОК перед ним. Раньше здесь был единый порядок ключей
-    // ['content', ..., 'value', 'name', 'label'], в котором 'value' стоял
-    // РАНЬШЕ 'name' — из-за этого для каждого embed-поля сначала попадало
-    // в текст его значение, а заголовок ("Администратор:", "Участники:")
-    // приклеивался уже ПОСЛЕ него. Итоговый текст получался перепутанным
-    // (значение одного поля — заголовок этого же поля — значение
-    // следующего поля — ...), а extractAdminId/extractParticipantIds ищут
-    // ID сразу ПОСЛЕ заголовка секции — в перепутанном тексте они находили
-    // либо не тот ID (ID первого участника вместо администратора), либо
-    // вообще ничего (участники считались пустым списком). Поэтому здесь
-    // заголовок обязательно кладём ПЕРЕД значением.
-    const heading = typeof node.name === 'string' ? node.name : (typeof node.label === 'string' ? node.label : null);
+    const heading = typeof node.name === 'string'
+      ? node.name
+      : (typeof node.label === 'string' ? node.label : null);
     if (heading != null && typeof node.value === 'string') {
       collectStrings(heading, out);
       collectStrings(node.value, out);
@@ -83,8 +48,13 @@ function extractText(message) {
   if (message.content) parts.push(message.content);
   for (const embed of message.embeds || []) {
     collectStrings(
-      { title: embed.title, description: embed.description, fields: embed.fields, footer: embed.footer },
-      parts
+      {
+        title: embed.title,
+        description: embed.description,
+        fields: embed.fields,
+        footer: embed.footer,
+      },
+      parts,
     );
   }
   for (const row of message.components || []) {
@@ -93,60 +63,174 @@ function extractText(message) {
   return parts.join('\n');
 }
 
-function isClosedEventMessage(text) {
-  return CLOSED_MARKERS.test(text);
+/** Есть ли интерактивные кнопки / select в components. */
+function hasInteractiveButtons(message) {
+  function walk(node, depth = 0) {
+    if (node == null || depth > 12) return false;
+    if (Array.isArray(node)) return node.some((item) => walk(item, depth + 1));
+    if (typeof node !== 'object') return false;
+    const type = node.type;
+    // 2 Button, 3 StringSelect, 5 UserSelect, 6 RoleSelect, 7 MentionableSelect, 8 ChannelSelect
+    if (type === 2 || type === 3 || type === 5 || type === 6 || type === 7 || type === 8) return true;
+    if (typeof type === 'string' && /button|select/i.test(type)) return true;
+    if (walk(node.components, depth + 1)) return true;
+    if (typeof node.toJSON === 'function') {
+      try {
+        return walk(node.toJSON(), depth + 1);
+      } catch {
+        /* ignore */
+      }
+    }
+    return false;
+  }
+  return walk(message.components || []);
 }
 
-// "ID мероприятия: 1faacecd" из футера — используется только для читаемых
-// логов, для защиты от повторной обработки используется message.id.
+function isGatherMessage(text) {
+  return /сбор\s+на\s+мероприятие/i.test(text);
+}
+
+/** «—・Сбор на мероприятие: Музыкальные стулья» → «Музыкальные стулья» */
+function extractTitle(text) {
+  const m = text.match(/сбор\s+на\s+мероприятие\s*[:：]\s*(.+)/i);
+  if (!m) return '';
+  return m[1]
+    .split('\n')[0]
+    .replace(/^[\s—\-・.]+/, '')
+    .trim();
+}
+
 function extractEventLabel(text) {
   const m = text.match(/id\s*меропри[ия]ти[яе]\s*:?\s*([a-z0-9]+)/i);
   return m ? m[1] : null;
 }
 
-// Достаёт Discord ID администратора, который вёл сбор (раздел
-// "Администратор:", идёт перед "Участники:"). Возвращает null, если раздел
-// не найден (на случай другого формата сообщения — тогда просто не
-// начисляем администратору, участники при этом всё равно обрабатываются).
-function extractAdminId(text) {
-  const startIdx = text.search(/администратор\s*:/i);
-  if (startIdx === -1) return null;
-  let section = text.slice(startIdx);
-  const endIdx = section.search(/участники\s*:/i);
-  if (endIdx !== -1) section = section.slice(0, endIdx);
-  const match = section.match(/\b\d{17,20}\b/);
-  return match ? match[0] : null;
-}
-
-// Достаёт Discord ID участников из раздела "Участники:" (до "Победитель"
-// или футера с ID мероприятия). Discord ID — это 17-20-значное число, поэтому
-// короткий игровой StaticID победителя (например "187048") и hex ID
-// мероприятия ("1faacecd", содержит буквы) под фильтр не попадают.
 function extractParticipantIds(text) {
   const headingIdx = text.search(/участники\s*:/i);
   if (headingIdx === -1) return [];
   let section = text.slice(headingIdx);
-  const endIdx = section.search(/победител|id\s*меропри[ия]ти[яе]/i);
+  const endIdx = section.search(/победител|id\s*меропри[ия]ти[яе]|фото\s+победител/i);
   if (endIdx !== -1) section = section.slice(0, endIdx);
   const ids = section.match(/\b\d{17,20}\b/g) || [];
   return [...new Set(ids)];
 }
 
-// --- Начисление в базу ----------------------------------------------------
-//
-// Идемпотентно на уровне КАЖДОГО участника (через таблицу-леджер
-// event_bot_credits), а не всего сообщения разом. Это специально: если
-// маркер "закрыт" (см. CLOSED_MARKERS) сработает раньше времени — например,
-// когда в сообщении виден только администратор, а участники ещё дописываются
-// — тем, кто уже в леджере для этого message_id, лишний +1 не прилетит, а
-// тем, кто появится в "Участники:" при следующем редактировании сообщения,
-// начисление всё равно придёт при следующем вызове. Раньше всё сообщение
-// целиком помечалось обработанным после первого же срабатывания, поэтому
-// опоздавших участников бот больше никогда не видел.
-async function creditParticipants(pool, { messageId, eventLabel, discordIds }) {
+function messageCreatedAt(message) {
+  if (message.createdAt instanceof Date) return message.createdAt;
+  if (message.createdTimestamp) return new Date(message.createdTimestamp);
+  if (message.timestamp) {
+    const n = Number(message.timestamp);
+    if (Number.isFinite(n)) return new Date(n);
+  }
+  // snowflake → ms
+  try {
+    const id = BigInt(message.id);
+    const ms = Number((id >> 22n) + 1420070400000n);
+    if (Number.isFinite(ms)) return new Date(ms);
+  } catch {
+    /* ignore */
+  }
+  return new Date();
+}
+
+async function upsertGather(pool, {
+  messageId,
+  channelId,
+  sourceBotId,
+  eventKey,
+  title,
+  createdAt,
+  hasButtons,
+  participantIds,
+}) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const existing = await client.query(
+      'SELECT status FROM discord_gather_events WHERE message_id=$1',
+      [messageId],
+    );
+    const prevStatus = existing.rows[0]?.status || null;
+
+    if (!prevStatus) {
+      await client.query(
+        `INSERT INTO discord_gather_events(
+           message_id, channel_id, source_bot_id, event_key, title,
+           message_created_at, status, has_buttons, last_seen_at, updated_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,'open',$7,now(),now())`,
+        [
+          messageId,
+          channelId,
+          sourceBotId,
+          eventKey,
+          title || 'Без названия',
+          createdAt.toISOString(),
+          hasButtons,
+        ],
+      );
+    } else if (prevStatus === 'open') {
+      await client.query(
+        `UPDATE discord_gather_events SET
+           event_key=COALESCE(NULLIF($2,''), event_key),
+           title=CASE WHEN $3<>'' THEN $3 ELSE title END,
+           has_buttons=$4,
+           last_seen_at=now(),
+           updated_at=now()
+         WHERE message_id=$1 AND status='open'`,
+        [messageId, eventKey || '', title || '', hasButtons],
+      );
+    } else {
+      // completed/abandoned — только last_seen
+      await client.query(
+        `UPDATE discord_gather_events SET last_seen_at=now(), updated_at=now()
+         WHERE message_id=$1`,
+        [messageId],
+      );
+    }
+
+    // Участников обновляем, пока сбор открыт (или только что создан).
+    const statusNow = (await client.query(
+      'SELECT status FROM discord_gather_events WHERE message_id=$1',
+      [messageId],
+    )).rows[0]?.status;
+
+    if (statusNow === 'open') {
+      await client.query('DELETE FROM discord_gather_participants WHERE message_id=$1', [messageId]);
+      if (participantIds.length) {
+        await client.query(
+          `INSERT INTO discord_gather_participants(message_id, discord_id)
+           SELECT $1, x FROM UNNEST($2::text[]) AS x
+           ON CONFLICT DO NOTHING`,
+          [messageId, participantIds],
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    return { prevStatus, status: statusNow };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function completeGather(pool, { messageId, eventLabel, discordIds }) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const locked = await client.query(
+      `UPDATE discord_gather_events
+       SET status='completed', has_buttons=FALSE, completed_at=now(), updated_at=now()
+       WHERE message_id=$1 AND status='open'
+       RETURNING message_id, title`,
+      [messageId],
+    );
+    if (!locked.rows[0]) {
+      await client.query('COMMIT');
+      return { credited: [], skipped: true };
+    }
 
     let newIds = [];
     if (discordIds.length > 0) {
@@ -155,7 +239,7 @@ async function creditParticipants(pool, { messageId, eventLabel, discordIds }) {
          SELECT $1, x FROM UNNEST($2::text[]) AS x
          ON CONFLICT (message_id, discord_id) DO NOTHING
          RETURNING discord_id`,
-        [messageId, discordIds]
+        [messageId, discordIds],
       );
       newIds = linked.rows.map((r) => r.discord_id);
     }
@@ -166,21 +250,16 @@ async function creditParticipants(pool, { messageId, eventLabel, discordIds }) {
         `UPDATE users SET weekly_events = weekly_events + 1
          WHERE discord_id = ANY($1::text[])
          RETURNING discord_id, nickname`,
-        [newIds]
+        [newIds],
       );
       creditedRows = rows;
-
       const creditedIds = new Set(rows.map((r) => r.discord_id));
       const missing = newIds.filter((id) => !creditedIds.has(id));
       if (missing.length) {
-        console.log(`[event-bot] Не найдены в "Составе" по discord_id (пропущены): ${missing.join(', ')}`);
-      }
-      if (rows.length) {
-        console.log(`[event-bot] +1 мероприятие начислено: ${rows.map((r) => r.nickname).join(', ')}`);
+        console.log(`[event-bot] Не найдены в составе (пропущены): ${missing.join(', ')}`);
       }
     }
 
-    // Сводка по сообщению — информационная, не гейт (см. schema.sql).
     await client.query(
       `INSERT INTO event_bot_processed_messages (message_id, event_label, participant_count, credited_count)
        VALUES ($1, $2, $3, $4)
@@ -189,11 +268,15 @@ async function creditParticipants(pool, { messageId, eventLabel, discordIds }) {
          participant_count = GREATEST(event_bot_processed_messages.participant_count, EXCLUDED.participant_count),
          credited_count = event_bot_processed_messages.credited_count + EXCLUDED.credited_count,
          processed_at = now()`,
-      [messageId, eventLabel, discordIds.length, creditedRows.length]
+      [messageId, eventLabel, discordIds.length, creditedRows.length],
     );
 
     await client.query('COMMIT');
-    return { newlyCredited: creditedRows, newlyLinked: newIds.length, totalInMessage: discordIds.length };
+    return {
+      credited: creditedRows,
+      skipped: false,
+      title: locked.rows[0].title,
+    };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -202,12 +285,42 @@ async function creditParticipants(pool, { messageId, eventLabel, discordIds }) {
   }
 }
 
-// --- Обработка одного сообщения -------------------------------------------
+async function abandonGather(pool, messageId, reason) {
+  const result = await pool.query(
+    `UPDATE discord_gather_events
+     SET status='abandoned', abandoned_at=now(), updated_at=now()
+     WHERE message_id=$1 AND status='open'
+     RETURNING title`,
+    [messageId],
+  );
+  if (result.rows[0]) {
+    console.log(
+      `[event-bot] Сбор "${result.rows[0].title}" (${messageId}) → не проведён (${reason}).`,
+    );
+  }
+  return result.rowCount > 0;
+}
+
+async function abandonStaleOpens(pool) {
+  const cutoff = new Date(Date.now() - ABANDON_AFTER_MS).toISOString();
+  const result = await pool.query(
+    `UPDATE discord_gather_events
+     SET status='abandoned', abandoned_at=now(), updated_at=now()
+     WHERE status='open' AND message_created_at < $1
+     RETURNING message_id, title`,
+    [cutoff],
+  );
+  for (const row of result.rows) {
+    console.log(
+      `[event-bot] Сбор "${row.title}" (${row.message_id}) → не проведён (прошло 24ч с кнопками).`,
+    );
+  }
+  return result.rowCount;
+}
 
 async function handleMessage(pool, rawMessage, { channelId, sourceBotId }) {
   try {
     if (!rawMessage) return;
-    // discord.js: channelId; REST JSON через relay: channel_id
     const msgChannelId = rawMessage.channelId || rawMessage.channel_id;
     if (msgChannelId !== channelId) return;
     if (!rawMessage.author || rawMessage.author.id !== sourceBotId) return;
@@ -218,33 +331,66 @@ async function handleMessage(pool, rawMessage, { channelId, sourceBotId }) {
     }
 
     const text = extractText(message);
-    if (!isClosedEventMessage(text)) return;
+    if (!isGatherMessage(text)) return;
 
+    const title = extractTitle(text);
     const participantIds = extractParticipantIds(text);
-    const adminId = extractAdminId(text);
-    const discordIds = [...new Set(adminId ? [...participantIds, adminId] : participantIds)];
-    const eventLabel = extractEventLabel(text) || message.id;
+    const eventKey = extractEventLabel(text);
+    const eventLabel = eventKey || message.id;
+    const hasButtons = hasInteractiveButtons(message);
+    const createdAt = messageCreatedAt(message);
 
-    const result = await creditParticipants(pool, {
+    const { prevStatus, status } = await upsertGather(pool, {
       messageId: message.id,
-      eventLabel,
-      discordIds,
+      channelId,
+      sourceBotId,
+      eventKey,
+      title,
+      createdAt,
+      hasButtons,
+      participantIds,
     });
 
-    if (result.newlyCredited.length === 0) {
-      console.log(
-        `[event-bot] Сбор "${eventLabel}" (сообщение ${message.id}): новых начислений нет ` +
-        `(все ${result.totalInMessage} уже учтены за это сообщение ранее).`
-      );
-    } else {
-      console.log(
-        `[event-bot] Сбор "${eventLabel}" закрыт: участников ${participantIds.length}` +
-        `${adminId ? ' + администратор' : ''}, в списке всего ${result.totalInMessage}, ` +
-        `новых начислений ${result.newlyCredited.length}.`
-      );
+    if (status !== 'open') return;
+
+    // Кнопки ещё есть — ждём завершения.
+    if (hasButtons) {
+      if (!prevStatus) {
+        console.log(
+          `[event-bot] Открыт сбор "${title || eventLabel}" (${message.id}), участников: ${participantIds.length}.`,
+        );
+      }
+      return;
+    }
+
+    // Кнопок нет → мероприятие завершено.
+    const result = await completeGather(pool, {
+      messageId: message.id,
+      eventLabel,
+      discordIds: participantIds,
+    });
+    if (result.skipped) return;
+    console.log(
+      `[event-bot] Завершён сбор "${result.title}" (${message.id}): участников ${participantIds.length}, ` +
+      `новых начислений ${result.credited.length}.`,
+    );
+    if (result.credited.length) {
+      console.log(`[event-bot] +1: ${result.credited.map((r) => r.nickname).join(', ')}`);
     }
   } catch (err) {
     console.error('[event-bot] Ошибка обработки сообщения:', err);
+  }
+}
+
+async function handleMessageDelete(pool, payload, { channelId }) {
+  try {
+    const msgChannelId = payload.channelId || payload.channel_id;
+    if (msgChannelId && msgChannelId !== channelId) return;
+    const messageId = payload.id || payload.messageId;
+    if (!messageId) return;
+    await abandonGather(pool, messageId, 'сообщение удалено');
+  } catch (err) {
+    console.error('[event-bot] Ошибка удаления сообщения:', err);
   }
 }
 
@@ -257,11 +403,12 @@ function normalizeRestMessage(m, channelId) {
     content: m.content || '',
     embeds: m.embeds || [],
     components: m.components || [],
+    timestamp: m.timestamp,
+    createdTimestamp: m.timestamp ? Date.parse(m.timestamp) : undefined,
     partial: false,
   };
 }
 
-/** Режим через Cloudflare relay: REST-опрос канала (без Gateway — с VDS WS всё равно не проходит). */
 function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }) {
   const relayUrl = (process.env.DISCORD_RELAY_URL || '').trim().replace(/\/$/, '');
   const relaySecret = (process.env.DISCORD_RELAY_SECRET || '').trim();
@@ -273,9 +420,9 @@ function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }
   const pollMs = Math.max(10_000, parseInt(process.env.EVENT_BOT_POLL_MS, 10) || 30_000);
   let stopped = false;
   let timer = null;
-  const seen = new Map(); // messageId -> content hash (ловить edits)
+  const seen = new Map();
 
-  async function discordGet(path) {
+  async function discordGet(path, { allow404 = false } = {}) {
     const url = `${relayUrl}/api/v10${path}`;
     let res;
     try {
@@ -288,12 +435,9 @@ function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }
       });
     } catch (err) {
       const cause = err.cause ? ` (${err.cause.code || err.cause.message || err.cause})` : '';
-      throw new Error(
-        `не достучались до relay ${relayUrl}${cause}. ` +
-        'DNS discord-relay.event.mjdn.ru должен идти в Cloudflare (прокси ON), ' +
-        'а не A-записью на IP VDS. Проверьте: curl -sI https://discord-relay.event.mjdn.ru/health'
-      );
+      throw new Error(`не достучались до relay ${relayUrl}${cause}.`);
     }
+    if (allow404 && res.status === 404) return null;
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`Discord relay ${res.status}: ${text.slice(0, 200)}`);
@@ -306,12 +450,29 @@ function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }
   }
 
   async function pollOnce(label) {
+    await abandonStaleOpens(pool);
+
     const list = await discordGet(
-      `/channels/${channelId}/messages?limit=${catchupLimit}`
+      `/channels/${channelId}/messages?limit=${catchupLimit}`,
     );
     const fromSource = (Array.isArray(list) ? list : [])
       .filter((m) => m.author && m.author.id === sourceBotId)
       .reverse();
+    const presentIds = new Set(fromSource.map((m) => m.id));
+
+    // Открытые сборы, которых уже нет в окне истории — проверяем точечно.
+    const openRows = await pool.query(
+      `SELECT message_id FROM discord_gather_events
+       WHERE channel_id=$1 AND status='open'`,
+      [channelId],
+    );
+    for (const row of openRows.rows) {
+      if (presentIds.has(row.message_id)) continue;
+      const remote = await discordGet(`/channels/${channelId}/messages/${row.message_id}`, { allow404: true });
+      if (remote == null) {
+        await abandonGather(pool, row.message_id, 'сообщение удалено');
+      }
+    }
 
     let processed = 0;
     for (const raw of fromSource) {
@@ -322,7 +483,6 @@ function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }
       processed += 1;
       await new Promise((r) => setTimeout(r, 40));
     }
-    // Не раздуваем Map бесконечно
     if (seen.size > catchupLimit * 4) {
       const keep = new Set(fromSource.map((m) => m.id));
       for (const id of seen.keys()) {
@@ -333,24 +493,10 @@ function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }
   }
 
   console.log(
-    `[event-bot] Режим Cloudflare relay: ${relayUrl}, канал ${channelId}, опрос каждые ${pollMs / 1000}с.`
+    `[event-bot] Режим Cloudflare relay: ${relayUrl}, канал ${channelId}, опрос каждые ${pollMs / 1000}с.`,
   );
 
   (async () => {
-    try {
-      const health = await fetch(`${relayUrl}/health`, {
-        headers: { 'X-Relay-Secret': relaySecret },
-        signal: AbortSignal.timeout(10_000),
-      });
-      // /health у нас без секрета — если 403, всё равно хост жив
-      console.log(`[event-bot] Relay health: HTTP ${health.status}`);
-    } catch (err) {
-      const cause = err.cause ? ` (${err.cause.code || err.cause.message || err.cause})` : '';
-      console.error(
-        `[event-bot] Relay недоступен с VDS: ${relayUrl}/health${cause}. ` +
-        'Частая причина: DNS поддомена указывает на IP сервера (Caddy), а не на Cloudflare Worker.'
-      );
-    }
     try {
       await pollOnce('старт');
     } catch (err) {
@@ -381,8 +527,7 @@ function startEventAttendanceBot(pool) {
   const token = process.env.DISCORD_BOT_TOKEN;
   if (!token) {
     console.log(
-      '[event-bot] DISCORD_BOT_TOKEN не задан — бот учёта посещаемости не запущен ' +
-      '(остальной сайт при этом работает как обычно).'
+      '[event-bot] DISCORD_BOT_TOKEN не задан — бот учёта посещаемости не запущен.',
     );
     return null;
   }
@@ -392,14 +537,17 @@ function startEventAttendanceBot(pool) {
   const catchupLimit = Math.min(parseInt(process.env.EVENT_BOT_CATCHUP_LIMIT, 10) || 50, 100);
   const relayUrl = (process.env.DISCORD_RELAY_URL || '').trim();
 
-  // Если задан relay — только REST-опрос через Worker (рекомендуемый режим на VDS).
   if (relayUrl) {
     return startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit });
   }
 
   const restAgent = getRestAgent();
   const clientOptions = {
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+    ],
     partials: [Partials.Message, Partials.Channel],
   };
   if (restAgent) {
@@ -407,9 +555,18 @@ function startEventAttendanceBot(pool) {
   }
 
   const client = new Client(clientOptions);
+  let staleTimer = null;
 
   client.once(Events.ClientReady, async (c) => {
     console.log(`[event-bot] Подключен как ${c.user.tag}. Слежу за каналом ${channelId}.`);
+    await abandonStaleOpens(pool).catch((err) => {
+      console.error('[event-bot] Проверка просроченных сборов:', err.message);
+    });
+    staleTimer = setInterval(() => {
+      void abandonStaleOpens(pool).catch((err) => {
+        console.error('[event-bot] Проверка просроченных сборов:', err.message);
+      });
+    }, 15 * 60 * 1000);
 
     const catchupDelayMs = Math.max(0, parseInt(process.env.EVENT_BOT_CATCHUP_DELAY_MS, 10) || 15_000);
     setTimeout(async () => {
@@ -433,15 +590,22 @@ function startEventAttendanceBot(pool) {
 
   client.on(Events.MessageCreate, (message) => handleMessage(pool, message, { channelId, sourceBotId }));
   client.on(Events.MessageUpdate, (_oldMessage, newMessage) =>
-    handleMessage(pool, newMessage, { channelId, sourceBotId })
+    handleMessage(pool, newMessage, { channelId, sourceBotId }),
   );
+  client.on(Events.MessageDelete, (message) => handleMessageDelete(pool, message, { channelId }));
   client.on(Events.Error, (err) => console.error('[event-bot] Ошибка клиента Discord:', err));
+
+  const originalDestroy = client.destroy.bind(client);
+  client.destroy = async () => {
+    if (staleTimer) clearInterval(staleTimer);
+    return originalDestroy();
+  };
 
   client.login(token).catch((err) => {
     const viaProxy = resolveProxyUrl() ? 'через DISCORD_PROXY/HTTPS_PROXY' : 'напрямую (прокси не задан)';
     console.error(
       `[event-bot] Не удалось войти в Discord ${viaProxy}: ${err.message}. ` +
-      'На VDS задайте DISCORD_RELAY_URL (Cloudflare) или DISCORD_PROXY.'
+      'На VDS задайте DISCORD_RELAY_URL (Cloudflare) или DISCORD_PROXY.',
     );
   });
 
@@ -451,12 +615,14 @@ function startEventAttendanceBot(pool) {
 export {
   startEventAttendanceBot,
   handleMessage,
+  handleMessageDelete,
 };
 
 export const _internal = {
   extractText,
-  isClosedEventMessage,
+  extractTitle,
   extractEventLabel,
   extractParticipantIds,
-  extractAdminId,
+  hasInteractiveButtons,
+  isGatherMessage,
 };

@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { applyOutboundProxy } from './outboundProxy';
-import pool from '../lib/db';
+import pool from './db';
 import { startEventAttendanceBot } from './eventAttendanceBot';
 
 applyOutboundProxy();
@@ -12,11 +12,17 @@ if (!process.env.DATABASE_URL) {
 
 const bot = startEventAttendanceBot(pool);
 if (!bot) process.exit(0);
+const runningBot = bot;
 
 async function shutdown() {
   console.log('[event-bot] Останавливаюсь…');
   try {
-    if (typeof bot.destroy === 'function') await bot.destroy();
+    if (typeof runningBot.destroy === 'function') await runningBot.destroy();
+  } catch {
+    /* ignore */
+  }
+  try {
+    await pool.end();
   } catch {
     /* ignore */
   }

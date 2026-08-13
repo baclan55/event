@@ -336,5 +336,63 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
     }
   }
 
+  if (key === 'discord-events' && method === 'GET') {
+    const user = await required();
+    if (user instanceof NextResponse) return user;
+    const status = String(request.nextUrl.searchParams.get('status') || 'completed').trim();
+    const allowed = new Set(['completed', 'open', 'abandoned', 'all']);
+    const filter = allowed.has(status) ? status : 'completed';
+    const events = await query<{
+      message_id: string;
+      event_key: string | null;
+      title: string;
+      message_created_at: string;
+      status: string;
+      completed_at: string | null;
+      abandoned_at: string | null;
+      participant_count: string;
+    }>(
+      `SELECT e.message_id, e.event_key, e.title, e.message_created_at, e.status,
+              e.completed_at, e.abandoned_at,
+              (SELECT COUNT(*)::text FROM discord_gather_participants p WHERE p.message_id=e.message_id) AS participant_count
+       FROM discord_gather_events e
+       WHERE ($1::text = 'all' OR e.status = $1)
+       ORDER BY e.message_created_at DESC
+       LIMIT 100`,
+      [filter],
+    );
+    const ids = events.rows.map((e) => e.message_id);
+    const participants = ids.length
+      ? await query<{
+        message_id: string;
+        discord_id: string;
+        nickname: string | null;
+        user_id: number | null;
+      }>(
+        `SELECT p.message_id, p.discord_id, u.nickname, u.id AS user_id
+         FROM discord_gather_participants p
+         LEFT JOIN users u ON u.discord_id = p.discord_id
+         WHERE p.message_id = ANY($1::text[])
+         ORDER BY u.nickname NULLS LAST, p.discord_id`,
+        [ids],
+      )
+      : { rows: [] as Array<{ message_id: string; discord_id: string; nickname: string | null; user_id: number | null }> };
+
+    const byMessage = new Map<string, typeof participants.rows>();
+    for (const row of participants.rows) {
+      const list = byMessage.get(row.message_id) || [];
+      list.push(row);
+      byMessage.set(row.message_id, list);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      events: events.rows.map((e) => ({
+        ...e,
+        participants: byMessage.get(e.message_id) || [],
+      })),
+    });
+  }
+
   return undefined;
 };

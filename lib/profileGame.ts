@@ -1,4 +1,4 @@
-import type { PublicUser } from '@/lib/auth';
+import type { PublicUser } from '@/lib/authShared';
 import { isValidStaticId } from '@/lib/staticId';
 
 export type GameProfileFields = {
