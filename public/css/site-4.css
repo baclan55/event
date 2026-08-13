@@ -1,6 +1,56 @@
 
 
 /* =============================================================================
+   Система выговоров: карточки-группы по сотруднику, разбитые на тиры
+   (Хелперы / Администраторы)
+   ============================================================================= */
+.rp-legend{
+  background:var(--bg-card-2); border:1px solid var(--border-soft);
+  border-radius:var(--radius-md); padding:12px 16px; margin-bottom:20px;
+  font-size:12.5px; color:var(--text-muted); line-height:1.5;
+}
+.rp-legend b{ color:var(--text-heading); font-weight:700; }
+
+.rp-group{ margin-bottom:20px; }
+.rp-group-head{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  flex-wrap:wrap; padding:2px 4px 10px;
+}
+.rp-group-badges{ display:flex; gap:6px; flex-wrap:wrap; }
+.rp-group-entries{ display:flex; flex-direction:column; gap:6px; }
+.rp-entry.rp-expired{ opacity:.5; }
+
+.audit-card{ margin-top:24px; }
+.audit-list{ display:flex; flex-direction:column; max-height:520px; overflow-y:auto; }
+.audit-row{
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:11px 2px; border-bottom:1px solid var(--border-soft);
+}
+.audit-row:last-child{ border-bottom:0; }
+.audit-main{ display:flex; align-items:center; gap:9px; min-width:0; }
+.audit-meta{ flex-shrink:0; font-size:11px; color:var(--text-muted); text-align:right; }
+
+/* =============================================================================
+   Личный кабинет: вкладка "Главная" (дашборд)
+   ============================================================================= */
+.stat-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; }
+.stat-grid.stat-grid-4{ grid-template-columns:repeat(4, 1fr); }
+@media (max-width:700px){ .stat-grid{ grid-template-columns:1fr 1fr; } }
+.stat-card{ text-align:center; }
+.stat-value{ font-size:32px; font-weight:800; color:var(--text-heading); font-family:var(--font-mono); }
+.stat-label{ margin-top:6px; font-size:12.5px; color:var(--text-muted); }
+
+.top-row{
+  display:flex; align-items:center; gap:14px; padding:12px 4px;
+  border-bottom:1px solid var(--border-soft);
+}
+.top-row:last-child{ border-bottom:none; }
+.top-rank{ width:28px; text-align:center; font-size:18px; flex-shrink:0; }
+
+.top-grid{ display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
+@media (max-width:700px){ .top-grid{ grid-template-columns:1fr; } }
+
+/* =============================================================================
    Личный кабинет: вкладка "Отпуска" — календарь на месяц + сайдбар
    "Сегодня" + подача заявки + рассмотрение (см. public/js/sections/vacations.js)
    ============================================================================= */
@@ -212,61 +262,3 @@
   color:var(--text-body); cursor:pointer; margin:0;
 }
 .perm-flag.muted{ color:var(--text-muted); cursor:default; font-weight:500; }
-/* Редактор текстов: поле Markdown +20% по высоте */
-.modal-dialog.editor .mde-textarea,
-.modal-dialog.editor .mde-preview{
-  min-height:216px;
-  max-height:552px;
-}
-.modal-dialog h2{ font-size:19px; text-align:center; margin-bottom:4px; }
-.modal-sub{ text-align:center; color:var(--text-muted); font-size:12px; margin-bottom:18px; }
-.modal-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:20px; }
-.modal-close{
-  position:absolute; top:14px; right:14px;
-}
-.profile-gate-overlay{
-  z-index:320;
-  pointer-events:auto;
-}
-button.linkish{
-  background:none; border:0; padding:0; color:var(--accent-light);
-  cursor:pointer; font:inherit; text-decoration:underline;
-}
-
-/* --- модалка подтверждения (замена confirm()/alert() для удаления и т.п.) --- */
-.confirm-overlay{ z-index:340; }
-.confirm-modal{ max-width:420px; text-align:center; }
-.confirm-modal h2{ margin-bottom:8px; }
-.confirm-icon{
-  width:52px; height:52px; margin:0 auto 14px; border-radius:50%;
-  display:flex; align-items:center; justify-content:center; flex-shrink:0;
-  background:var(--red-soft); color:var(--red);
-}
-.confirm-icon svg{ width:22px; height:22px; }
-.confirm-icon.confirm-icon-neutral{ background:var(--accent-soft); color:var(--accent-light); }
-.confirm-modal .error-text{ text-align:center; }
-.confirm-modal .modal-sub{ margin-bottom:8px; line-height:1.45; }
-
-/* --- окно личного кабинета (вход/регистрация), стиль по референсу --- */
-.auth-modal-overlay{
-  background-image:
-    linear-gradient(180deg, rgba(8,6,15,.92) 0%, rgba(8,6,15,.96) 55%, rgba(8,6,15,.99) 100%);
-  background-size:cover; background-position:center;
-}
-.auth-card{ width:100%; max-width:400px; }
-.auth-seal-wrap{ display:flex; justify-content:center; margin-bottom:14px; }
-.auth-seal{
-  width:64px; height:64px; border-radius:50%; flex-shrink:0;
-  border:1.5px dashed var(--accent-light);
-  display:flex; align-items:center; justify-content:center; position:relative;
-}
-.auth-seal::before{
-  content:''; position:absolute; inset:5px; border-radius:50%;
-  border:1px solid var(--border-strong);
-}
-.auth-seal span{ font-weight:800; font-size:16px; color:var(--text-heading); letter-spacing:.5px; }
-.auth-title{ text-align:center; font-size:21px; margin-bottom:3px; }
-.auth-sub{
-  text-align:center; font-size:10.5px; color:var(--text-muted);
-  letter-spacing:.12em; text-transform:uppercase; margin-bottom:22px;
-}

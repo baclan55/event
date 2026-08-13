@@ -1,4 +1,62 @@
 
+/* Редактор текстов: поле Markdown +20% по высоте */
+.modal-dialog.editor .mde-textarea,
+.modal-dialog.editor .mde-preview{
+  min-height:216px;
+  max-height:552px;
+}
+.modal-dialog h2{ font-size:19px; text-align:center; margin-bottom:4px; }
+.modal-sub{ text-align:center; color:var(--text-muted); font-size:12px; margin-bottom:18px; }
+.modal-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:20px; }
+.modal-close{
+  position:absolute; top:14px; right:14px;
+}
+.profile-gate-overlay{
+  z-index:320;
+  pointer-events:auto;
+}
+button.linkish{
+  background:none; border:0; padding:0; color:var(--accent-light);
+  cursor:pointer; font:inherit; text-decoration:underline;
+}
+
+/* --- модалка подтверждения (замена confirm()/alert() для удаления и т.п.) --- */
+.confirm-overlay{ z-index:340; }
+.confirm-modal{ max-width:420px; text-align:center; }
+.confirm-modal h2{ margin-bottom:8px; }
+.confirm-icon{
+  width:52px; height:52px; margin:0 auto 14px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  background:var(--red-soft); color:var(--red);
+}
+.confirm-icon svg{ width:22px; height:22px; }
+.confirm-icon.confirm-icon-neutral{ background:var(--accent-soft); color:var(--accent-light); }
+.confirm-modal .error-text{ text-align:center; }
+.confirm-modal .modal-sub{ margin-bottom:8px; line-height:1.45; }
+
+/* --- окно личного кабинета (вход/регистрация), стиль по референсу --- */
+.auth-modal-overlay{
+  background-image:
+    linear-gradient(180deg, rgba(8,6,15,.92) 0%, rgba(8,6,15,.96) 55%, rgba(8,6,15,.99) 100%);
+  background-size:cover; background-position:center;
+}
+.auth-card{ width:100%; max-width:400px; }
+.auth-seal-wrap{ display:flex; justify-content:center; margin-bottom:14px; }
+.auth-seal{
+  width:64px; height:64px; border-radius:50%; flex-shrink:0;
+  border:1.5px dashed var(--accent-light);
+  display:flex; align-items:center; justify-content:center; position:relative;
+}
+.auth-seal::before{
+  content:''; position:absolute; inset:5px; border-radius:50%;
+  border:1px solid var(--border-strong);
+}
+.auth-seal span{ font-weight:800; font-size:16px; color:var(--text-heading); letter-spacing:.5px; }
+.auth-title{ text-align:center; font-size:21px; margin-bottom:3px; }
+.auth-sub{
+  text-align:center; font-size:10.5px; color:var(--text-muted);
+  letter-spacing:.12em; text-transform:uppercase; margin-bottom:22px;
+}
 .auth-divider{ display:flex; align-items:center; gap:10px; margin:18px 0 16px; color:var(--text-faint); font-size:11px; }
 .auth-divider::before, .auth-divider::after{ content:''; flex:1; height:1px; background:var(--border); }
 .auth-tabs{ display:flex; margin-bottom:20px; border-bottom:1px solid var(--border); }
@@ -223,66 +281,3 @@
   max-height:260px; overflow:auto; border:1px solid var(--border);
   border-radius:var(--radius-md); padding:8px; display:flex; flex-direction:column; gap:4px;
 }
-/* .field label (uppercase/display:block) не должен ломать строки staff */
-.gmp-staff-row,
-.field .gmp-staff-row{
-  display:grid; grid-template-columns:minmax(0,1fr) minmax(108px,132px);
-  gap:10px; align-items:center;
-  font-size:13px; font-weight:500; letter-spacing:normal; text-transform:none;
-  color:var(--text-body); margin:0;
-  padding:8px 10px; border-radius:8px; min-height:40px;
-}
-.gmp-staff-row:hover,
-.field .gmp-staff-row:hover{ background:var(--bg-card-2); }
-.gmp-staff-check,
-.field .gmp-staff-check{
-  display:grid; grid-template-columns:18px minmax(0,1fr); gap:10px; align-items:center;
-  min-width:0; margin:0; cursor:pointer;
-  font:inherit; font-weight:500; letter-spacing:normal; text-transform:none;
-  color:inherit;
-}
-.gmp-staff-check > span,
-.field .gmp-staff-check > span,
-.gmp-staff-row > span,
-.field .gmp-staff-row > span{
-  min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  line-height:1.3;
-}
-.gmp-staff-row select.input,
-.field .gmp-staff-row select.input{
-  width:100%; min-width:0; margin:0;
-  padding:6px 28px 6px 10px; font-size:12.5px; border-radius:8px;
-  line-height:1.2;
-}
-.gmp-table input[type="checkbox"]{ display:inline-block; vertical-align:middle; }
-.gmp-add-player{ display:flex; gap:8px; margin-bottom:12px; max-width:360px; }
-.gmp-table-wrap{
-  overflow:auto; border:1px solid var(--border);
-  border-radius:var(--radius-md); background:var(--bg-card-2);
-}
-.gmp-table{
-  width:100%; border-collapse:separate; border-spacing:0; font-size:13px;
-}
-.gmp-table th,.gmp-table td{
-  border-right:1px solid var(--border); border-bottom:1px solid var(--border);
-  padding:10px 12px; text-align:center; vertical-align:middle;
-}
-.gmp-table th:last-child,.gmp-table td:last-child{ border-right:0; }
-.gmp-table tbody tr:last-child td{ border-bottom:0; }
-.gmp-table th:first-child,.gmp-table td:first-child{ text-align:left; white-space:nowrap; }
-.gmp-table th{
-  color:var(--text-muted); font-weight:600; background:rgba(0,0,0,.18);
-  position:sticky; top:0; z-index:1; white-space:nowrap;
-}
-.gmp-table tbody tr:hover td{ background:rgba(255,255,255,.02); }
-.gmp-table tbody tr.is-blocked td{
-  background:rgba(248,113,113,.12);
-}
-.gmp-table tbody tr.is-blocked:hover td{
-  background:rgba(248,113,113,.18);
-}
-.gmp-status-cell{
-  text-align:left !important; min-width:160px; max-width:260px;
-  white-space:normal !important;
-}
-.gmp-block-info{ display:flex; flex-direction:column; gap:4px; align-items:flex-start; }

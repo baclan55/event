@@ -210,7 +210,7 @@ export function ProfileInteractive({
   return (
     <>
       <div className="card card-pad profile-hero">
-        <div className="profile-avatar-wrap"><Avatar row={user} size={68} /></div>
+        <div className="profile-avatar-wrap"><Avatar row={user} size={80} /></div>
         <div className="profile-main">
           <div className="profile-name-line">
             <h2>{user.nickname || user.firstName || 'Без имени'}</h2>
@@ -235,7 +235,7 @@ export function ProfileInteractive({
           ) : null}
         </div>
         <div className="profile-weekly-group">
-          <div className="profile-weekly">
+          <div className="profile-weekly profile-stat">
             <div className="stat-value">{user.weeklyEvents}</div>
             <div className="stat-label">мп за неделю (пн–вс)</div>
             {hasNorm ? (
@@ -246,7 +246,7 @@ export function ProfileInteractive({
               <span className="badge badge-muted">без нормы</span>
             )}
           </div>
-          <div className="profile-weekly">
+          <div className="profile-weekly profile-stat">
             <div className="stat-value">{gmpWeekCount}</div>
             <div className="stat-label">гмп за неделю</div>
             <span className="badge badge-muted">всего {gmpItems.length}</span>
@@ -254,8 +254,8 @@ export function ProfileInteractive({
         </div>
       </div>
 
-      <div className="card card-pad" style={{ marginTop: 20 }}>
-        <div className="segmented roster-tabs" style={{ marginBottom: 16 }}>
+      <div className="card card-pad profile-body">
+        <div className="segmented roster-tabs profile-tabs">
           <button className={tab === 'reprimands' ? 'active' : ''} onClick={() => setTab('reprimands')}>Выговоры · {rpData.reprimands.length}</button>
           <button className={tab === 'achievements' ? 'active' : ''} onClick={() => setTab('achievements')}>Достижения · {achievementCatalog.earned.length}</button>
           <button className={tab === 'events' ? 'active' : ''} onClick={() => setTab('events')}>Мероприятия · {eventWeekCount}/{eventTotal}</button>

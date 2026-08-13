@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { NavIcon } from '@/components/NavIcons';
 import { askConfirm, ErrorText, Modal, request, Select, type Row } from './shared';
 
@@ -196,14 +197,14 @@ export function BlacklistInteractive() {
               </div>
               <div className="bl-card-ids">
                 {item.discord_id ? (
-                  <span className="bl-chip" title="Discord ID">
-                    <span className="bl-chip-k">DC</span>
+                  <span className="bl-chip" title="DiscordID">
+                    <span className="bl-chip-k">DiscordID</span>
                     <span className="bl-chip-v">{String(item.discord_id)}</span>
                   </span>
                 ) : null}
                 {item.static_id ? (
-                  <span className="bl-chip" title="StaticID">
-                    <span className="bl-chip-k">SID</span>
+                  <span className="bl-chip" title="Static ID">
+                    <span className="bl-chip-k">Static ID</span>
                     <span className="bl-chip-v">{String(item.static_id)}</span>
                   </span>
                 ) : null}
@@ -212,7 +213,13 @@ export function BlacklistInteractive() {
                 ) : null}
               </div>
               <div className="bl-card-meta">
-                <span>{item.created_by_nickname || '—'}</span>
+                {item.created_by ? (
+                  <Link className="bl-author-link" href={`/app/profile/${item.created_by}`}>
+                    {item.created_by_nickname || '—'}
+                  </Link>
+                ) : (
+                  <span>{item.created_by_nickname || '—'}</span>
+                )}
                 <span className="bl-dot" aria-hidden>·</span>
                 <span>{formatWhen(item.created_at)}</span>
               </div>
