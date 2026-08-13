@@ -152,40 +152,34 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
 
   // ---- blacklist ----
   if (key === 'blacklist' || key === 'blacklist-item') {
-    if (key === 'blacklist' && method === 'GET') {
-      const user = await requiredPerm('manage_blacklist');
-      if (user instanceof NextResponse) return user;
-      const result = await query(
-        `SELECT b.*, u.nickname AS user_nickname, c.nickname AS created_by_nickname
-         FROM blacklist b
-         LEFT JOIN users u ON u.id = b.user_id
-         LEFT JOIN users c ON c.id = b.created_by
-         ORDER BY b.created_at DESC`,
-      );
-      return NextResponse.json({
-        items: result.rows,
-        canEdit: userHasPermission(user, 'manage_blacklist', 'edit'),
-      });
-    }
-    const user = await requiredPerm('manage_blacklist', { level: 'edit' });
-    if (user instanceof NextResponse) return user;
-    if (key === 'blacklist' && method === 'POST') {
-      const discordId = String(body.discordId || '').trim() || null;
-      const staticId = String(body.staticId || '').trim() || null;
-      const userId = body.userId != null ? Number(body.userId) : null;
-      const reason = String(body.reason || '').trim();
-      if (!userId && !discordId && !staticId) {
-        return jsonError('Укажите пользователя, Discord ID или StaticID.', 400);
-      }
-      if (staticId && !isValidStaticId(staticId)) {
-        return jsonError('StaticID: только цифры, 2–6 символов.', 400);
-      }
-      const inserted = await query<{ id: number }>(
-        `INSERT INTO blacklist(user_id, discord_id, static_id, reason, created_by)
-         VALUES($1,$2,$3,$4,$5) RETURNING id`,
-        [userId, discordId, staticId, reason, user.id],
-      );
-      // Все незакрытые заявки с этими идентификаторами — сразу в отказ.
+    const snap = (row: {
+      discord_id?: string | null;
+      static_id?: string | null;
+      reason?: string | null;
+      created_by?: number | null;
+    }) => ({
+      discord_id: row.discord_id || null,
+      static_id: row.static_id || null,
+      reason: row.reason || '',
+      created_by: row.created_by ?? null,
+    });
+
+    const resolveLinkedUserId = async (discordId: string | null, staticId: string | null) => {
+      const found = await query<{ id: number }>(
+        `SELECT id FROM users
+         WHERE ($1::text IS NOT NULL AND discord_id = $1)
+            OR ($2::text IS NOT NULL AND static_id = $2)
+         ORDER BY id ASC LIMIT 1`,
+        [discordId, staticId],
+      ).catch(() => ({ rows: [] as { id: number }[] }));
+      return found.rows[0]?.id ?? null;
+    };
+
+    const rejectMatchingApps = async (
+      userId: number | null,
+      discordId: string | null,
+      staticId: string | null,
+    ) => {
       await query(
         `UPDATE applications SET status='rejected', reject_reason='Пользователь находится в ЧС'
          WHERE status IN ('pending','approved')
@@ -196,17 +190,203 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
            )`,
         [userId, discordId, staticId],
       ).catch(() => undefined);
+    };
+
+    const writeHistory = async (
+      blacklistId: number,
+      actorId: number,
+      action: 'create' | 'update' | 'delete',
+      details: Record<string, unknown>,
+    ) => {
+      await query(
+        `INSERT INTO blacklist_history(blacklist_id, actor_id, action, details)
+         VALUES($1,$2,$3,$4::jsonb)`,
+        [blacklistId, actorId, action, JSON.stringify(details)],
+      ).catch(() => undefined);
+    };
+
+    if (key === 'blacklist' && method === 'GET') {
+      const user = await requiredPerm('manage_blacklist');
+      if (user instanceof NextResponse) return user;
+      const result = await query(
+        `SELECT b.*,
+                u.nickname AS user_nickname,
+                c.nickname AS created_by_nickname,
+                (
+                  SELECT COUNT(*)::int FROM blacklist_history h WHERE h.blacklist_id = b.id
+                ) AS history_count
+         FROM blacklist b
+         LEFT JOIN users u ON u.id = b.user_id
+         LEFT JOIN users c ON c.id = b.created_by
+         ORDER BY b.created_at DESC`,
+      );
+      return NextResponse.json({
+        items: result.rows,
+        canEdit: userHasPermission(user, 'manage_blacklist', 'edit'),
+        isOwner: !!user.is_owner,
+      });
+    }
+
+    if (key === 'blacklist-item' && method === 'GET') {
+      const user = await requiredPerm('manage_blacklist');
+      if (user instanceof NextResponse) return user;
+      const id = parseId(params.id);
+      const item = await query(
+        `SELECT b.*,
+                u.nickname AS user_nickname,
+                c.nickname AS created_by_nickname
+         FROM blacklist b
+         LEFT JOIN users u ON u.id = b.user_id
+         LEFT JOIN users c ON c.id = b.created_by
+         WHERE b.id=$1`,
+        [id],
+      );
+      if (!item.rows[0]) return jsonError('Запись не найдена.', 404);
+      const history = await query(
+        `SELECT h.id, h.action, h.details, h.created_at,
+                a.nickname AS actor_nickname
+         FROM blacklist_history h
+         LEFT JOIN users a ON a.id = h.actor_id
+         WHERE h.blacklist_id=$1
+         ORDER BY h.created_at DESC, h.id DESC`,
+        [id],
+      ).catch(() => ({ rows: [] }));
+      return NextResponse.json({
+        item: item.rows[0],
+        history: history.rows,
+        canEdit: userHasPermission(user, 'manage_blacklist', 'edit'),
+        isOwner: !!user.is_owner,
+      });
+    }
+
+    const user = await requiredPerm('manage_blacklist', { level: 'edit' });
+    if (user instanceof NextResponse) return user;
+
+    if (key === 'blacklist' && method === 'POST') {
+      const discordId = String(body.discordId || '').trim() || null;
+      const staticId = String(body.staticId || '').trim() || null;
+      const reason = String(body.reason || '').trim();
+      if (!discordId && !staticId) {
+        return jsonError('Укажите Discord ID и/или StaticID.', 400);
+      }
+      if (discordId && !/^\d{17,20}$/.test(discordId)) {
+        return jsonError('Discord ID: 17–20 цифр.', 400);
+      }
+      if (staticId && !isValidStaticId(staticId)) {
+        return jsonError('StaticID: только цифры, 2–6 символов.', 400);
+      }
+
+      let createdBy = user.id;
+      if (body.createdBy != null && body.createdBy !== '') {
+        if (!user.is_owner) {
+          return jsonError('Добавлять от чужого имени может только владелец.', 403);
+        }
+        const onBehalf = Number(body.createdBy);
+        if (!Number.isFinite(onBehalf) || onBehalf <= 0) {
+          return jsonError('Некорректный пользователь «от имени».', 400);
+        }
+        const exists = await query<{ id: number }>('SELECT id FROM users WHERE id=$1', [onBehalf]);
+        if (!exists.rows[0]) return jsonError('Пользователь «от имени» не найден.', 400);
+        createdBy = onBehalf;
+      }
+
+      const linkedUserId = await resolveLinkedUserId(discordId, staticId);
+      const inserted = await query<{ id: number }>(
+        `INSERT INTO blacklist(user_id, discord_id, static_id, reason, created_by, updated_at)
+         VALUES($1,$2,$3,$4,$5,now()) RETURNING id`,
+        [linkedUserId, discordId, staticId, reason, createdBy],
+      );
+      const newId = inserted.rows[0].id;
+      await rejectMatchingApps(linkedUserId, discordId, staticId);
+      await writeHistory(newId, user.id, 'create', {
+        after: snap({ discord_id: discordId, static_id: staticId, reason, created_by: createdBy }),
+        attributed_to: createdBy,
+        recorded_by: user.id,
+      });
       await writeAudit({
         actorId: user.id,
         action: 'blacklist.create',
         entityType: 'blacklist',
-        entityId: inserted.rows[0].id,
-        details: { userId, discordId, staticId, reason },
+        entityId: newId,
+        details: { discordId, staticId, reason, createdBy, linkedUserId },
       });
-      return ok({ id: inserted.rows[0].id });
+      return ok({ id: newId });
     }
+
+    if (key === 'blacklist-item' && method === 'PATCH') {
+      const id = parseId(params.id);
+      const existing = await query<{
+        id: number;
+        user_id: number | null;
+        discord_id: string | null;
+        static_id: string | null;
+        reason: string;
+        created_by: number | null;
+      }>('SELECT * FROM blacklist WHERE id=$1', [id]);
+      const prev = existing.rows[0];
+      if (!prev) return jsonError('Запись не найдена.', 404);
+
+      const discordId = body.discordId !== undefined
+        ? (String(body.discordId || '').trim() || null)
+        : (prev.discord_id || null);
+      const staticId = body.staticId !== undefined
+        ? (String(body.staticId || '').trim() || null)
+        : (prev.static_id || null);
+      const reason = body.reason !== undefined
+        ? String(body.reason || '').trim()
+        : (prev.reason || '');
+
+      if (!discordId && !staticId) {
+        return jsonError('Укажите Discord ID и/или StaticID.', 400);
+      }
+      if (discordId && !/^\d{17,20}$/.test(discordId)) {
+        return jsonError('Discord ID: 17–20 цифр.', 400);
+      }
+      if (staticId && !isValidStaticId(staticId)) {
+        return jsonError('StaticID: только цифры, 2–6 символов.', 400);
+      }
+
+      let createdBy = prev.created_by;
+      if (body.createdBy != null && body.createdBy !== '' && user.is_owner) {
+        const onBehalf = Number(body.createdBy);
+        if (Number.isFinite(onBehalf) && onBehalf > 0) {
+          const exists = await query<{ id: number }>('SELECT id FROM users WHERE id=$1', [onBehalf]);
+          if (!exists.rows[0]) return jsonError('Пользователь «от имени» не найден.', 400);
+          createdBy = onBehalf;
+        }
+      }
+
+      const linkedUserId = await resolveLinkedUserId(discordId, staticId);
+      const before = snap(prev);
+      const after = snap({
+        discord_id: discordId,
+        static_id: staticId,
+        reason,
+        created_by: createdBy,
+      });
+
+      await query(
+        `UPDATE blacklist SET
+           user_id=$2, discord_id=$3, static_id=$4, reason=$5,
+           created_by=COALESCE($6, created_by), updated_at=now()
+         WHERE id=$1`,
+        [id, linkedUserId, discordId, staticId, reason, createdBy],
+      );
+      await rejectMatchingApps(linkedUserId, discordId, staticId);
+      await writeHistory(id, user.id, 'update', { before, after });
+      await writeAudit({
+        actorId: user.id,
+        action: 'blacklist.update',
+        entityType: 'blacklist',
+        entityId: id,
+        details: { before, after },
+      });
+      return ok();
+    }
+
     if (key === 'blacklist-item' && method === 'DELETE') {
-      await query('DELETE FROM blacklist WHERE id=$1', [parseId(params.id)]);
+      const id = parseId(params.id);
+      await query('DELETE FROM blacklist WHERE id=$1', [id]);
       await writeAudit({
         actorId: user.id,
         action: 'blacklist.delete',

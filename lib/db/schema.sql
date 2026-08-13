@@ -416,7 +416,7 @@ CREATE TABLE IF NOT EXISTS profile_change_requests (
 );
 CREATE INDEX IF NOT EXISTS idx_profile_change_pending ON profile_change_requests(status, created_at DESC);
 
--- Чёрный список (существующие и/или внешние идентификаторы)
+-- Чёрный список (Discord ID и/или StaticID; user_id — автопривязка к аккаунту на сайте)
 CREATE TABLE IF NOT EXISTS blacklist (
   id          SERIAL PRIMARY KEY,
   user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -425,13 +425,28 @@ CREATE TABLE IF NOT EXISTS blacklist (
   reason      TEXT NOT NULL DEFAULT '',
   created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT blacklist_has_identity CHECK (
     user_id IS NOT NULL OR (discord_id IS NOT NULL AND discord_id <> '') OR (static_id IS NOT NULL AND static_id <> '')
   )
 );
+ALTER TABLE blacklist ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 CREATE INDEX IF NOT EXISTS idx_blacklist_discord ON blacklist(discord_id) WHERE discord_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_blacklist_static ON blacklist(static_id) WHERE static_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_blacklist_user ON blacklist(user_id) WHERE user_id IS NOT NULL;
+
+-- История правок ЧС (кто что изменил)
+CREATE TABLE IF NOT EXISTS blacklist_history (
+  id           SERIAL PRIMARY KEY,
+  blacklist_id INTEGER NOT NULL REFERENCES blacklist(id) ON DELETE CASCADE,
+  actor_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  action       TEXT NOT NULL DEFAULT 'update'
+                 CHECK (action IN ('create', 'update', 'delete')),
+  details      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_blacklist_history_item
+  ON blacklist_history(blacklist_id, created_at DESC);
 
 -- Достижения
 CREATE TABLE IF NOT EXISTS achievements (

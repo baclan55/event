@@ -10,6 +10,7 @@ const REQUIRED_TABLES = [
   'applications',
   'profile_change_requests',
   'blacklist',
+  'blacklist_history',
   'achievements',
   'user_achievements',
   'gmp_events',
