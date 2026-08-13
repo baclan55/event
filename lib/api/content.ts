@@ -2,12 +2,29 @@ import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { jsonError } from '@/lib/auth';
 import { userHasPermission } from '@/lib/roleAccess';
-import { tierForPriority } from '@/lib/tier';
 import { saveImage } from '@/lib/images';
 import { renderBody, rawBodyForEdit, normalizeMarkdownSource } from '@/lib/richText';
 import { writeAudit } from '@/lib/audit';
 import { ok, parseId, readImage, required, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
+
+function canSeeContentAudience(
+  user: {
+    is_owner?: boolean;
+    is_event_helper?: boolean;
+    is_administrator?: boolean;
+  },
+  audience: string,
+) {
+  if (audience === 'general') return true;
+  if (audience === 'administrator') {
+    return !!(user.is_owner || user.is_administrator);
+  }
+  if (audience === 'helper') {
+    return !!(user.is_owner || user.is_event_helper || user.is_administrator);
+  }
+  return true;
+}
 
 export const handleContent: ApiHandler = async ({ key, request, params, method, body }) => {
   if (key.startsWith('content')) {
@@ -15,7 +32,7 @@ export const handleContent: ApiHandler = async ({ key, request, params, method, 
     if (user instanceof NextResponse) return user;
     const canSeeAuthor = user.is_owner
       || user.is_admin
-      || tierForPriority(user.role_priority) === 'admin'
+      || !!user.is_administrator
       || userHasPermission(user, 'edit_content');
     const section = params.section;
     if (!['faq', 'regulations', 'first_steps'].includes(section)) {
@@ -33,8 +50,7 @@ export const handleContent: ApiHandler = async ({ key, request, params, method, 
         );
         const blocks = Object.fromEntries(
           result.rows
-            .filter((row) =>
-              row.audience !== 'administrator' || user.is_owner || tierForPriority(user.role_priority) === 'admin')
+            .filter((row) => canSeeContentAudience(user, String(row.audience)))
             .map((row) => [
               row.audience as string,
               {

@@ -58,11 +58,20 @@ export async function loadReprimandsMe(userId: number) {
   }
 }
 
+function canSeeContentAudience(viewer: PublicUser | undefined, audience: string) {
+  if (!viewer || audience === 'general') return true;
+  if (audience === 'administrator') return !!(viewer.isOwner || viewer.isAdministrator);
+  if (audience === 'helper') {
+    return !!(viewer.isOwner || viewer.isEventHelper || viewer.isAdministrator);
+  }
+  return true;
+}
+
 export async function loadContent(section: string, viewer?: PublicUser) {
   const canSeeAuthor = !!viewer && (
     viewer.isOwner
     || viewer.isAdmin
-    || (viewer.rolePriority != null && tierForPriority(viewer.rolePriority) === 'admin')
+    || viewer.isAdministrator
     || userHasPermission(
       { is_owner: viewer.isOwner, roleNames: viewer.roles, permissions: viewer.permissions },
       'edit_content',
@@ -77,7 +86,7 @@ export async function loadContent(section: string, viewer?: PublicUser) {
   );
   return Object.fromEntries(
     r.rows
-      .filter((x) => x.audience !== 'administrator' || !viewer || viewer.isOwner || viewer.rolePriority != null && tierForPriority(viewer.rolePriority) === 'admin')
+      .filter((x) => canSeeContentAudience(viewer, String(x.audience)))
       .map((x) => [
       x.audience as string,
       {

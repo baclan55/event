@@ -56,6 +56,14 @@
 .modal-close{
   position:absolute; top:14px; right:14px;
 }
+.profile-gate-overlay{
+  z-index:200;
+  pointer-events:auto;
+}
+button.linkish{
+  background:none; border:0; padding:0; color:var(--accent-light);
+  cursor:pointer; font:inherit; text-decoration:underline;
+}
 
 /* --- модалка подтверждения (замена confirm()/alert() для удаления и т.п.) --- */
 .confirm-icon{
@@ -254,8 +262,3 @@
 }
 .dc-guide-text{ padding-top:3px; font-size:13.5px; color:var(--text-body); line-height:1.55; }
 .dc-guide-text b{ color:var(--text-heading); }
-.dc-guide-done{
-  display:flex; align-items:center; gap:12px; margin-top:16px;
-  padding:14px 16px; border-radius:var(--radius-md);
-  background:var(--green-soft); border:1px solid rgba(52,211,153,.25);
-}

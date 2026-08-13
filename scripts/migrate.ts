@@ -1,16 +1,13 @@
+/**
+ * Обёртка для локальной разработки. В Docker/CI используйте:
+ *   node scripts/migrate.mjs
+ */
 import 'dotenv/config';
-import fs from 'fs';
+import { spawn } from 'child_process';
 import path from 'path';
-import { scriptPool as pool } from './db-pool';
 
-async function main() {
-  const sql = fs.readFileSync(path.join(process.cwd(), 'lib/db/schema.sql'), 'utf8');
-  await pool.query(sql);
-  console.log('[db] schema applied');
-  await pool.end();
-}
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
+const child = spawn(process.execPath, [path.join(process.cwd(), 'scripts/migrate.mjs')], {
+  stdio: 'inherit',
+  env: process.env,
 });
+child.on('exit', (code) => process.exit(code ?? 1));

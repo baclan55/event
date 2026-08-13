@@ -3,6 +3,7 @@ import { jsonError } from '@/lib/auth';
 import { handleApplications } from './api/applications';
 import { handleContent } from './api/content';
 import { readBody } from './api/helpers';
+import { handlePortalExtra } from './api/portalExtra';
 import { handleReprimands } from './api/reprimands';
 import { handleRoles } from './api/roles';
 import { handleRoster } from './api/roster';
@@ -15,6 +16,7 @@ const handlers: ApiHandler[] = [
   handleContent,
   handleRoster,
   handleRoles,
+  handlePortalExtra,
   handleReprimands,
   handleApplications,
   handleVacations,

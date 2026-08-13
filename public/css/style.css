@@ -877,6 +877,14 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
 .modal-close{
   position:absolute; top:14px; right:14px;
 }
+.profile-gate-overlay{
+  z-index:200;
+  pointer-events:auto;
+}
+button.linkish{
+  background:none; border:0; padding:0; color:var(--accent-light);
+  cursor:pointer; font:inherit; text-decoration:underline;
+}
 
 /* --- модалка подтверждения (замена confirm()/alert() для удаления и т.п.) --- */
 .confirm-icon{

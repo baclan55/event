@@ -25,20 +25,32 @@ export function ProfileInteractive({
   target,
   canViewAudit = false,
   initialAudit = [],
+  isSelf = true,
+  initialAchievements = [],
 }: {
   initialUser: PublicUser;
   reprimands: Row[];
   target: number;
   canViewAudit?: boolean;
   initialAudit?: Row[];
+  isSelf?: boolean;
+  initialAchievements?: Row[];
 }) {
   const router = useRouter();
   const [user, setUser] = useState(initialUser);
-  const [mode, setMode] = useState<'nickname' | null>(null);
-  const [tab, setTab] = useState<'reprimands' | 'audit'>('reprimands');
+  const [mode, setMode] = useState<'nickname' | 'game' | null>(null);
+  const [tab, setTab] = useState<'reprimands' | 'achievements' | 'audit'>('reprimands');
   const [nickname, setNickname] = useState(user.nickname || '');
+  const [gameForm, setGameForm] = useState({
+    firstName: user.firstName || '',
+    lastName: user.lastName || '',
+    staticId: user.staticId || '',
+  });
+  const [pendingGame, setPendingGame] = useState<Row | null>(null);
+  const [achievements, setAchievements] = useState(initialAchievements);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const needLast = !(user.isAdministrator && !user.isEventHelper);
   const [audit, setAudit] = useState(initialAudit);
   const [auditActions, setAuditActions] = useState<string[]>([]);
   const [filterAction, setFilterAction] = useState('');
@@ -74,6 +86,7 @@ export function ProfileInteractive({
   }
 
   useEffect(() => {
+    if (!isSelf) return;
     request('/api/reprimands/me')
       .then((data) => setRpData({
         reprimands: data.reprimands || reprimands,
@@ -81,14 +94,27 @@ export function ProfileInteractive({
         limits: data.limits || DEFAULT_LIMITS,
       }))
       .catch((err) => setError((err as Error).message));
-  }, [reprimands]);
+    request('/api/profile/game')
+      .then((data) => setPendingGame(data.pending || null))
+      .catch(() => undefined);
+    request('/api/achievements/me')
+      .then((data) => setAchievements(data.achievements || []))
+      .catch(() => undefined);
+  }, [reprimands, isSelf]);
 
   useEffect(() => {
-    if (!canViewAudit) return;
+    if (isSelf || !initialUser.id) return;
+    request(`/api/achievements/user/${initialUser.id}`)
+      .then((data) => setAchievements(data.achievements || []))
+      .catch(() => undefined);
+  }, [isSelf, initialUser.id]);
+
+  useEffect(() => {
+    if (!canViewAudit || !isSelf) return;
     void loadAudit().catch((err) => setError((err as Error).message));
     // initial load only
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canViewAudit]);
+  }, [canViewAudit, isSelf]);
 
   async function saveNickname(event: FormEvent) {
     event.preventDefault();
@@ -108,6 +134,38 @@ export function ProfileInteractive({
     }
   }
 
+  async function saveGame(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true); setError('');
+    try {
+      const data = await request('/api/profile/game', {
+        method: 'PUT',
+        body: JSON.stringify(gameForm),
+      });
+      if (data.user) setUser(data.user);
+      if (data.moderated) {
+        setPendingGame({
+          first_name: gameForm.firstName,
+          last_name: gameForm.lastName,
+          static_id: gameForm.staticId,
+          status: 'pending',
+        });
+      } else {
+        setPendingGame(null);
+      }
+      setMode(null);
+      router.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const gameLabel = [user.firstName, needLast ? user.lastName : null, user.staticId ? `#${user.staticId}` : null]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <>
       <div className="card card-pad profile-hero">
@@ -115,14 +173,30 @@ export function ProfileInteractive({
         <div className="profile-main">
           <div className="profile-name-line">
             <h2>{user.nickname || 'Без никнейма'}</h2>
-            <button className="icon-btn" type="button" title="Изменить никнейм" onClick={() => setMode('nickname')}>
-              <NavIcon name="edit" />
-            </button>
+            {isSelf ? (
+              <button className="icon-btn" type="button" title="Изменить никнейм" onClick={() => setMode('nickname')}>
+                <NavIcon name="edit" />
+              </button>
+            ) : null}
           </div>
           <div className="role-tag">
             {user.roles.join(' · ') || 'Без роли'}
             {user.discordUsername ? ` · ${user.discordUsername}` : ''}
           </div>
+          <div className="role-tag" style={{ marginTop: 6 }}>
+            {gameLabel || 'Игровые данные не указаны'}
+            {isSelf ? (
+              <>
+                {' · '}
+                <button type="button" className="linkish" onClick={() => setMode('game')}>изменить</button>
+              </>
+            ) : null}
+          </div>
+          {pendingGame && isSelf ? (
+            <div className="badge badge-amber" style={{ marginTop: 8 }}>
+              На модерации: {[pendingGame.first_name, pendingGame.last_name, pendingGame.static_id].filter(Boolean).join(' · ')}
+            </div>
+          ) : null}
         </div>
         <div className="profile-weekly">
           <div className="stat-value">{user.weeklyEvents}</div>
@@ -134,17 +208,18 @@ export function ProfileInteractive({
       </div>
 
       <div className="card card-pad" style={{ marginTop: 20 }}>
-        {canViewAudit ? (
-          <div className="segmented roster-tabs" style={{ marginBottom: 16 }}>
-            <button className={tab === 'reprimands' ? 'active' : ''} onClick={() => setTab('reprimands')}>Выговоры · {rpData.reprimands.length}</button>
+        <div className="segmented roster-tabs" style={{ marginBottom: 16 }}>
+          <button className={tab === 'reprimands' ? 'active' : ''} onClick={() => setTab('reprimands')}>Выговоры · {rpData.reprimands.length}</button>
+          <button className={tab === 'achievements' ? 'active' : ''} onClick={() => setTab('achievements')}>Достижения · {achievements.length}</button>
+          {canViewAudit && isSelf ? (
             <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>Журнал · {audit.length}</button>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
 
         {tab === 'reprimands' ? (
           <>
             <div className="card-header">
-              <h3>Мои выговоры</h3>
+              <h3>{isSelf ? 'Мои выговоры' : 'Выговоры'}</h3>
               <ReprimandSummary items={rpData.reprimands} tier={rpData.tier} limits={rpData.limits} />
             </div>
             <ReprimandLegend tier={rpData.tier} limits={rpData.limits} />
@@ -159,6 +234,20 @@ export function ProfileInteractive({
                 </div>
               </div>
             )) : <div className="empty-state"><h3>Выговоров нет</h3><p>Записей о взысканиях нет.</p></div>}
+          </>
+        ) : tab === 'achievements' ? (
+          <>
+            <div className="card-header"><h3>Достижения</h3><span className="badge badge-muted">{achievements.length}</span></div>
+            {achievements.length ? achievements.map((item) => (
+              <div className="roster-row" key={`${item.achievement_id}-${item.grade}`}>
+                <div className="who">
+                  <div>
+                    <div className="nickname">{item.name}{item.max_grade > 1 ? ` · ${item.grade}/${item.max_grade} ст.` : ''}</div>
+                    <div className="role-tag">{item.description || '—'} · {new Date(item.awarded_at).toLocaleDateString('ru-RU')}</div>
+                  </div>
+                </div>
+              </div>
+            )) : <div className="empty-state"><h3>Пока пусто</h3><p>Достижения появятся по триггерам.</p></div>}
           </>
         ) : (
           <>
@@ -239,6 +328,39 @@ export function ProfileInteractive({
           </form>
         </Modal>
       )}
+      {mode === 'game' && (
+        <Modal title="Игровые данные" onClose={() => setMode(null)}>
+          <form onSubmit={saveGame}>
+            <ErrorText value={error} />
+            <p className="field-hint">После первого заполнения изменения уходят на модерацию.</p>
+            <div className="field">
+              <label>Имя</label>
+              <input className="input" required maxLength={60} value={gameForm.firstName} onChange={(e) => setGameForm({ ...gameForm, firstName: e.target.value })} />
+            </div>
+            {needLast ? (
+              <div className="field">
+                <label>Фамилия</label>
+                <input className="input" required maxLength={60} value={gameForm.lastName} onChange={(e) => setGameForm({ ...gameForm, lastName: e.target.value })} />
+              </div>
+            ) : null}
+            <div className="field">
+              <label>StaticID</label>
+              <input
+                className="input"
+                required
+                inputMode="numeric"
+                maxLength={6}
+                value={gameForm.staticId}
+                onChange={(e) => setGameForm({ ...gameForm, staticId: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+              />
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={() => setMode(null)}>Отмена</button>
+              <button className="btn btn-primary" disabled={saving}>Сохранить</button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </>
   );
 }
@@ -267,8 +389,6 @@ export function RosterInteractive({
   const [members, setMembers] = useState(initialMembers);
   const [tab, setTab] = useState<'with' | 'without' | 'candidates'>('with');
   const [editing, setEditing] = useState<Row | null | undefined>(undefined);
-  const [profile, setProfile] = useState<{ user: Row; reprimands: Row[]; limits: Row } | null>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
   const [error, setError] = useState('');
 
   function canAssignRole(role: Row) {
@@ -292,23 +412,12 @@ export function RosterInteractive({
     setMembers(data.members || []);
   }
 
-  async function openProfile(id: number) {
-    if (!canViewProfiles) return;
-    setProfile(null); setProfileLoading(true); setError('');
-    try {
-      setProfile(await request(`/api/reprimands/user/${id}`));
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setProfileLoading(false);
-    }
-  }
-
   useEffect(() => {
     if (!canViewProfiles || typeof window === 'undefined') return;
     const userId = Number(new URLSearchParams(window.location.search).get('user'));
-    if (Number.isFinite(userId) && userId > 0) void openProfile(userId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (Number.isFinite(userId) && userId > 0) {
+      window.location.replace(`/app/profile/${userId}`);
+    }
   }, [canViewProfiles]);
 
   async function saveMember(event: FormEvent<HTMLFormElement>) {
@@ -365,13 +474,23 @@ export function RosterInteractive({
 
   const memberRow = (member: Row, candidate = false) => (
     <div className="roster-row" key={member.id}>
-      <button className={`who member-profile-trigger${canViewProfiles && !candidate ? ' who-clickable' : ''}`} type="button" onClick={() => !candidate && void openProfile(member.id)} disabled={!canViewProfiles || candidate}>
-        <Avatar row={member} />
-        <span className="member-copy">
-          <span className="nickname">{member.nickname}{member.is_owner ? ' · владелец' : ''}</span>
-          <span className="role-tag">{candidate ? 'Кандидат' : (member.roles || []).map((r: Row) => r.name).join(' · ') || 'Без роли'}{member.discord_username ? ` · ${member.discord_username}` : ''}</span>
-        </span>
-      </button>
+      {canViewProfiles && !candidate ? (
+        <a className="who member-profile-trigger who-clickable" href={`/app/profile/${member.id}`}>
+          <Avatar row={member} />
+          <span className="member-copy">
+            <span className="nickname">{member.nickname}</span>
+            <span className="role-tag">{(member.roles || []).map((r: Row) => r.name).join(' · ') || 'Без роли'}{member.discord_username ? ` · ${member.discord_username}` : ''}</span>
+          </span>
+        </a>
+      ) : (
+        <div className="who">
+          <Avatar row={member} />
+          <span className="member-copy">
+            <span className="nickname">{member.nickname}</span>
+            <span className="role-tag">{candidate ? 'Кандидат' : (member.roles || []).map((r: Row) => r.name).join(' · ') || 'Без роли'}{member.discord_username ? ` · ${member.discord_username}` : ''}</span>
+          </span>
+        </div>
+      )}
       {candidate ? <span className="badge badge-amber">Ожидает обзвона</span> : <>
         {member.is_blocked && <span className="badge badge-red">Заблокирован</span>}
         <span className={`badge ${member.weekly_events >= target ? 'badge-green' : 'badge-red'}`}>{member.weekly_events || 0} / нед.</span>
@@ -445,11 +564,6 @@ export function RosterInteractive({
             </div>
             <div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={() => setEditing(undefined)}>Отмена</button><button className="btn btn-primary">Сохранить</button></div>
           </form>
-        </Modal>
-      )}
-      {(profileLoading || profile) && (
-        <Modal title={profile?.user.nickname || 'Профиль сотрудника'} onClose={() => setProfile(null)} wide>
-          {profileLoading ? <div className="empty-state">Загрузка…</div> : profile && <MemberProfileBody data={profile} onChanged={async () => { setProfile(await request(`/api/reprimands/user/${profile.user.id}`)); await reload(); }} />}
         </Modal>
       )}
     </>

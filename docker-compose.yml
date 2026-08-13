@@ -44,7 +44,7 @@ services:
       DISCORD_RELAY_URL: ${DISCORD_RELAY_URL:-https://hidden-union-525e.majes.workers.dev}
       NODE_ENV: production
       PORT: "3000"
-      # Автосоздание недостающих таблиц при старте (удобно для Portainer).
+      # Автомиграция schema.sql при старте контейнера (entrypoint + fallback в app).
       # Отключить: APPLY_SCHEMA_ON_START=0
       APPLY_SCHEMA_ON_START: ${APPLY_SCHEMA_ON_START:-1}
     depends_on:

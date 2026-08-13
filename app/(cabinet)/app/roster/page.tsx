@@ -18,7 +18,7 @@ export default async function RosterPage() {
       roles={data.roles}
       target={data.target}
       canEdit={userHasPermission(roleUser, 'edit_content')}
-      canViewProfiles={userHasPermission(roleUser, 'reprimands')}
+      canViewProfiles
       canGrantOwner={userHasPermission(roleUser, 'grant_owner')}
       actorRolePriority={user.rolePriority}
       actorIsOwner={user.isOwner}

@@ -8,6 +8,13 @@ import {
   type Permission,
   type RoleUser,
 } from '@/lib/roleAccess';
+import {
+  defaultDashboardBlocks,
+  defaultRoleMetaForName,
+  normalizeDashboardBlocks,
+  type DashboardBlock,
+} from '@/lib/roleMeta';
+import { isGameProfileComplete } from '@/lib/profileGame';
 import { syncBlockStatus } from '@/lib/reprimandRules';
 import { NextResponse } from 'next/server';
 
@@ -16,6 +23,9 @@ export type DbRole = {
   name: string;
   priority: number;
   permissions?: Record<string, boolean> | null;
+  is_event_helper?: boolean;
+  is_administrator?: boolean;
+  dashboard_blocks?: Record<string, boolean> | null;
 };
 
 export type DbUser = RoleUser & {
@@ -35,8 +45,14 @@ export type DbUser = RoleUser & {
   role_id: number | null;
   role_name: string | null;
   role_priority: number | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  static_id?: string | null;
   roles: DbRole[];
   permissions: Permission[];
+  is_event_helper?: boolean;
+  is_administrator?: boolean;
+  dashboard_blocks?: Record<DashboardBlock, boolean>;
 };
 
 const BLOCKED_MESSAGE =
@@ -58,16 +74,52 @@ function aggregatePermissions(roles: DbRole[]): Permission[] {
   return [...set];
 }
 
+function aggregateRoleFlags(roles: DbRole[]) {
+  let isEventHelper = false;
+  let isAdministrator = false;
+  const blocks = defaultDashboardBlocks();
+  let sawBlocks = false;
+  for (const role of roles) {
+    if (role.is_event_helper) isEventHelper = true;
+    if (role.is_administrator) isAdministrator = true;
+    // Пока флаги в БД не размечены — классификация по имени роли.
+    if (!role.is_event_helper && !role.is_administrator) {
+      const named = defaultRoleMetaForName(role.name);
+      if (named.isEventHelper) isEventHelper = true;
+      if (named.isAdministrator) isAdministrator = true;
+    }
+    if (role.dashboard_blocks) {
+      const normalized = normalizeDashboardBlocks(role.dashboard_blocks);
+      if (!sawBlocks) {
+        for (const key of Object.keys(blocks) as DashboardBlock[]) blocks[key] = false;
+        sawBlocks = true;
+      }
+      for (const key of Object.keys(blocks) as DashboardBlock[]) {
+        if (normalized[key]) blocks[key] = true;
+      }
+    }
+  }
+  return {
+    isEventHelper,
+    isAdministrator,
+    dashboardBlocks: sawBlocks ? blocks : defaultDashboardBlocks(),
+  };
+}
+
 function cloneUser(user: DbUser): DbUser {
   const roles = Array.isArray(user.roles) ? user.roles.map((r) => ({ ...r })) : [];
   const permissions = Array.isArray(user.permissions)
     ? [...user.permissions]
     : aggregatePermissions(roles);
+  const flags = aggregateRoleFlags(roles);
   return {
     ...user,
     roles,
     roleNames: roles.map((r) => r.name),
     permissions,
+    is_event_helper: user.is_event_helper ?? flags.isEventHelper,
+    is_administrator: user.is_administrator ?? flags.isAdministrator,
+    dashboard_blocks: user.dashboard_blocks || flags.dashboardBlocks,
   };
 }
 
@@ -95,6 +147,13 @@ export type PublicUser = {
   permissions: Permission[];
   isBlocked: boolean;
   blockedAt: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  staticId: string | null;
+  isEventHelper: boolean;
+  isAdministrator: boolean;
+  dashboardBlocks: Record<DashboardBlock, boolean>;
+  profileComplete: boolean;
 };
 
 export function publicUser(u: DbUser | null | undefined): PublicUser | null {
@@ -103,6 +162,12 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
   const permissions = Array.isArray(u.permissions) && u.permissions.length
     ? u.permissions
     : aggregatePermissions(roles);
+  const flags = aggregateRoleFlags(roles);
+  const isEventHelper = u.is_event_helper ?? flags.isEventHelper;
+  const isAdministrator = u.is_administrator ?? flags.isAdministrator;
+  const firstName = u.first_name ?? null;
+  const lastName = u.last_name ?? null;
+  const staticId = u.static_id ?? null;
   return {
     id: u.id,
     nickname: u.nickname,
@@ -119,6 +184,19 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
     permissions,
     isBlocked: !!u.is_blocked,
     blockedAt: u.blocked_at || null,
+    firstName,
+    lastName,
+    staticId,
+    isEventHelper,
+    isAdministrator,
+    dashboardBlocks: u.dashboard_blocks || flags.dashboardBlocks,
+    profileComplete: isGameProfileComplete({
+      firstName,
+      lastName,
+      staticId,
+      isEventHelper,
+      isAdministrator,
+    }),
   };
 }
 
@@ -134,13 +212,17 @@ export async function loadUserById(userId: number): Promise<DbUser | null> {
             u.avatar_image_id, u.avatar_url, u.avatar_public_id,
             u.is_owner, u.is_admin, u.weekly_events, u.note,
             u.is_blocked, u.blocked_at,
+            u.first_name, u.last_name, u.static_id,
             u.role_id, r.name AS role_name, r.priority AS role_priority,
             COALESCE(
               (SELECT json_agg(json_build_object(
                   'id', rr.id,
                   'name', rr.name,
                   'priority', rr.priority,
-                  'permissions', COALESCE(rr.permissions, '{}'::jsonb)
+                  'permissions', COALESCE(rr.permissions, '{}'::jsonb),
+                  'is_event_helper', COALESCE(rr.is_event_helper, FALSE),
+                  'is_administrator', COALESCE(rr.is_administrator, FALSE),
+                  'dashboard_blocks', COALESCE(rr.dashboard_blocks, '{"stats":true,"top_admin":true,"top_helper":true}'::jsonb)
                 ) ORDER BY rr.priority ASC)
                FROM user_roles ur
                JOIN roles rr ON rr.id = ur.role_id
@@ -163,6 +245,10 @@ export async function loadUserById(userId: number): Promise<DbUser | null> {
   user.roles = roles;
   user.roleNames = roles.map((r) => r.name);
   user.permissions = aggregatePermissions(roles);
+  const flags = aggregateRoleFlags(roles);
+  user.is_event_helper = flags.isEventHelper;
+  user.is_administrator = flags.isAdministrator;
+  user.dashboard_blocks = flags.dashboardBlocks;
 
   if (user.is_blocked) {
     const last = blockSyncAt.get(user.id) || 0;

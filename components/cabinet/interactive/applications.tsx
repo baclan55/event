@@ -131,11 +131,13 @@ export function ApplicationsInteractive({
                 <h4>{item.nickname_static || item.applicant_name} <span className="badge badge-muted">{item.status}</span></h4>
                 <div className="rule-text">
                   <b>Discord:</b> {item.discord}<br />
+                  <b>Имя:</b> {item.first_name || '—'} · <b>Фамилия:</b> {item.last_name || '—'} · <b>StaticID:</b> {item.static_id || '—'}<br />
                   <b>Возраст:</b> {item.age} · <b>Онлайн:</b> {item.avg_online}<br />
                   <b>Время в игре:</b> {item.time_period}<br />
                   <b>Опыт:</b> {item.experience}<br />
                   <b>Идеи:</b> {item.ideas}<br />
                   <b>Мотивация:</b> {item.motivation}
+                  {item.reject_reason ? <><br /><b>Причина отказа:</b> {item.reject_reason}</> : null}
                 </div>
               </>
             )}

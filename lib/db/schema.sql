@@ -214,6 +214,7 @@ CREATE TABLE IF NOT EXISTS user_roles (
   role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
   PRIMARY KEY (user_id, role_id)
 );
+ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ NOT NULL DEFAULT now();
 CREATE INDEX IF NOT EXISTS idx_user_roles_user ON user_roles(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role_id);
 
@@ -316,3 +317,90 @@ CREATE TABLE IF NOT EXISTS event_bot_processed_messages (
   credited_count    INTEGER NOT NULL DEFAULT 0,
   processed_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ---------------------------------------------------------------------------
+-- Классификация роли (не доступ к функциям) + блоки главной.
+-- ---------------------------------------------------------------------------
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_event_helper BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_administrator BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS dashboard_blocks JSONB NOT NULL DEFAULT '{"stats":true,"top_admin":true,"top_helper":true}'::jsonb;
+
+-- Стартовая классификация по известным именам (только если ещё не размечали вручную).
+UPDATE roles SET is_administrator = TRUE
+WHERE name IN (
+  'Chief Event', 'Dep.Chief Event', 'Technical Administrator',
+  'Curator Event', 'Event Administrator'
+) AND is_event_helper = FALSE AND is_administrator = FALSE;
+
+UPDATE roles SET is_event_helper = TRUE
+WHERE name IN (
+  'Chief Event Helper', 'Dep.Chief Event Helper', 'Senior Event Helper',
+  'Event Helper', 'Mini Event Helper'
+) AND is_event_helper = FALSE AND is_administrator = FALSE;
+
+-- Игровой профиль сотрудника
+ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS static_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_users_static_id ON users(static_id) WHERE static_id IS NOT NULL;
+
+-- Заявка: имя/фамилия/static id
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS first_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS last_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS static_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS reject_reason TEXT NOT NULL DEFAULT '';
+
+-- Модерация смены игровых данных (после первого заполнения)
+CREATE TABLE IF NOT EXISTS profile_change_requests (
+  id          SERIAL PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  first_name  TEXT,
+  last_name   TEXT,
+  static_id   TEXT,
+  status      TEXT NOT NULL DEFAULT 'pending',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_at TIMESTAMPTZ,
+  reject_reason TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_profile_change_pending ON profile_change_requests(status, created_at DESC);
+
+-- Чёрный список (существующие и/или внешние идентификаторы)
+CREATE TABLE IF NOT EXISTS blacklist (
+  id          SERIAL PRIMARY KEY,
+  user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  discord_id  TEXT,
+  static_id   TEXT,
+  reason      TEXT NOT NULL DEFAULT '',
+  created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT blacklist_has_identity CHECK (
+    user_id IS NOT NULL OR (discord_id IS NOT NULL AND discord_id <> '') OR (static_id IS NOT NULL AND static_id <> '')
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_blacklist_discord ON blacklist(discord_id) WHERE discord_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_blacklist_static ON blacklist(static_id) WHERE static_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_blacklist_user ON blacklist(user_id) WHERE user_id IS NOT NULL;
+
+-- Достижения
+CREATE TABLE IF NOT EXISTS achievements (
+  id             SERIAL PRIMARY KEY,
+  name           TEXT NOT NULL,
+  description    TEXT NOT NULL DEFAULT '',
+  icon           TEXT NOT NULL DEFAULT '',
+  trigger_type   TEXT NOT NULL,
+  trigger_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+  max_grade      INTEGER NOT NULL DEFAULT 1,
+  active         BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS user_achievements (
+  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  achievement_id INTEGER NOT NULL REFERENCES achievements(id) ON DELETE CASCADE,
+  grade          INTEGER NOT NULL DEFAULT 1,
+  awarded_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, achievement_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id);

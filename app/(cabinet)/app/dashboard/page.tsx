@@ -4,7 +4,13 @@ import { DashboardView } from '@/components/cabinet/SsrViews';
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
-  await requirePortalUser();
+  const user = await requirePortalUser();
   const data = await loadDashboard();
-  return <DashboardView members={data.members} target={data.target} />;
+  return (
+    <DashboardView
+      members={data.members}
+      target={data.target}
+      blocks={user.dashboardBlocks}
+    />
+  );
 }

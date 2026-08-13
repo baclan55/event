@@ -10,7 +10,15 @@ function Avatar({ row }: { row: Row }) {
   return <div className="avatar">{src ? <img src={src} alt="" /> : letter}</div>;
 }
 
-export function DashboardView({ members, target }: { members: Row[]; target: number }) {
+export function DashboardView({
+  members,
+  target,
+  blocks = { stats: true, top_admin: true, top_helper: true },
+}: {
+  members: Row[];
+  target: number;
+  blocks?: { stats?: boolean; top_admin?: boolean; top_helper?: boolean };
+}) {
   const withRole = members.filter((m) => m.role_id);
   const candidates = members.filter((m) => m.status === 'candidate');
   const withoutRole = members.length - withRole.length - candidates.length;
@@ -29,18 +37,28 @@ export function DashboardView({ members, target }: { members: Row[]; target: num
       <span className={`badge ${m.weekly_events >= target ? 'badge-green' : 'badge-amber'}`}>{m.weekly_events} мп / нед.</span>
     </div>
   )) : <div className="empty-state"><p>{empty}</p></div>;
+  const showStats = blocks.stats !== false;
+  const showAdmin = blocks.top_admin !== false;
+  const showHelper = blocks.top_helper !== false;
   return (
     <>
-      <div className="stat-grid stat-grid-4">
-        <div className="card card-pad stat-card"><div className="stat-value">{members.length}</div><div className="stat-label">Всего людей в составе</div></div>
-        <div className="card card-pad stat-card"><div className="stat-value">{withRole.length}</div><div className="stat-label">Людей с ролями</div></div>
-        <div className="card card-pad stat-card"><div className="stat-value">{withoutRole}</div><div className="stat-label">Без роли</div></div>
-        <div className="card card-pad stat-card"><div className="stat-value">{candidates.length}</div><div className="stat-label">Кандидатов</div></div>
-      </div>
-      <div className="top-grid" style={{ marginTop: 20 }}>
-        <div className="card card-pad"><div className="card-header"><h3>Топ-3 администраторов за неделю</h3></div>{rating(top('admin'), 'У администраторов пока нет мероприятий.')}</div>
-        <div className="card card-pad"><div className="card-header"><h3>Топ-3 хелперов за неделю</h3></div>{rating(top('helper'), 'У хелперов пока нет мероприятий.')}</div>
-      </div>
+      {showStats ? (
+        <div className="stat-grid stat-grid-4">
+          <div className="card card-pad stat-card"><div className="stat-value">{members.length}</div><div className="stat-label">Всего людей в составе</div></div>
+          <div className="card card-pad stat-card"><div className="stat-value">{withRole.length}</div><div className="stat-label">Людей с ролями</div></div>
+          <div className="card card-pad stat-card"><div className="stat-value">{withoutRole}</div><div className="stat-label">Без роли</div></div>
+          <div className="card card-pad stat-card"><div className="stat-value">{candidates.length}</div><div className="stat-label">Кандидатов</div></div>
+        </div>
+      ) : null}
+      {(showAdmin || showHelper) ? (
+        <div className="top-grid" style={{ marginTop: showStats ? 20 : 0 }}>
+          {showAdmin ? <div className="card card-pad"><div className="card-header"><h3>Топ-3 администраторов за неделю</h3></div>{rating(top('admin'), 'У администраторов пока нет мероприятий.')}</div> : null}
+          {showHelper ? <div className="card card-pad"><div className="card-header"><h3>Топ-3 хелперов за неделю</h3></div>{rating(top('helper'), 'У хелперов пока нет мероприятий.')}</div> : null}
+        </div>
+      ) : null}
+      {!showStats && !showAdmin && !showHelper ? (
+        <div className="empty-state"><h3>Нет доступных блоков</h3><p>Для вашей роли на главной ничего не включено.</p></div>
+      ) : null}
     </>
   );
 }

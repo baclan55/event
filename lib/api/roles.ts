@@ -7,6 +7,12 @@ import {
   PERMISSIONS,
   userHasPermission,
 } from '@/lib/roleAccess';
+import {
+  DASHBOARD_BLOCKS,
+  defaultRoleMetaForName,
+  normalizeDashboardBlocks,
+  parseRoleMeta,
+} from '@/lib/roleMeta';
 import { AUDIT_LABELS, listAudit, listAuditActions, writeAudit } from '@/lib/audit';
 import {
   assertReorderSafe,
@@ -21,9 +27,16 @@ async function listRoles() {
     name: string;
     priority: number;
     permissions: Record<string, boolean> | null;
+    is_event_helper: boolean;
+    is_administrator: boolean;
+    dashboard_blocks: unknown;
     users_count: number;
   }>(
-    `SELECT r.id, r.name, r.priority, COALESCE(r.permissions, '{}'::jsonb) AS permissions,
+    `SELECT r.id, r.name, r.priority,
+            COALESCE(r.permissions, '{}'::jsonb) AS permissions,
+            COALESCE(r.is_event_helper, FALSE) AS is_event_helper,
+            COALESCE(r.is_administrator, FALSE) AS is_administrator,
+            COALESCE(r.dashboard_blocks, '{"stats":true,"top_admin":true,"top_helper":true}'::jsonb) AS dashboard_blocks,
             COUNT(ur.user_id)::int AS users_count
      FROM roles r
      LEFT JOIN user_roles ur ON ur.role_id = r.id
@@ -34,14 +47,31 @@ async function listRoles() {
     const raw = row.permissions && Object.keys(row.permissions).length
       ? row.permissions
       : defaultPermissionsForRoleName(row.name);
+    const meta = parseRoleMeta(row);
+    const defaults = defaultRoleMetaForName(row.name);
+    const explicitMeta = row.is_event_helper || row.is_administrator
+      || (row.dashboard_blocks && typeof row.dashboard_blocks === 'object'
+        && Object.keys(row.dashboard_blocks as object).length > 0);
     return {
       id: row.id,
       name: row.name,
       priority: row.priority,
       permissions: normalizeRolePermissions(raw),
+      isEventHelper: explicitMeta ? meta.isEventHelper : defaults.isEventHelper,
+      isAdministrator: explicitMeta ? meta.isAdministrator : defaults.isAdministrator,
+      dashboardBlocks: explicitMeta ? meta.dashboardBlocks : defaults.dashboardBlocks,
       usersCount: row.users_count,
     };
   });
+}
+
+function readMeta(body: Record<string, unknown>, name: string) {
+  const defaults = defaultRoleMetaForName(name);
+  return {
+    isEventHelper: typeof body.isEventHelper === 'boolean' ? body.isEventHelper : defaults.isEventHelper,
+    isAdministrator: typeof body.isAdministrator === 'boolean' ? body.isAdministrator : defaults.isAdministrator,
+    dashboardBlocks: normalizeDashboardBlocks(body.dashboardBlocks ?? defaults.dashboardBlocks),
+  };
 }
 
 export const handleRoles: ApiHandler = async ({ key, request, params, method, body }) => {
@@ -71,6 +101,7 @@ export const handleRoles: ApiHandler = async ({ key, request, params, method, bo
     return NextResponse.json({
       roles: await listRoles(),
       permissionKeys: PERMISSIONS,
+      dashboardBlocks: DASHBOARD_BLOCKS,
     });
   }
 
@@ -99,19 +130,21 @@ export const handleRoles: ApiHandler = async ({ key, request, params, method, bo
     }
     const permissions = normalizeRolePermissions(body.permissions);
     if (!userHasPermission(user, 'grant_owner')) permissions.grant_owner = false;
+    const meta = readMeta(body, name);
     const max = await query<{ m: number | null }>('SELECT MAX(priority) AS m FROM roles');
     const priority = (max.rows[0]?.m || 0) + 1;
     try {
       const inserted = await query<{ id: number }>(
-        'INSERT INTO roles(name, priority, permissions) VALUES($1,$2,$3::jsonb) RETURNING id',
-        [name, priority, JSON.stringify(permissions)],
+        `INSERT INTO roles(name, priority, permissions, is_event_helper, is_administrator, dashboard_blocks)
+         VALUES($1,$2,$3::jsonb,$4,$5,$6::jsonb) RETURNING id`,
+        [name, priority, JSON.stringify(permissions), meta.isEventHelper, meta.isAdministrator, JSON.stringify(meta.dashboardBlocks)],
       );
       await writeAudit({
         actorId: user.id,
         action: 'role.create',
         entityType: 'role',
         entityId: inserted.rows[0].id,
-        details: { name, permissions },
+        details: { name, permissions, ...meta },
       });
       return ok({ id: inserted.rows[0].id, roles: await listRoles() });
     } catch (error) {
@@ -140,18 +173,19 @@ export const handleRoles: ApiHandler = async ({ key, request, params, method, bo
     }
     const unsafe = await assertRolePermissionChangeSafe(user, id, permissions);
     if (unsafe) return jsonError(unsafe, 400);
+    const meta = readMeta(body, name);
     try {
-      await query('UPDATE roles SET name=$1, permissions=$2::jsonb WHERE id=$3', [
-        name,
-        JSON.stringify(permissions),
-        id,
-      ]);
+      await query(
+        `UPDATE roles SET name=$1, permissions=$2::jsonb,
+         is_event_helper=$3, is_administrator=$4, dashboard_blocks=$5::jsonb WHERE id=$6`,
+        [name, JSON.stringify(permissions), meta.isEventHelper, meta.isAdministrator, JSON.stringify(meta.dashboardBlocks), id],
+      );
       await writeAudit({
         actorId: user.id,
         action: 'role.update',
         entityType: 'role',
         entityId: id,
-        details: { name, permissions },
+        details: { name, permissions, ...meta },
       });
       invalidateUserCache();
       return ok({ roles: await listRoles() });

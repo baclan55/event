@@ -77,12 +77,8 @@ async function ensureReady(): Promise<void> {
     globalForDb.__eventPortalReady = (async () => {
       const db = getPool();
       if (shouldApplySchemaOnStart()) {
-        try {
-          const { applySchemaOnStart } = await import('@/lib/applySchema');
-          await applySchemaOnStart(db);
-        } catch (err) {
-          console.error('[db] Автомиграция схемы:', (err as Error).message);
-        }
+        const { applySchemaOnStart } = await import('@/lib/applySchema');
+        await applySchemaOnStart(db);
       }
       try {
         const weekly = await import('@/lib/weeklyReset');

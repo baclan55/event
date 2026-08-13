@@ -52,6 +52,9 @@ export const PERMISSIONS = [
   'manage_roles',
   'grant_owner',
   'view_audit',
+  'manage_blacklist',
+  'manage_achievements',
+  'moderate_profile',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -65,6 +68,9 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   manage_roles: 'Управление ролями и доступами',
   grant_owner: 'Выдача права владельца',
   view_audit: 'Журнал действий',
+  manage_blacklist: 'Чёрный список',
+  manage_achievements: 'Достижения',
+  moderate_profile: 'Модерация игровых данных',
 };
 
 export const PERMISSION_FALLBACK_ROLES: Record<Permission, readonly string[]> = {
@@ -76,6 +82,9 @@ export const PERMISSION_FALLBACK_ROLES: Record<Permission, readonly string[]> = 
   manage_roles: OWNER_PANEL_ROLES,
   grant_owner: [],
   view_audit: OWNER_PANEL_ROLES,
+  manage_blacklist: OWNER_PANEL_ROLES,
+  manage_achievements: OWNER_PANEL_ROLES,
+  moderate_profile: REPRIMANDS_ROLES,
 };
 
 export type RolePermissions = Partial<Record<Permission, boolean>>;

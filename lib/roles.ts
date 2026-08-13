@@ -1,4 +1,5 @@
 import { pool } from '@/lib/db';
+import { findBlacklistMatch } from '@/lib/blacklist';
 
 export async function recomputeBestRole(client: { query: typeof pool.query }, userId: number) {
   const { rows } = await client.query<{ id: number }>(
@@ -13,18 +14,43 @@ export async function recomputeBestRole(client: { query: typeof pool.query }, us
   await client.query('UPDATE users SET role_id = $1 WHERE id = $2', [roleId, userId]);
 }
 
+async function assertUserNotBlacklisted(userId: number) {
+  const target = await pool.query<{ discord_id: string | null; static_id: string | null }>(
+    'SELECT discord_id, static_id FROM users WHERE id=$1',
+    [userId],
+  );
+  const hit = await findBlacklistMatch({
+    userId,
+    discordId: target.rows[0]?.discord_id,
+    staticId: target.rows[0]?.static_id,
+  });
+  if (hit) {
+    throw new Error('Нельзя назначить роли: пользователь в чёрном списке.');
+  }
+}
+
 export async function replaceUserRoles(userId: number, roleIds: number[]) {
+  const unique = [...new Set(roleIds.map(Number).filter((id) => Number.isFinite(id)))];
+  if (unique.length) await assertUserNotBlacklisted(userId);
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM user_roles WHERE user_id = $1', [userId]);
-    const unique = [...new Set(roleIds.map(Number).filter((id) => Number.isFinite(id)))];
-    for (const roleId of unique) {
+    // Не сбрасываем assigned_at у уже выданных ролей (нужно для достижений «N дней в рядах»).
+    if (unique.length) {
       await client.query(
-        `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)
-         ON CONFLICT DO NOTHING`,
-        [userId, roleId]
+        'DELETE FROM user_roles WHERE user_id = $1 AND NOT (role_id = ANY($2::int[]))',
+        [userId, unique],
       );
+      for (const roleId of unique) {
+        await client.query(
+          `INSERT INTO user_roles (user_id, role_id, assigned_at) VALUES ($1, $2, now())
+           ON CONFLICT DO NOTHING`,
+          [userId, roleId],
+        );
+      }
+    } else {
+      await client.query('DELETE FROM user_roles WHERE user_id = $1', [userId]);
     }
     await recomputeBestRole(client, userId);
     await client.query('COMMIT');
@@ -37,6 +63,7 @@ export async function replaceUserRoles(userId: number, roleIds: number[]) {
 }
 
 export async function addUserRole(userId: number, roleName: string) {
+  await assertUserNotBlacklisted(userId);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -49,7 +76,7 @@ export async function addUserRole(userId: number, roleName: string) {
       throw new Error(`Роль "${roleName}" не найдена. Примените начальные данные базы.`);
     }
     await client.query(
-      `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)
+      `INSERT INTO user_roles (user_id, role_id, assigned_at) VALUES ($1, $2, now())
        ON CONFLICT DO NOTHING`,
       [userId, rows[0].id]
     );

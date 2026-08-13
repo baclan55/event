@@ -3,6 +3,12 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
 import { PERMISSION_LABELS, PERMISSIONS, type Permission } from '@/lib/roleAccess';
+import {
+  DASHBOARD_BLOCKS,
+  DASHBOARD_BLOCK_LABELS,
+  defaultDashboardBlocks,
+  type DashboardBlock,
+} from '@/lib/roleMeta';
 import { ErrorText, Modal, request } from './shared';
 
 type RoleRow = {
@@ -10,6 +16,9 @@ type RoleRow = {
   name: string;
   priority: number;
   permissions: Record<Permission, boolean>;
+  isEventHelper: boolean;
+  isAdministrator: boolean;
+  dashboardBlocks: Record<DashboardBlock, boolean>;
   usersCount: number;
 };
 
@@ -40,9 +49,15 @@ export function RolesInteractive({
       PERMISSIONS.map((key) => [key, form.get(`perm_${key}`) === 'on']),
     ) as Record<Permission, boolean>;
     if (!canGrantOwner) delete (permissions as Partial<typeof permissions>).grant_owner;
+    const dashboardBlocks = Object.fromEntries(
+      DASHBOARD_BLOCKS.map((key) => [key, form.get(`dash_${key}`) === 'on']),
+    ) as Record<DashboardBlock, boolean>;
     const payload = {
       name: String(form.get('name') || '').trim(),
       permissions,
+      isEventHelper: form.get('isEventHelper') === 'on',
+      isAdministrator: form.get('isAdministrator') === 'on',
+      dashboardBlocks,
     };
     try {
       if (editing?.id) {
@@ -87,6 +102,7 @@ export function RolesInteractive({
   }
 
   const visiblePermissions = PERMISSIONS.filter((key) => key !== 'grant_owner' || canGrantOwner);
+  const draftBlocks = editing?.dashboardBlocks || defaultDashboardBlocks();
 
   return (
     <>
@@ -105,6 +121,8 @@ export function RolesInteractive({
               <div className="role-tag">
                 вес {role.priority} · {role.usersCount} сотр. ·{' '}
                 {PERMISSIONS.filter((key) => role.permissions?.[key]).length} доступов
+                {role.isEventHelper ? ' · ивент хелпер' : ''}
+                {role.isAdministrator ? ' · администратор' : ''}
               </div>
             </div>
           </div>
@@ -125,6 +143,31 @@ export function RolesInteractive({
             <div className="field">
               <label>Название</label>
               <input className="input" name="name" required maxLength={80} defaultValue={editing?.name || ''} />
+            </div>
+            <div className="field">
+              <label>Классификация (не доступы)</label>
+              <div className="role-checklist">
+                <label className="role-check-item">
+                  <input type="checkbox" name="isEventHelper" defaultChecked={!!editing?.isEventHelper} />
+                  Ивент хелпер
+                </label>
+                <label className="role-check-item">
+                  <input type="checkbox" name="isAdministrator" defaultChecked={!!editing?.isAdministrator} />
+                  Администратор
+                </label>
+              </div>
+              <div className="field-hint">Нужно для разного содержимого и обязательных полей профиля, не открывает функции сайта.</div>
+            </div>
+            <div className="field">
+              <label>Блоки на главной</label>
+              <div className="role-checklist">
+                {DASHBOARD_BLOCKS.map((key) => (
+                  <label className="role-check-item" key={key}>
+                    <input type="checkbox" name={`dash_${key}`} defaultChecked={!!draftBlocks[key]} />
+                    {DASHBOARD_BLOCK_LABELS[key]}
+                  </label>
+                ))}
+              </div>
             </div>
             <div className="field">
               <label>Доступы</label>

@@ -5,6 +5,9 @@ import { api } from '@/lib/client/api';
 
 const fields = [
   ['nicknameStatic', 'Игровой никнейм'],
+  ['firstName', 'Имя'],
+  ['lastName', 'Фамилия'],
+  ['staticId', 'StaticID'],
   ['age', 'Ваш возраст'],
   ['avgOnline', 'Средний онлайн'],
   ['timePeriod', 'Время, когда вы доступны'],
@@ -22,6 +25,11 @@ export function ApplyForm() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setMessage('');
+    const staticId = (form.staticId || '').trim();
+    if (!/^\d{2,6}$/.test(staticId)) {
+      setMessage('StaticID: только цифры, от 2 до 6 символов.');
+      return;
+    }
     try {
       const result = await api.post('/api/applications', { ...form, consent });
       setMessage(`Заявка #${result.id} отправлена на рассмотрение.`);
@@ -40,12 +48,25 @@ export function ApplyForm() {
             {label}
             <span className="qform-required">*</span>
           </label>
-          <textarea
-            className="input"
-            required
-            value={form[key] || ''}
-            onChange={(event) => setForm({ ...form, [key]: event.target.value })}
-          />
+          {key === 'staticId' ? (
+            <input
+              className="input"
+              required
+              inputMode="numeric"
+              pattern="\d{2,6}"
+              maxLength={6}
+              value={form[key] || ''}
+              onChange={(event) => setForm({ ...form, [key]: event.target.value.replace(/\D/g, '').slice(0, 6) })}
+            />
+          ) : (
+            <textarea
+              className="input"
+              required
+              value={form[key] || ''}
+              onChange={(event) => setForm({ ...form, [key]: event.target.value })}
+            />
+          )}
+          {key === 'staticId' ? <div className="field-hint">Только цифры, 2–6 символов</div> : null}
         </div>
       ))}
       <div className="qform-card">

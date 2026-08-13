@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { getCurrentUser, jsonError } from '@/lib/auth';
+import { getCurrentUser, invalidateUserCache, jsonError } from '@/lib/auth';
 import { addUserRole } from '@/lib/roles';
 import { DEFAULT_CLOSED_MESSAGE, writeAudit } from '@/lib/audit';
+import { findBlacklistMatch, isValidStaticId } from '@/lib/blacklist';
+import { evaluateAchievementsForUser } from '@/lib/achievements';
 import { ok, parseId, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
 
 const CLOSED_MESSAGE_MAX = 280;
+const BL_REASON = 'Пользователь находится в ЧС';
 
 async function releaseCandidate(userId: number | null) {
   if (!userId) return;
@@ -35,6 +38,25 @@ async function notifyDiscord(text: string) {
   } catch {
     // Webhook failures do not affect application processing.
   }
+}
+
+async function applyGameProfileFromApplication(
+  userId: number,
+  application: Record<string, unknown>,
+) {
+  const firstName = String(application.first_name || '').trim();
+  const lastName = String(application.last_name || '').trim();
+  const staticId = String(application.static_id || '').trim();
+  if (!firstName || !isValidStaticId(staticId)) return;
+  await query(
+    `UPDATE users SET
+       first_name = COALESCE(NULLIF(first_name, ''), $1),
+       last_name = COALESCE(NULLIF(last_name, ''), NULLIF($2, '')),
+       static_id = COALESCE(NULLIF(static_id, ''), $3)
+     WHERE id=$4`,
+    [firstName, lastName, staticId, userId],
+  );
+  invalidateUserCache(userId);
 }
 
 export const handleApplications: ApiHandler = async ({ key, params, method, body }) => {
@@ -103,6 +125,7 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     if (user instanceof NextResponse) return user;
     const result = await query(
       `SELECT a.id, a.applicant_name, a.discord, a.nickname_static, a.status, a.created_at,
+        a.first_name, a.last_name, a.static_id,
         a.candidate_user_id, cu.nickname AS candidate_nickname, cu.avatar_image_id AS candidate_avatar_image_id,
         cu.avatar_url AS candidate_avatar_url, rb.nickname AS reviewed_by_nickname
         FROM applications a
@@ -126,8 +149,23 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     }
     if (passed) {
       if (application.candidate_user_id) {
+        const hit = await findBlacklistMatch({
+          userId: application.candidate_user_id as number,
+          discordId: String(application.discord || ''),
+          staticId: String(application.static_id || ''),
+        });
+        if (hit) {
+          await releaseCandidate(application.candidate_user_id as number);
+          await query(
+            `UPDATE applications SET status='rejected', reject_reason=$1, candidate_user_id=NULL WHERE id=$2`,
+            [BL_REASON, parseId(params.id)],
+          );
+          return jsonError(BL_REASON, 403);
+        }
+        await applyGameProfileFromApplication(application.candidate_user_id as number, application);
         await query(`UPDATE users SET status='member' WHERE id=$1`, [application.candidate_user_id]);
         await addUserRole(application.candidate_user_id as number, 'Mini Event Helper');
+        await evaluateAchievementsForUser(application.candidate_user_id as number).catch(() => undefined);
       }
       await query(`UPDATE applications SET status='call_passed' WHERE id=$1`, [parseId(params.id)]);
     } else {
@@ -178,6 +216,18 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     if (!application) return jsonError('Заявка не найдена.', 404);
     let candidateId = (application.candidate_user_id || application.applicant_id) as number | null;
     if (status === 'approved') {
+      const hit = await findBlacklistMatch({
+        userId: candidateId,
+        discordId: String(application.discord || ''),
+        staticId: String(application.static_id || ''),
+      });
+      if (hit) {
+        await query(
+          'UPDATE applications SET status=$1, reviewed_by=$2, reject_reason=$3, candidate_user_id=NULL WHERE id=$4',
+          ['rejected', user.id, BL_REASON, parseId(params.id)],
+        );
+        return jsonError(BL_REASON, 403);
+      }
       const discordId = String(application.discord || '');
       if (!candidateId && discordId) {
         const existing = await query<{ id: number }>('SELECT id FROM users WHERE discord_id=$1', [discordId]);
@@ -185,8 +235,15 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
           candidateId = existing.rows[0].id;
         } else {
           const newUser = await query<{ id: number }>(
-            `INSERT INTO users (nickname, status, discord_id) VALUES ($1,'candidate',$2) RETURNING id`,
-            [application.nickname_static || application.applicant_name || discordId, discordId],
+            `INSERT INTO users (nickname, status, discord_id, first_name, last_name, static_id)
+             VALUES ($1,'candidate',$2,$3,$4,$5) RETURNING id`,
+            [
+              application.nickname_static || application.applicant_name || discordId,
+              discordId,
+              String(application.first_name || '') || null,
+              String(application.last_name || '') || null,
+              String(application.static_id || '') || null,
+            ],
           );
           candidateId = newUser.rows[0].id;
         }
@@ -194,11 +251,13 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
       if (!candidateId) {
         return jsonError('Нельзя одобрить заявку без связанного Discord-пользователя.', 400);
       }
+      await applyGameProfileFromApplication(candidateId, application);
       await query(`UPDATE users SET status='candidate' WHERE id=$1`, [candidateId]);
-      await query('UPDATE applications SET status=$1, reviewed_by=$2, candidate_user_id=$3 WHERE id=$4', [
+      await query('UPDATE applications SET status=$1, reviewed_by=$2, candidate_user_id=$3, reject_reason=$4 WHERE id=$5', [
         status,
         user.id,
         candidateId,
+        '',
         parseId(params.id),
       ]);
       await notifyDiscord(`Заявка #${params.id} одобрена. Discord: ${application.discord}`);
@@ -206,11 +265,10 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
       if (application.candidate_user_id) {
         await releaseCandidate(application.candidate_user_id as number);
       }
-      await query('UPDATE applications SET status=$1, reviewed_by=$2, candidate_user_id=NULL WHERE id=$3', [
-        status,
-        user.id,
-        parseId(params.id),
-      ]);
+      await query(
+        'UPDATE applications SET status=$1, reviewed_by=$2, candidate_user_id=NULL, reject_reason=$3 WHERE id=$4',
+        [status, user.id, String(body.reason || ''), parseId(params.id)],
+      );
     }
     await writeAudit({
       actorId: user.id,
@@ -247,6 +305,9 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
   }
   const fields = {
     nicknameStatic: String(body.nicknameStatic || '').trim(),
+    firstName: String(body.firstName || '').trim(),
+    lastName: String(body.lastName || '').trim(),
+    staticId: String(body.staticId || '').trim(),
     age: String(body.age || '').trim(),
     avgOnline: String(body.avgOnline || '').trim(),
     timePeriod: String(body.timePeriod || '').trim(),
@@ -257,6 +318,9 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
   if (Object.values(fields).some((value) => !value)) {
     return jsonError('Заполните все поля анкеты.', 400);
   }
+  if (!isValidStaticId(fields.staticId)) {
+    return jsonError('StaticID: только цифры, от 2 до 6 символов.', 400);
+  }
   if (!(body.consent === true || body.consent === 'true')) {
     return jsonError('Нужно согласие на обработку персональных данных.', 400);
   }
@@ -265,22 +329,43 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     user.discord_id,
   ]);
   if (pending.rows[0]) return jsonError('У вас уже есть заявка на рассмотрении.', 400);
+
+  const hit = await findBlacklistMatch({
+    userId: user.id,
+    discordId: user.discord_id,
+    staticId: fields.staticId,
+  });
+  const status = hit ? 'rejected' : 'pending';
+  const rejectReason = hit ? BL_REASON : '';
+
   const result = await query<{ id: number }>(
-    `INSERT INTO applications (applicant_id, applicant_name, discord, nickname_static, age, avg_online, time_period, experience, ideas, motivation)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+    `INSERT INTO applications (
+      applicant_id, applicant_name, discord, nickname_static,
+      first_name, last_name, static_id,
+      age, avg_online, time_period, experience, ideas, motivation,
+      status, reject_reason
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
     [
       user.id,
       fields.nicknameStatic || user.discord_username || user.discord_id,
       user.discord_id,
       fields.nicknameStatic,
+      fields.firstName,
+      fields.lastName,
+      fields.staticId,
       fields.age,
       fields.avgOnline,
       fields.timePeriod,
       fields.experience,
       fields.ideas,
       fields.motivation,
+      status,
+      rejectReason,
     ],
   );
-  await notifyDiscord(`Новая заявка #${result.rows[0].id} от ${user.discord_username || user.discord_id}`);
-  return ok({ id: result.rows[0].id });
+  if (!hit) {
+    await notifyDiscord(`Новая заявка #${result.rows[0].id} от ${user.discord_username || user.discord_id}`);
+    return ok({ id: result.rows[0].id });
+  }
+  return jsonError(BL_REASON, 403);
 };

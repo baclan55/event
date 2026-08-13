@@ -1,13 +1,43 @@
 import { NextResponse } from 'next/server';
-import { requireAnyRoleUser, requirePermissionUser, requireRoleInUser } from '@/lib/auth';
+import {
+  jsonError,
+  publicUser,
+  requireAnyRoleUser,
+  requirePermissionUser,
+  requireRoleInUser,
+  type DbUser,
+} from '@/lib/auth';
 import type { Permission } from '@/lib/roleAccess';
 import { readUploadedImage } from '@/lib/images';
 
-export const required = async (roles?: readonly string[]) =>
-  roles ? requireRoleInUser(roles) : requireAnyRoleUser();
+type ProfileOpts = { allowIncompleteProfile?: boolean };
 
-export const requiredPerm = async (permission: Permission) =>
-  requirePermissionUser(permission);
+function assertProfileComplete(user: DbUser, opts?: ProfileOpts) {
+  if (opts?.allowIncompleteProfile) return null;
+  const pub = publicUser(user);
+  if (pub && !pub.profileComplete) {
+    return jsonError('Сначала заполните игровые данные (имя и StaticID).', 403, {
+      profileIncomplete: true,
+    });
+  }
+  return null;
+}
+
+export const required = async (roles?: readonly string[], opts?: ProfileOpts) => {
+  const user = roles ? await requireRoleInUser(roles) : await requireAnyRoleUser();
+  if (user instanceof NextResponse) return user;
+  const blocked = assertProfileComplete(user, opts);
+  if (blocked) return blocked;
+  return user;
+};
+
+export const requiredPerm = async (permission: Permission, opts?: ProfileOpts) => {
+  const user = await requirePermissionUser(permission);
+  if (user instanceof NextResponse) return user;
+  const blocked = assertProfileComplete(user, opts);
+  if (blocked) return blocked;
+  return user;
+};
 
 export const readBody = async (request: Request) =>
   request.clone().json().catch(() => ({})) as Promise<Record<string, unknown>>;

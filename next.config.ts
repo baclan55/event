@@ -4,6 +4,10 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   poweredByHeader: false,
   serverExternalPackages: ['pg', 'cloudinary', 'discord.js'],
+  // Чтобы schema.sql попадал в трейс standalone (доп. к COPY в Dockerfile).
+  outputFileTracingIncludes: {
+    '/**': ['./lib/db/schema.sql'],
+  },
   async headers() {
     return [
       {

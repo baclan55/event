@@ -10,8 +10,25 @@ import {
   assertCanManageTarget,
   assertSelfRoleChange,
 } from '@/lib/hierarchyGuard';
+import { findBlacklistMatch } from '@/lib/blacklist';
+import { evaluateAchievementsForUser } from '@/lib/achievements';
 import { ok, parseId, required, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
+
+async function assertNotBlacklisted(userId: number, roleIds: number[]) {
+  if (!roleIds.length) return null;
+  const target = await query<{ discord_id: string | null; static_id: string | null }>(
+    'SELECT discord_id, static_id FROM users WHERE id=$1',
+    [userId],
+  );
+  const hit = await findBlacklistMatch({
+    userId,
+    discordId: target.rows[0]?.discord_id,
+    staticId: target.rows[0]?.static_id,
+  });
+  if (hit) return 'Нельзя назначить роли: пользователь в чёрном списке.';
+  return null;
+}
 
 export const handleRoster: ApiHandler = async ({ key, params, method, body }) => {
   if (key.startsWith('roster')) {
@@ -76,7 +93,12 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
         'INSERT INTO users(nickname,weekly_events,note) VALUES($1,$2,$3) RETURNING id',
         [nickname, Number(body.weeklyEvents) || 0, String(body.note || '')],
       );
-      if (roleIds.length) await replaceUserRoles(result.rows[0].id, roleIds);
+      if (roleIds.length) {
+        const bl = await assertNotBlacklisted(result.rows[0].id, roleIds);
+        if (bl) return jsonError(bl, 403);
+        await replaceUserRoles(result.rows[0].id, roleIds);
+        await evaluateAchievementsForUser(result.rows[0].id).catch(() => undefined);
+      }
       await writeAudit({
         actorId: user.id,
         action: 'user.create',
@@ -120,6 +142,9 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
       ]);
     }
 
+    const bl = await assertNotBlacklisted(targetId, roleIds);
+    if (bl) return jsonError(bl, 403);
+
     await query(
       'UPDATE users SET nickname=$1,weekly_events=COALESCE($2::integer,weekly_events),note=$3 WHERE id=$4',
       [
@@ -130,6 +155,7 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
       ],
     );
     await replaceUserRoles(targetId, roleIds);
+    await evaluateAchievementsForUser(targetId).catch(() => undefined);
     await writeAudit({
       actorId: user.id,
       action: Array.isArray(body.roleIds) || body.roleId != null ? 'roles.update' : 'user.update',

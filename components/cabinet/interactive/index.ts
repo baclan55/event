@@ -5,3 +5,6 @@ export { ContentInteractive, OwnerInteractive, RulesInteractive } from './owner-
 export { VacationsInteractive } from './vacations';
 export { ApplicationsInteractive } from './applications';
 export { RolesInteractive } from './roles';
+export { BlacklistInteractive } from './blacklist';
+export { AchievementsInteractive } from './achievements';
+export { ProfileModerationInteractive } from './profile-moderation';

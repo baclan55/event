@@ -21,6 +21,9 @@ const TITLES: Record<string, string> = {
   '/app/applications': 'Заявки',
   '/app/candidates': 'Кандидаты',
   '/app/roles': 'Роли и доступы',
+  '/app/blacklist': 'Чёрный список',
+  '/app/achievements': 'Достижения',
+  '/app/profile-moderation': 'Модерация профиля',
   '/app/blocked': 'Доступ закрыт',
   '/app/pending': 'Ожидание роли',
 };
@@ -39,7 +42,22 @@ const SUBTITLES: Record<string, string> = {
   '/app/applications': 'Заявки на роль Event Helper',
   '/app/candidates': 'Кандидаты, ожидающие результата обзвона',
   '/app/roles': 'Создание ролей, доступы и вес в иерархии',
+  '/app/blacklist': 'Запрет выдачи ролей и автоотклонение заявок',
+  '/app/achievements': 'Создание достижений и триггеры',
+  '/app/profile-moderation': 'Заявки на смену имени, фамилии и StaticID',
 };
+
+function titleForPath(pathname: string) {
+  if (pathname.startsWith('/app/profile/') && pathname !== '/app/profile') return 'Профиль сотрудника';
+  return TITLES[pathname] || 'Кабинет';
+}
+
+function subtitleForPath(pathname: string, appTitle: string) {
+  if (pathname.startsWith('/app/profile/') && pathname !== '/app/profile') {
+    return `Карточка сотрудника · ${appTitle}`;
+  }
+  return `${SUBTITLES[pathname] || runtimeEnv('APP_SUBTITLE') || 'Ивент-отдел сервера'} · ${appTitle}`;
+}
 
 export default async function CabinetLayout({ children }: { children: React.ReactNode }) {
   let user = null;
@@ -75,14 +93,19 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     redirect(userHasPermission(roleCtx, 'manage_roles') ? '/app/roles' : '/app/profile');
   }
 
-  const protectedRoutes: Record<string, Parameters<typeof userHasPermission>[1]> = {
-    '/app/reprimands': 'reprimands',
-    '/app/applications': 'applications',
-    '/app/candidates': 'candidates',
-    '/app/roles': 'manage_roles',
-  };
-  if (protectedRoutes[pathname] && !userHasPermission(roleCtx, protectedRoutes[pathname])) {
-    redirect('/app/dashboard');
+  const protectedRoutes: Array<[string, Parameters<typeof userHasPermission>[1]]> = [
+    ['/app/reprimands', 'reprimands'],
+    ['/app/applications', 'applications'],
+    ['/app/candidates', 'candidates'],
+    ['/app/roles', 'manage_roles'],
+    ['/app/blacklist', 'manage_blacklist'],
+    ['/app/achievements', 'manage_achievements'],
+    ['/app/profile-moderation', 'moderate_profile'],
+  ];
+  for (const [route, perm] of protectedRoutes) {
+    if (pathname === route && !userHasPermission(roleCtx, perm)) {
+      redirect('/app/dashboard');
+    }
   }
 
   const navGroups = [
@@ -121,6 +144,9 @@ export default async function CabinetLayout({ children }: { children: React.Reac
       label: 'Управление',
       items: [
         ['roles', 'Роли и доступы', userHasPermission(roleCtx, 'manage_roles')],
+        ['blacklist', 'Чёрный список', userHasPermission(roleCtx, 'manage_blacklist')],
+        ['achievements', 'Достижения', userHasPermission(roleCtx, 'manage_achievements')],
+        ['profile-moderation', 'Модерация профиля', userHasPermission(roleCtx, 'moderate_profile')],
       ],
     },
   ]
@@ -132,9 +158,9 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     }))
     .filter((group) => group.items.length > 0);
 
-  const title = TITLES[pathname] || 'Кабинет';
   const appTitle = runtimeEnv('APP_TITLE') || 'Events Denver';
-  const subtitle = `${SUBTITLES[pathname] || runtimeEnv('APP_SUBTITLE') || 'Ивент-отдел сервера'} · ${appTitle}`;
+  const title = titleForPath(pathname);
+  const subtitle = subtitleForPath(pathname, appTitle);
 
   return (
     <CabinetShellServer
