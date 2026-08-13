@@ -8,6 +8,7 @@ import { ACHIEVEMENT_TRIGGERS } from '@/lib/achievementsShared';
 import {
   evaluateAchievementsForUser,
   listAchievements,
+  listProfileAchievementCatalog,
   listUserAchievements,
 } from '@/lib/achievements';
 import { userHasPermission } from '@/lib/roleAccess';
@@ -231,12 +232,22 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
       const user = await required();
       if (user instanceof NextResponse) return user;
       await evaluateAchievementsForUser(user.id).catch(() => undefined);
-      return NextResponse.json({ achievements: await listUserAchievements(user.id) });
+      const catalog = await listProfileAchievementCatalog(user.id);
+      return NextResponse.json({
+        ...catalog,
+        achievements: catalog.earned,
+      });
     }
     if (key === 'achievements-user') {
       const user = await required();
       if (user instanceof NextResponse) return user;
-      return NextResponse.json({ achievements: await listUserAchievements(parseId(params.userId || params.id)) });
+      const targetId = parseId(params.userId || params.id);
+      await evaluateAchievementsForUser(targetId).catch(() => undefined);
+      const catalog = await listProfileAchievementCatalog(targetId);
+      return NextResponse.json({
+        ...catalog,
+        achievements: catalog.earned,
+      });
     }
     if (key === 'achievements' && method === 'GET') {
       const viewer = await getCurrentUser();
@@ -260,8 +271,8 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
         ? body.gradeIcons.map((item: unknown) => String(item || '').trim())
         : [];
       const inserted = await query<{ id: number }>(
-        `INSERT INTO achievements(name, description, icon, grade_icons, trigger_type, trigger_config, max_grade, active)
-         VALUES($1,$2,$3,$4::jsonb,$5,$6::jsonb,$7,$8) RETURNING id`,
+        `INSERT INTO achievements(name, description, icon, grade_icons, trigger_type, trigger_config, max_grade, active, is_hidden)
+         VALUES($1,$2,$3,$4::jsonb,$5,$6::jsonb,$7,$8,$9) RETURNING id`,
         [
           name,
           String(body.description || ''),
@@ -271,6 +282,7 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
           JSON.stringify(body.triggerConfig || {}),
           Math.max(1, Number(body.maxGrade) || 1),
           body.active !== false,
+          body.isHidden === true || body.is_hidden === true,
         ],
       );
       await writeAudit({
@@ -289,7 +301,8 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
         : [];
       await query(
         `UPDATE achievements SET name=$1, description=$2, icon=$3, grade_icons=$4::jsonb,
-         trigger_type=$5, trigger_config=$6::jsonb, max_grade=$7, active=$8, updated_at=now() WHERE id=$9`,
+         trigger_type=$5, trigger_config=$6::jsonb, max_grade=$7, active=$8, is_hidden=$9, updated_at=now()
+         WHERE id=$10`,
         [
           String(body.name || '').trim(),
           String(body.description || ''),
@@ -299,6 +312,7 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
           JSON.stringify(body.triggerConfig || {}),
           Math.max(1, Number(body.maxGrade) || 1),
           body.active !== false,
+          body.isHidden === true || body.is_hidden === true,
           id,
         ],
       );

@@ -1,4 +1,44 @@
 
+
+.vac-cal-weekdays{
+  display:grid; grid-template-columns:repeat(7,1fr);
+  padding:0 0 8px 5px; font-size:10.5px; font-weight:700; letter-spacing:.05em;
+  text-transform:uppercase; color:var(--text-faint);
+}
+
+.vac-cal-grid{
+  border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden;
+  background:var(--bg-card-2);
+}
+.vac-simple-grid{
+  display:grid; grid-template-columns:repeat(7,1fr);
+  border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden;
+}
+.vac-simple-grid .vac-day-cell{
+  min-height:104px; border-right:1px solid var(--border); border-bottom:1px solid var(--border);
+}
+.vac-day-items{ display:flex; flex-direction:column; gap:3px; min-height:45px; margin-top:3px; overflow:hidden; }
+.vac-day-item{
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  border-radius:5px; padding:2px 4px; font-size:9.5px; font-weight:700;
+}
+.vac-day-item.status-pending{ background:rgba(251,191,36,.25); color:var(--amber); }
+.vac-day-item.status-approved{ background:rgba(52,211,153,.2); color:var(--green); }
+.vac-day-item.status-rejected{ background:rgba(248,113,113,.18); color:var(--red); text-decoration:line-through; }
+.vac-review-card{ margin-bottom:20px; }
+.vac-week{ position:relative; border-bottom:1px solid var(--border); }
+.vac-week:last-child{ border-bottom:none; }
+.vac-week-cells{ display:grid; grid-template-columns:repeat(7,1fr); }
+.vac-day-cell{
+  border-right:1px solid var(--border); padding:6px 5px 6px;
+  display:flex; flex-direction:column;
+  background:var(--bg-card);
+  min-height:92px;
+}
+.vac-day-cell:last-child{ border-right:none; }
+.vac-day-cell.is-muted{ opacity:.45; background:rgba(15,12,24,.55); }
+.vac-day-cell:nth-child(7n){ border-right:none; }
+.vac-day-num{ font-size:12px; line-height:18px; height:18px; font-weight:700; color:var(--text-heading); }
 .vac-day-num.is-today{
   display:inline-flex; align-items:center; justify-content:center;
   width:20px; height:18px; border-radius:50%; background:var(--pink); color:#fff;
@@ -233,44 +273,3 @@ button.linkish{
 }
 
 .sidebar-scrim{ border:0; padding:0; }
-.access-card{
-  max-width:520px; margin:72px auto; padding:36px;
-  background:var(--bg-card); border:1px solid var(--border-soft); border-radius:var(--radius-lg);
-}
-.blocked-icon{
-  width:64px; height:64px; margin:0 auto 18px; display:flex; align-items:center; justify-content:center;
-  border-radius:20px; color:var(--accent-light); background:var(--accent-soft);
-}
-.blocked-icon svg{ width:30px; height:30px; }
-@media (max-width:560px){
-  .topbar-titles h1{ font-size:20px; }
-  .card-pad{ padding:20px; }
-  .roster-row{ flex-wrap:wrap; }
-  .audit-row, .audit-main{ align-items:flex-start; flex-direction:column; gap:4px; }
-  .audit-meta{ text-align:left; }
-}
-
-/* =============================================================================
-   Публичный сайт: Главная и форма заявки (без сайдбара, своя шапка)
-   ============================================================================= */
-.site{ position:relative; z-index:1; min-height:100vh; width:100%; display:flex; flex-direction:column; }
-
-.site-header{
-  position:sticky; top:0; z-index:20;
-  background:rgba(10,8,17,.93); backdrop-filter:blur(10px);
-  border-bottom:1px solid var(--border-soft);
-}
-.site-header-inner{
-  max-width:1180px; margin:0 auto; padding:14px 28px;
-  display:flex; align-items:center; justify-content:space-between; gap:18px; flex-wrap:wrap;
-}
-.site-brand{ display:flex; align-items:center; gap:10px; }
-.site-brand-mark{
-  width:32px; height:32px; border-radius:9px; flex-shrink:0;
-  background:linear-gradient(155deg, var(--accent) 0%, var(--accent-2) 100%);
-  color:#fff; font-weight:800; font-size:12.5px;
-  display:flex; align-items:center; justify-content:center;
-}
-.site-brand-name{ font-weight:800; font-size:14.5px; color:var(--text-heading); letter-spacing:.03em; }
-.site-nav{ display:flex; align-items:center; gap:26px; }
-.site-nav-link{ font-size:13.5px; font-weight:600; color:var(--text-body); }

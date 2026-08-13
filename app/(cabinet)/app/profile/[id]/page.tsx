@@ -1,10 +1,10 @@
 import { notFound, redirect } from 'next/navigation';
 import { loadUserById, publicUser } from '@/lib/auth';
-import { listUserAchievements, evaluateAchievementsForUser } from '@/lib/achievements';
+import { evaluateAchievementsForUser, listProfileAchievementCatalog } from '@/lib/achievements';
 import { requirePortalUser } from '@/lib/cabinetData';
 import { ProfileInteractive } from '@/components/cabinet/InteractiveCore';
 import { runtimeEnv } from '@/lib/runtimeEnv';
-import { userHasPermission } from '@/lib/roleAccess';
+import { roleCtxFromPublic, userHasPermission } from '@/lib/roleAccess';
 import { listAudit } from '@/lib/audit';
 import { query } from '@/lib/db';
 
@@ -25,13 +25,8 @@ export default async function UserProfilePage({
   if (!user) notFound();
 
   await evaluateAchievementsForUser(id).catch(() => undefined);
-  const achievements = await listUserAchievements(id);
-  const roleCtx = {
-    is_owner: viewer.isOwner,
-    roleNames: viewer.roles,
-    permissions: viewer.permissions,
-    editPermissions: viewer.editPermissions,
-  };
+  const achievementCatalog = await listProfileAchievementCatalog(id);
+  const roleCtx = roleCtxFromPublic(viewer);
   const canSeeReprimands = userHasPermission(roleCtx, 'reprimands');
   const canViewAudit = userHasPermission(roleCtx, 'view_audit');
   let reprimands: Record<string, unknown>[] = [];
@@ -56,7 +51,7 @@ export default async function UserProfilePage({
       canViewAudit={canViewAudit}
       initialAudit={audit}
       isSelf={false}
-      initialAchievements={achievements}
+      initialAchievementCatalog={achievementCatalog}
     />
   );
 }

@@ -378,6 +378,55 @@ select.input option, select.input optgroup{
   display:flex; align-items:center; justify-content:center;
   color:var(--accent-light); font-size:18px;
 }
+.ach-subtabs{ flex-wrap:wrap; }
+.ach-card-list{ display:flex; flex-direction:column; gap:10px; }
+.ach-card{
+  display:grid; grid-template-columns:72px minmax(0,1fr); gap:14px; align-items:start;
+  padding:14px 14px 14px 12px;
+  border:1px solid var(--border); border-radius:14px;
+  background:linear-gradient(180deg, var(--bg-card-2), var(--bg-card));
+}
+.ach-card.is-locked{ opacity:.78; }
+.ach-card.is-secret .ach-card-medal{ filter:grayscale(.35) brightness(.85); }
+.ach-card-medal{
+  width:72px; height:72px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(circle at 35% 30%, rgba(255,255,255,.08), transparent 55%),
+             var(--bg-input);
+  border:2px solid var(--border-strong);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.04);
+  overflow:hidden; flex-shrink:0;
+}
+.ach-card-icon{ width:100%; height:100%; object-fit:cover; display:block; }
+.ach-card-icon-fallback{
+  font-size:28px; color:var(--accent-light); line-height:1;
+}
+.ach-card.is-locked .ach-card-icon,
+.ach-card.is-locked .ach-card-icon-fallback{ filter:grayscale(1) opacity(.75); }
+.ach-card-body{ min-width:0; }
+.ach-card-head{
+  display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+  margin-bottom:6px;
+}
+.ach-card-title{
+  margin:0; font-size:15px; font-weight:800; color:var(--text-heading);
+  line-height:1.25;
+}
+.ach-card-grade{ font-weight:700; color:var(--text-muted); font-size:13px; }
+.ach-card-meta{
+  flex-shrink:0; font-size:12px; color:var(--text-faint); font-family:var(--font-mono);
+}
+.ach-card-desc{
+  margin:0; font-size:13px; line-height:1.5; color:var(--text-body);
+}
+.ach-card-desc.is-muted{ color:var(--text-muted); font-style:italic; }
+.ach-card-next{
+  margin-top:8px; font-size:12.5px; color:var(--accent-light); font-weight:600;
+}
+@media (max-width:560px){
+  .ach-card{ grid-template-columns:56px minmax(0,1fr); gap:10px; padding:12px; }
+  .ach-card-medal{ width:56px; height:56px; }
+}
 .top-row-link{
   text-decoration:none; color:inherit; cursor:pointer;
   border-radius:10px; transition:background .12s ease;

@@ -118,6 +118,7 @@ export function AchievementsInteractive() {
       triggerConfig,
       maxGrade,
       active: form.get('active') === 'on',
+      isHidden: form.get('isHidden') === 'on',
     };
     try {
       if (editing?.id) {
@@ -163,7 +164,7 @@ export function AchievementsInteractive() {
             </div>
             <div className="who">
               <div>
-                <div className="nickname">{item.name}{!item.active ? ' · выкл.' : ''}</div>
+                <div className="nickname">{item.name}{!item.active ? ' · выкл.' : ''}{item.is_hidden ? ' · скрытое' : ''}</div>
                 <div className="role-tag">
                   {ACHIEVEMENT_TRIGGER_LABELS[item.trigger_type as AchievementTrigger] || item.trigger_type}
                   {' · '}до {item.max_grade} ст.
@@ -301,10 +302,17 @@ export function AchievementsInteractive() {
                 />
               </div>
             ) : null}
-            <label className="qform-check-label">
-              <input type="checkbox" name="active" defaultChecked={editing ? editing.active !== false : true} />
-              Активно
-            </label>
+            <div className="form-row-2">
+              <label className="qform-check-label">
+                <input type="checkbox" name="active" defaultChecked={editing ? editing.active !== false : true} />
+                Активно
+              </label>
+              <label className="qform-check-label">
+                <input type="checkbox" name="isHidden" defaultChecked={!!editing?.is_hidden} />
+                Скрытое
+              </label>
+            </div>
+            <div className="field-hint">Скрытое до получения лежит во вкладке «Скрытое»; описание видят только получившие.</div>
             <div className="modal-actions">
               <button type="button" className="btn btn-ghost" onClick={() => setEditing(undefined)}>Отмена</button>
               <button className="btn btn-primary">Сохранить</button>

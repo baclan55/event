@@ -6,6 +6,12 @@ import type { PublicUser } from '@/lib/auth';
 import { AUDIT_LABELS } from '@/lib/auditShared';
 import { NavIcon } from '@/components/NavIcons';
 import { Avatar, DEFAULT_LIMITS, ErrorText, Modal, ReprimandBadge, ReprimandLegend, ReprimandSummary, request, type Row } from './shared';
+import {
+  ProfileAchievementsPanel,
+  catalogFromPayload,
+  emptyAchievementCatalog,
+  type ProfileAchievementCatalog,
+} from './ProfileAchievements';
 
 function formatAuditDetails(entry: Row): string {
   const details = (entry.details || {}) as Row;
@@ -26,7 +32,7 @@ export function ProfileInteractive({
   canViewAudit = false,
   initialAudit = [],
   isSelf = true,
-  initialAchievements = [],
+  initialAchievementCatalog,
 }: {
   initialUser: PublicUser;
   reprimands: Row[];
@@ -34,7 +40,7 @@ export function ProfileInteractive({
   canViewAudit?: boolean;
   initialAudit?: Row[];
   isSelf?: boolean;
-  initialAchievements?: Row[];
+  initialAchievementCatalog?: ProfileAchievementCatalog;
 }) {
   const router = useRouter();
   const [user, setUser] = useState(initialUser);
@@ -46,7 +52,9 @@ export function ProfileInteractive({
     staticId: user.staticId || '',
   });
   const [pendingGame, setPendingGame] = useState<Row | null>(null);
-  const [achievements, setAchievements] = useState(initialAchievements);
+  const [achievementCatalog, setAchievementCatalog] = useState<ProfileAchievementCatalog>(
+    initialAchievementCatalog || emptyAchievementCatalog(),
+  );
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const needLast = !(user.isAdministrator && !user.isEventHelper);
@@ -98,14 +106,14 @@ export function ProfileInteractive({
       .then((data) => setPendingGame(data.pending || null))
       .catch(() => undefined);
     request('/api/achievements/me')
-      .then((data) => setAchievements(data.achievements || []))
+      .then((data) => setAchievementCatalog(catalogFromPayload(data)))
       .catch(() => undefined);
   }, [reprimands, isSelf]);
 
   useEffect(() => {
     if (isSelf || !initialUser.id) return;
     request(`/api/achievements/user/${initialUser.id}`)
-      .then((data) => setAchievements(data.achievements || []))
+      .then((data) => setAchievementCatalog(catalogFromPayload(data)))
       .catch(() => undefined);
   }, [isSelf, initialUser.id]);
 
@@ -188,7 +196,7 @@ export function ProfileInteractive({
       <div className="card card-pad" style={{ marginTop: 20 }}>
         <div className="segmented roster-tabs" style={{ marginBottom: 16 }}>
           <button className={tab === 'reprimands' ? 'active' : ''} onClick={() => setTab('reprimands')}>Выговоры · {rpData.reprimands.length}</button>
-          <button className={tab === 'achievements' ? 'active' : ''} onClick={() => setTab('achievements')}>Достижения · {achievements.length}</button>
+          <button className={tab === 'achievements' ? 'active' : ''} onClick={() => setTab('achievements')}>Достижения · {achievementCatalog.earned.length}</button>
           {(canViewAudit || initialUser.isOwner) ? (
             <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>Журнал · {audit.length}</button>
           ) : null}
@@ -214,24 +222,7 @@ export function ProfileInteractive({
             )) : <div className="empty-state"><h3>Выговоров нет</h3><p>Записей о взысканиях нет.</p></div>}
           </>
         ) : tab === 'achievements' ? (
-          <>
-            <div className="card-header"><h3>Достижения</h3><span className="badge badge-muted">{achievements.length}</span></div>
-            {achievements.length ? achievements.map((item) => (
-              <div className="roster-row" key={`${item.achievement_id}-${item.grade}`}>
-                <div className="ach-icon-wrap">
-                  {item.icon
-                    ? <img src={item.icon} alt="" className="ach-icon" />
-                    : <span className="ach-icon ach-icon-empty">★</span>}
-                </div>
-                <div className="who">
-                  <div>
-                    <div className="nickname">{item.name}{item.max_grade > 1 ? ` · ${item.grade}/${item.max_grade} ст.` : ''}</div>
-                    <div className="role-tag">{item.description || '—'} · {new Date(item.awarded_at).toLocaleDateString('ru-RU')}</div>
-                  </div>
-                </div>
-              </div>
-            )) : <div className="empty-state"><h3>Пока пусто</h3><p>Достижения появятся по триггерам.</p></div>}
-          </>
+          <ProfileAchievementsPanel catalog={achievementCatalog} />
         ) : (
           <>
             <div className="card-header"><h3>Журнал действий</h3><span className="badge badge-muted">{audit.length}</span></div>

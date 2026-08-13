@@ -17,6 +17,23 @@ export type AchievementRow = {
   trigger_config: Record<string, unknown>;
   max_grade: number;
   active: boolean;
+  is_hidden: boolean;
+};
+
+export type ProfileAchievementStatus = 'earned' | 'locked' | 'hidden';
+
+export type ProfileAchievementCard = {
+  id: number;
+  name: string;
+  /** Пусто, если достижение ещё не получено. */
+  description: string;
+  icon: string;
+  max_grade: number;
+  grade: number;
+  awarded_at: string | null;
+  status: ProfileAchievementStatus;
+  is_hidden: boolean;
+  next_hint: string;
 };
 
 function normalizeGradeIcons(raw: unknown): string[] {
@@ -29,7 +46,8 @@ export async function listAchievements(activeOnly = false) {
     const result = await query<AchievementRow>(
       `SELECT id, name, description, icon,
               COALESCE(grade_icons, '[]'::jsonb) AS grade_icons,
-              trigger_type, trigger_config, max_grade, active
+              trigger_type, trigger_config, max_grade, active,
+              COALESCE(is_hidden, FALSE) AS is_hidden
        FROM achievements
        ${activeOnly ? 'WHERE active = TRUE' : ''}
        ORDER BY id ASC`,
@@ -37,6 +55,7 @@ export async function listAchievements(activeOnly = false) {
     return result.rows.map((row) => ({
       ...row,
       grade_icons: normalizeGradeIcons(row.grade_icons),
+      is_hidden: !!row.is_hidden,
     }));
   } catch (error) {
     if ((error as { code?: string }).code === '42P01') return [];
@@ -44,9 +63,100 @@ export async function listAchievements(activeOnly = false) {
   }
 }
 
-export async function listUserAchievements(userId: number) {
+function nextGradeHint(item: AchievementRow, grade: number): string {
+  if (grade <= 0) return '';
+  if (grade >= item.max_grade) return 'Максимальная степень';
+  const cfg = item.trigger_config || {};
+  if (item.trigger_type === 'days_in_ranks') {
+    const thresholds = Array.isArray(cfg.grades)
+      ? (cfg.grades as number[])
+      : [Number(cfg.days) || 30];
+    const next = thresholds[grade];
+    if (next != null) return `Для следующей степени: ${next} дн. в рядах`;
+  }
+  if (item.trigger_type === 'reached_role') {
+    return 'Для следующей степени: достигните следующей роли';
+  }
+  return `Для следующей степени: ${grade + 1} / ${item.max_grade}`;
+}
+
+/** Каталог достижений для профиля: полученные / неполученные / скрытые. */
+export async function listProfileAchievementCatalog(userId: number): Promise<{
+  earned: ProfileAchievementCard[];
+  locked: ProfileAchievementCard[];
+  hidden: ProfileAchievementCard[];
+}> {
+  const [all, earnedRows] = await Promise.all([
+    listAchievements(true),
+    listUserAchievements(userId),
+  ]);
+  const byId = new Map(
+    earnedRows.map((row) => [Number(row.achievement_id), row] as const),
+  );
+
+  const earned: ProfileAchievementCard[] = [];
+  const locked: ProfileAchievementCard[] = [];
+  const hidden: ProfileAchievementCard[] = [];
+
+  for (const item of all) {
+    const got = byId.get(item.id);
+    const grade = got ? Math.max(1, Number(got.grade) || 1) : 0;
+    const icons = item.grade_icons;
+    const icon = grade > 0
+      ? (icons[grade - 1] || item.icon || icons[0] || '')
+      : (icons[0] || item.icon || '');
+    const base = {
+      id: item.id,
+      name: item.name,
+      icon,
+      max_grade: item.max_grade,
+      grade,
+      awarded_at: got ? String(got.awarded_at) : null,
+      is_hidden: !!item.is_hidden,
+      next_hint: '',
+    };
+
+    if (got) {
+      earned.push({
+        ...base,
+        description: String(item.description || ''),
+        status: 'earned',
+        next_hint: nextGradeHint(item, grade),
+      });
+      continue;
+    }
+
+    const lockedCard: ProfileAchievementCard = {
+      ...base,
+      description: '',
+      status: item.is_hidden ? 'hidden' : 'locked',
+      next_hint: '',
+    };
+    if (item.is_hidden) hidden.push(lockedCard);
+    else locked.push(lockedCard);
+  }
+
+  earned.sort((a, b) => String(b.awarded_at || '').localeCompare(String(a.awarded_at || '')));
+  locked.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  hidden.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  return { earned, locked, hidden };
+}
+
+export type UserAchievementRow = {
+  achievement_id: number;
+  grade: number;
+  awarded_at: string;
+  name: string;
+  description: string;
+  icon: string;
+  grade_icons: string[];
+  max_grade: number;
+  trigger_type: AchievementTrigger;
+};
+
+export async function listUserAchievements(userId: number): Promise<UserAchievementRow[]> {
   try {
-    const result = await query(
+    const result = await query<UserAchievementRow>(
       `SELECT ua.achievement_id, ua.grade, ua.awarded_at,
               a.name, a.description, a.icon,
               COALESCE(a.grade_icons, '[]'::jsonb) AS grade_icons,
@@ -61,7 +171,7 @@ export async function listUserAchievements(userId: number) {
       const icons = normalizeGradeIcons(row.grade_icons);
       const grade = Math.max(1, Number(row.grade) || 1);
       const icon = icons[grade - 1] || String(row.icon || '') || icons[0] || '';
-      return { ...row, grade_icons: icons, icon };
+      return { ...row, grade_icons: icons, icon, grade };
     });
   } catch (error) {
     if ((error as { code?: string }).code === '42P01') return [];
