@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { PublicUser } from '@/lib/auth';
 import { AUDIT_LABELS } from '@/lib/auditShared';
 import { NavIcon } from '@/components/NavIcons';
-import { Avatar, DEFAULT_LIMITS, ErrorText, Modal, ReprimandBadge, ReprimandLegend, ReprimandSummary, request, type Row } from './shared';
+import { Avatar, DEFAULT_LIMITS, ErrorText, Modal, ReprimandBadge, ReprimandLegend, ReprimandSummary, request, Select, type Row } from './shared';
 import {
   ProfileAchievementsPanel,
   catalogFromPayload,
@@ -273,12 +273,18 @@ export function ProfileInteractive({
             >
               <div className="field">
                 <label>Действие</label>
-                <select className="input" value={filterAction} onChange={(e) => setFilterAction(e.target.value)}>
-                  <option value="">Все</option>
-                  {auditActions.map((action) => (
-                    <option value={action} key={action}>{AUDIT_LABELS[action] || action}</option>
-                  ))}
-                </select>
+                <Select
+                  value={filterAction}
+                  onChange={setFilterAction}
+                  placeholder="Все"
+                  options={[
+                    { value: '', label: 'Все' },
+                    ...auditActions.map((action) => ({
+                      value: action,
+                      label: AUDIT_LABELS[action] || action,
+                    })),
+                  ]}
+                />
               </div>
               <div className="field">
                 <label>Кто</label>
@@ -613,7 +619,14 @@ function MemberProfileBody({ data, onChanged }: { data: { user: Row; reprimands:
         {user.is_blocked && <button className="btn btn-ghost btn-sm" onClick={() => void unblock()}>Разблокировать</button>}
         <button className="btn btn-primary btn-sm" disabled={user.is_blocked} onClick={() => setAdding(!adding)}><NavIcon name="plus" /> Добавить выговор</button>
       </div>
-      {adding && <form className="card card-pad inline-form" onSubmit={add}>{tier === 'helper' && <div className="field"><label>Тип</label><select className="input" name="type"><option value="verbal">Устный (+{data.limits.helper.verbalPoints} балл)</option><option value="strict">Строгий (+{data.limits.helper.strictPoints} балла)</option></select></div>}<div className="field"><label>Причина</label><textarea className="input" name="reason" required /></div><button className="btn btn-primary">Выдать</button></form>}
+      {adding && <form className="card card-pad inline-form" onSubmit={add}>{tier === 'helper' && <div className="field"><label>Тип</label><Select
+            name="type"
+            defaultValue="verbal"
+            options={[
+              { value: 'verbal', label: `Устный (+${data.limits.helper.verbalPoints} балл)` },
+              { value: 'strict', label: `Строгий (+${data.limits.helper.strictPoints} балла)` },
+            ]}
+          /></div>}<div className="field"><label>Причина</label><textarea className="input" name="reason" required /></div><button className="btn btn-primary">Выдать</button></form>}
       <div className="card-header" style={{ marginTop: 18 }}><h3>История выговоров</h3><ReprimandSummary items={data.reprimands} tier={tier} limits={data.limits} /></div>
       <ReprimandLegend tier={tier} limits={data.limits} />
       {data.reprimands.map((item) => <div className={`roster-row rp-entry${item.active === false || item.converted ? ' rp-expired' : ''}`} key={item.id}><ReprimandBadge item={item} /><div className="who"><div><div className="nickname">{item.reason}</div><div className="role-tag">{new Date(item.created_at).toLocaleString('ru-RU')}{item.issued_by_nickname ? ` · выдал ${item.issued_by_nickname}` : ''}</div></div></div><button className="icon-btn danger" onClick={() => void remove(item.id)}><NavIcon name="trash" /></button></div>)}
@@ -689,7 +702,22 @@ export function ReprimandsInteractive() {
         <div className="rp-group-entries">{group.entries.map((item) => <div className={`roster-row rp-entry${item.active === false || item.converted ? ' rp-expired' : ''}`} key={item.id}><ReprimandBadge item={item} /><div className="who"><div><div className="nickname">{item.reason}</div><div className="role-tag">{new Date(item.created_at).toLocaleString('ru-RU')}{item.issued_by_nickname ? ` · выдал ${item.issued_by_nickname}` : ''}</div></div></div><button className="icon-btn danger" onClick={() => void remove(item.id)}><NavIcon name="trash" /></button></div>)}</div>
       </section>)}
       {!groups.length && <div className="empty-state"><h3>Выговоров нет</h3><p>В выбранной группе записей пока нет.</p></div>}
-      {adding && <Modal title="Новый выговор" onClose={() => setAdding(false)}><form onSubmit={add}><ErrorText value={error} /><div className="field"><label>Сотрудник</label><select className="input" name="userId" required><option value="">Выберите</option>{tabMembers.map((m) => <option value={m.id} key={m.id}>{m.nickname} · {m.role_name || 'Без роли'}</option>)}</select></div>{tab === 'helper' && <div className="field"><label>Тип</label><select className="input" name="type"><option value="verbal">Устный (+{limits.helper.verbalPoints} балл)</option><option value="strict">Строгий (+{limits.helper.strictPoints} балла)</option></select></div>}<div className="field"><label>Причина</label><textarea className="input" name="reason" required /></div><div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={() => setAdding(false)}>Отмена</button><button className="btn btn-primary">Добавить</button></div></form></Modal>}
+      {adding && <Modal title="Новый выговор" onClose={() => setAdding(false)}><form onSubmit={add}><ErrorText value={error} /><div className="field"><label>Сотрудник</label><Select
+            name="userId"
+            required
+            placeholder="Выберите"
+            options={tabMembers.map((m) => ({
+              value: String(m.id),
+              label: `${m.nickname} · ${m.role_name || 'Без роли'}`,
+            }))}
+          /></div>{tab === 'helper' && <div className="field"><label>Тип</label><Select
+            name="type"
+            defaultValue="verbal"
+            options={[
+              { value: 'verbal', label: `Устный (+${limits.helper.verbalPoints} балл)` },
+              { value: 'strict', label: `Строгий (+${limits.helper.strictPoints} балла)` },
+            ]}
+          /></div>}<div className="field"><label>Причина</label><textarea className="input" name="reason" required /></div><div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={() => setAdding(false)}>Отмена</button><button className="btn btn-primary">Добавить</button></div></form></Modal>}
     </>
   );
 }

@@ -5,9 +5,11 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type ChangeEvent,
+  type CSSProperties,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { MarkdownEditor } from '@/components/MarkdownEditor';
@@ -86,32 +88,87 @@ export function Select({
 }) {
   const id = useId();
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLUListElement>(null);
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
   const [internal, setInternal] = useState(defaultValue || '');
   const current = value !== undefined ? value : internal;
   const selected = options.find((opt) => opt.value === current);
 
+  useEffect(() => setMounted(true), []);
+
+  const placeMenu = useCallback(() => {
+    const trigger = rootRef.current?.querySelector('.ui-select-trigger') as HTMLElement | null;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const menuMax = 240;
+    const gap = 6;
+    const spaceBelow = window.innerHeight - rect.bottom - gap;
+    const openUp = spaceBelow < Math.min(menuMax, 160) && rect.top > spaceBelow;
+    setMenuStyle({
+      position: 'fixed',
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8)),
+      width: rect.width,
+      top: openUp ? undefined : rect.bottom + gap,
+      bottom: openUp ? Math.max(8, window.innerHeight - rect.top + gap) : undefined,
+      maxHeight: Math.min(menuMax, openUp ? rect.top - gap - 8 : spaceBelow),
+      zIndex: 420,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    placeMenu();
+  }, [open, options.length, placeMenu]);
+
   useEffect(() => {
     if (!open) return;
     const onDoc = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false);
     };
+    const onReposition = () => placeMenu();
     document.addEventListener('mousedown', onDoc);
     window.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onReposition);
+    window.addEventListener('scroll', onReposition, true);
     return () => {
       document.removeEventListener('mousedown', onDoc);
       window.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onReposition);
+      window.removeEventListener('scroll', onReposition, true);
     };
-  }, [open]);
+  }, [open, placeMenu]);
 
   function pick(next: string) {
     if (value === undefined) setInternal(next);
     onChange?.(next);
     setOpen(false);
   }
+
+  const menu = open ? (
+    <ul className="ui-select-menu ui-select-menu-portal" role="listbox" ref={menuRef} style={menuStyle}>
+      {options.map((opt) => (
+        <li key={opt.value}>
+          <button
+            type="button"
+            role="option"
+            aria-selected={opt.value === current}
+            className={`ui-select-option${opt.value === current ? ' is-active' : ''}`}
+            disabled={opt.disabled}
+            onClick={() => pick(opt.value)}
+          >
+            {opt.label}
+          </button>
+        </li>
+      ))}
+    </ul>
+  ) : null;
 
   return (
     <div className={`ui-select${open ? ' is-open' : ''}${disabled ? ' is-disabled' : ''}`} ref={rootRef}>
@@ -142,24 +199,7 @@ export function Select({
         <span className={selected ? '' : 'is-placeholder'}>{selected?.label || placeholder}</span>
         <span className="ui-select-chevron" aria-hidden>▾</span>
       </button>
-      {open ? (
-        <ul className="ui-select-menu" role="listbox">
-          {options.map((opt) => (
-            <li key={opt.value}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={opt.value === current}
-                className={`ui-select-option${opt.value === current ? ' is-active' : ''}`}
-                disabled={opt.disabled}
-                onClick={() => pick(opt.value)}
-              >
-                {opt.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {mounted && menu ? createPortal(menu, document.body) : null}
     </div>
   );
 }

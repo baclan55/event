@@ -465,7 +465,12 @@ CREATE TABLE IF NOT EXISTS gmp_players (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (event_id, static_id)
 );
+ALTER TABLE gmp_players ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE gmp_players ADD COLUMN IF NOT EXISTS block_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE gmp_players ADD COLUMN IF NOT EXISTS blocked_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE gmp_players ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_gmp_players_event ON gmp_players(event_id);
+CREATE INDEX IF NOT EXISTS idx_gmp_players_blocked ON gmp_players(event_id, is_blocked);
 
 CREATE TABLE IF NOT EXISTS gmp_marks (
   player_id     INTEGER NOT NULL REFERENCES gmp_players(id) ON DELETE CASCADE,

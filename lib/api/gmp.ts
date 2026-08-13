@@ -324,9 +324,13 @@ async function loadEventBundle(eventId: number) {
       [eventId],
     ),
     query<Row>(
-      `SELECT id, static_id, finished_at, place, created_at
-       FROM gmp_players WHERE event_id=$1
-       ORDER BY place NULLS LAST, finished_at NULLS LAST, static_id`,
+      `SELECT p.id, p.static_id, p.finished_at, p.place, p.created_at,
+              p.is_blocked, p.block_reason, p.blocked_by, p.blocked_at,
+              bu.nickname AS blocked_by_nickname
+       FROM gmp_players p
+       LEFT JOIN users bu ON bu.id=p.blocked_by
+       WHERE p.event_id=$1
+       ORDER BY p.is_blocked DESC, p.place NULLS LAST, p.finished_at NULLS LAST, p.static_id`,
       [eventId],
     ),
     query<Row>(
@@ -370,15 +374,52 @@ async function loadEventBundle(eventId: number) {
   const markStats = avgMedian(markTimes);
   const row = event.rows[0];
   const startsAtMs = new Date(String(row.starts_at || '')).getTime();
-  const finishDurations = players.rows
+  const marksByPlayer = new Map<number, number>();
+  for (const mark of marks.rows) {
+    const pid = Number(mark.player_id);
+    marksByPlayer.set(pid, (marksByPlayer.get(pid) || 0) + 1);
+  }
+
+  const finishEntries = players.rows
     .filter((p) => p.finished_at)
     .map((p) => {
       const finished = new Date(String(p.finished_at || '')).getTime();
-      if (!Number.isFinite(startsAtMs) || !Number.isFinite(finished) || finished < startsAtMs) return null;
-      return finished - startsAtMs;
-    })
+      const duration = Number.isFinite(startsAtMs) && Number.isFinite(finished) && finished >= startsAtMs
+        ? finished - startsAtMs
+        : null;
+      return {
+        id: Number(p.id),
+        static_id: String(p.static_id || ''),
+        place: p.place != null ? Number(p.place) : null,
+        finished_at: p.finished_at,
+        durationMs: duration,
+      };
+    });
+  const finishDurations = finishEntries
+    .map((p) => p.durationMs)
     .filter((v): v is number => v != null);
   const finishStats = avgMedian(finishDurations);
+  const blockedCount = players.rows.filter((p) => p.is_blocked).length;
+  const finishedCount = players.rows.filter((p) => p.finished_at).length;
+  const inProgressCount = players.rows.filter((p) => {
+    if (p.is_blocked || p.finished_at) return false;
+    return (marksByPlayer.get(Number(p.id)) || 0) > 0;
+  }).length;
+  const notStartedCount = Math.max(0, players.rows.length - finishedCount - inProgressCount - blockedCount);
+  const winnersAssigned = winners.filter((w) => String(w.static_id || '').trim()).length;
+  const marksTotal = marks.rows.length;
+  const marksPossible = players.rows.length * checkpointIds.length;
+  const avgMarksPerPlayer = players.rows.length
+    ? Math.round((marksTotal / players.rows.length) * 10) / 10
+    : 0;
+  const leaders = [...finishEntries]
+    .sort((a, b) => {
+      if (a.place != null && b.place != null) return a.place - b.place;
+      if (a.place != null) return -1;
+      if (b.place != null) return 1;
+      return (a.durationMs ?? Number.POSITIVE_INFINITY) - (b.durationMs ?? Number.POSITIVE_INFINITY);
+    })
+    .slice(0, 5);
 
   const liveStamp = createHash('sha1')
     .update(JSON.stringify({
@@ -403,15 +444,29 @@ async function loadEventBundle(eventId: number) {
     liveStamp,
     stats: {
       players: players.rows.length,
-      finished: players.rows.filter((p) => p.finished_at).length,
+      finished: finishedCount,
+      blocked: blockedCount,
+      inProgress: inProgressCount,
+      notStarted: notStartedCount,
+      active: players.rows.length - blockedCount,
+      finishRate: players.rows.length ? Math.round((finishedCount / players.rows.length) * 100) : 0,
       staff: staff.rows.length,
       organizers: staff.rows.filter((s) => s.role === 'organizer').length,
+      helpers: staff.rows.filter((s) => s.role !== 'organizer').length,
       checkpoints: checkpointIds.length,
       checkpointStats,
+      marksTotal,
+      marksPossible,
+      avgMarksPerPlayer,
+      winnersTotal: winners.length,
+      winnersAssigned,
       avgMarkedAt: markStats.avg != null ? new Date(markStats.avg).toISOString() : null,
       medianMarkedAt: markStats.median != null ? new Date(markStats.median).toISOString() : null,
       avgFinishMs: finishStats.avg,
       medianFinishMs: finishStats.median,
+      minFinishMs: finishDurations.length ? Math.min(...finishDurations) : null,
+      maxFinishMs: finishDurations.length ? Math.max(...finishDurations) : null,
+      leaders,
     },
   };
 }
@@ -787,6 +842,67 @@ export const handleGmp: ApiHandler = async ({ key, params, method, body, request
     return ok();
   }
 
+  if (key === 'gmp-players' && method === 'PUT') {
+    const user = await required();
+    if (user instanceof NextResponse) return user;
+    if (!(await canMark(user, eventId))) return jsonError('Недостаточно прав.', 403);
+    const closed = await assertNotClosed(eventId);
+    if (closed) return closed;
+    const playerId = asInt(body.playerId ?? body.player_id ?? params.playerId);
+    if (!playerId) return jsonError('Укажите игрока.', 400);
+    const action = String(body.action || '').trim();
+    const existing = await query<{ id: number; is_blocked: boolean }>(
+      'SELECT id, is_blocked FROM gmp_players WHERE id=$1 AND event_id=$2',
+      [playerId, eventId],
+    );
+    if (!existing.rows[0]) return jsonError('Игрок не найден.', 404);
+
+    if (action === 'block') {
+      const reason = String(body.reason || '').trim();
+      if (!reason) return jsonError('Укажите причину блокировки.', 400);
+      if (reason.length > 300) return jsonError('Причина слишком длинная (максимум 300 символов).', 400);
+      await query(
+        `UPDATE gmp_players
+         SET is_blocked=TRUE, block_reason=$3, blocked_by=$4, blocked_at=now()
+         WHERE id=$1 AND event_id=$2`,
+        [playerId, eventId, reason, user.id],
+      );
+      await writeAudit({
+        actorId: user.id,
+        action: 'gmp.player_block',
+        entityType: 'gmp',
+        entityId: eventId,
+        details: { playerId, reason },
+      });
+    } else if (action === 'unblock') {
+      await query(
+        `UPDATE gmp_players
+         SET is_blocked=FALSE, block_reason='', blocked_by=NULL, blocked_at=NULL
+         WHERE id=$1 AND event_id=$2`,
+        [playerId, eventId],
+      );
+      await writeAudit({
+        actorId: user.id,
+        action: 'gmp.player_unblock',
+        entityType: 'gmp',
+        entityId: eventId,
+        details: { playerId },
+      });
+    } else {
+      return jsonError('Неизвестное действие.', 400);
+    }
+
+    const bundle = await loadEventBundle(eventId);
+    return NextResponse.json({
+      ok: true,
+      players: bundle?.players || [],
+      marks: bundle?.marks || [],
+      winners: bundle?.winners || [],
+      stats: bundle?.stats || null,
+      liveStamp: bundle?.liveStamp || null,
+    });
+  }
+
   if (key === 'gmp-marks' && method === 'PUT') {
     const user = await required();
     if (user instanceof NextResponse) return user;
@@ -798,11 +914,14 @@ export const handleGmp: ApiHandler = async ({ key, params, method, body, request
     const marked = body.marked !== false && body.marked !== 'false';
     if (!playerId || !checkpointId) return jsonError('Укажите игрока и чекпоинт.', 400);
 
-    const player = await query('SELECT id FROM gmp_players WHERE id=$1 AND event_id=$2', [
-      playerId,
-      eventId,
-    ]);
+    const player = await query<{ id: number; is_blocked: boolean }>(
+      'SELECT id, is_blocked FROM gmp_players WHERE id=$1 AND event_id=$2',
+      [playerId, eventId],
+    );
     if (!player.rows[0]) return jsonError('Игрок не найден.', 404);
+    if (player.rows[0].is_blocked) {
+      return jsonError('Игрок заблокирован: отметки заморожены.', 400);
+    }
     const checkpoint = await query(
       'SELECT id FROM gmp_checkpoints WHERE id=$1 AND event_id=$2',
       [checkpointId, eventId],

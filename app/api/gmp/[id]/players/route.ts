@@ -7,6 +7,10 @@ export async function POST(request: NextRequest, context: Context) {
   return handle('gmp-players', request, context);
 }
 
+export async function PUT(request: NextRequest, context: Context) {
+  return handle('gmp-players', request, context);
+}
+
 export async function DELETE(request: NextRequest, context: Context) {
   return handle('gmp-players', request, context);
 }

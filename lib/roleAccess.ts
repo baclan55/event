@@ -83,7 +83,7 @@ export type GmpPermissionAccess = PermissionAccess & Record<GmpCap, boolean>;
 
 export const GMP_CAP_LABELS: Record<GmpCap, string> = {
   create: 'Создание',
-  manage_staff: 'Помощники / staff',
+  manage_staff: 'Состав (помощники)',
   edit_winners: 'Список победителей',
   edit_body: 'Описание ГМП',
   edit_checkpoints: 'Таблица точек',

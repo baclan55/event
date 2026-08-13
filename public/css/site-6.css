@@ -1,10 +1,53 @@
 
+.gmp-actions-cell{
+  white-space:nowrap; display:flex; align-items:center; justify-content:center; gap:6px;
+}
+.gmp-winners-grid{
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px;
+}
+.gmp-checkpoint-list{
+  margin:0; padding-left:1.2em; display:flex; flex-direction:column; gap:6px;
+  color:var(--text-body); font-size:13.5px; line-height:1.4;
+}
+.gmp-stats-tags{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+.gmp-charts{
+  display:grid; grid-template-columns:minmax(200px,260px) 1fr; gap:14px; margin-bottom:8px;
+}
+.gmp-chart-card{
+  border:1px solid var(--border); border-radius:var(--radius-md);
+  background:var(--bg-card-2); padding:14px 14px 12px;
+}
+.gmp-chart-title{
+  font-size:13px; font-weight:600; color:var(--text-muted); margin-bottom:10px;
+}
+.gmp-donut-wrap{ position:relative; width:140px; height:140px; margin:0 auto 10px; }
+.gmp-donut{ width:140px; height:140px; transform:rotate(-90deg); }
+.gmp-donut-track,.gmp-donut-value{
+  fill:none; stroke-width:14;
+}
+.gmp-donut-track{ stroke:rgba(255,255,255,.08); }
+.gmp-donut-value{
+  stroke:var(--green); stroke-linecap:round;
+  transition:stroke-dasharray .35s ease;
+}
+.gmp-donut-center{
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:2px; pointer-events:none;
+}
+.gmp-donut-center strong{ font-size:22px; line-height:1.1; color:var(--text-body); }
+.gmp-donut-center span{ font-size:12px; color:var(--text-muted); }
+.gmp-chart-legend{
+  display:flex; flex-wrap:wrap; gap:10px 14px; justify-content:center;
+  font-size:12px; color:var(--text-muted);
+}
 .gmp-dot{
   display:inline-block; width:8px; height:8px; border-radius:50%;
   margin-right:6px; vertical-align:middle;
 }
 .gmp-dot-finish{ background:var(--green); }
+.gmp-dot-progress{ background:var(--accent-light); }
 .gmp-dot-rest{ background:rgba(255,255,255,.18); }
+.gmp-dot-blocked{ background:var(--red); }
 .gmp-bars{
   display:flex; align-items:flex-end; gap:10px; min-height:160px;
   padding:4px 2px 0; overflow-x:auto;

@@ -4,13 +4,23 @@ import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { NavIcon } from '@/components/NavIcons';
-import { askConfirm, ErrorText, MarkdownFormField, Modal, request, type Row } from './shared';
+import { askConfirm, ErrorText, MarkdownFormField, Modal, request, Select, type Row } from './shared';
 
 const STATUS_LABEL: Record<string, string> = {
   draft: 'Черновик',
   open: 'Открыто',
   closed: 'Закрыто',
 };
+
+const STAFF_ROLE_LABEL: Record<string, string> = {
+  staff: 'Помощник',
+  organizer: 'Организатор',
+};
+
+function staffRoleLabel(role: unknown) {
+  const key = String(role || 'staff');
+  return STAFF_ROLE_LABEL[key] || key;
+}
 
 function formatDuration(ms: number | null | undefined) {
   if (ms == null || !Number.isFinite(ms) || ms < 0) return null;
@@ -40,7 +50,9 @@ function fromLocalInputValue(value: string) {
 function GmpStatsCharts({ stats }: { stats: Row }) {
   const players = Number(stats.players) || 0;
   const finished = Number(stats.finished) || 0;
-  const unfinished = Math.max(0, players - finished);
+  const blocked = Number(stats.blocked) || 0;
+  const inProgress = Number(stats.inProgress) || 0;
+  const notStarted = Number(stats.notStarted) || Math.max(0, players - finished - blocked - inProgress);
   const checkpointStats = ((stats.checkpointStats as Row[]) || []);
   const barMax = Math.max(100, ...checkpointStats.map((cp) => Number(cp.percent) || 0), 1);
 
@@ -48,6 +60,13 @@ function GmpStatsCharts({ stats }: { stats: Row }) {
   const donutC = 2 * Math.PI * donutR;
   const finishFrac = players > 0 ? finished / players : 0;
   const finishLen = donutC * finishFrac;
+
+  const statusParts = [
+    { key: 'finished', label: 'Финиш', value: finished, className: 'gmp-dot-finish' },
+    { key: 'progress', label: 'В процессе', value: inProgress, className: 'gmp-dot-progress' },
+    { key: 'idle', label: 'Без отметок', value: notStarted, className: 'gmp-dot-rest' },
+    { key: 'blocked', label: 'Блок', value: blocked, className: 'gmp-dot-blocked' },
+  ];
 
   return (
     <div className="gmp-charts">
@@ -71,8 +90,9 @@ function GmpStatsCharts({ stats }: { stats: Row }) {
           </div>
         </div>
         <div className="gmp-chart-legend">
-          <span><i className="gmp-dot gmp-dot-finish" /> Финиш · {finished}</span>
-          <span><i className="gmp-dot gmp-dot-rest" /> Без финиша · {unfinished}</span>
+          {statusParts.map((part) => (
+            <span key={part.key}><i className={`gmp-dot ${part.className}`} /> {part.label} · {part.value}</span>
+          ))}
         </div>
       </div>
 
@@ -179,20 +199,28 @@ function GmpFormFields({
         </div>
         <div className="field">
           <label>Кто написал ГМП</label>
-          <select className="input" name="writtenBy" required defaultValue={String(initial?.writtenBy || '')}>
-            <option value="">Выберите</option>
-            {members.map((m) => (
-              <option value={m.id} key={m.id}>{m.nickname} · {m.role_name || 'Без роли'}</option>
-            ))}
-          </select>
+          <Select
+            name="writtenBy"
+            required
+            placeholder="Выберите"
+            defaultValue={String(initial?.writtenBy || '')}
+            options={members.map((m) => ({
+              value: String(m.id),
+              label: `${m.nickname} · ${m.role_name || 'Без роли'}`,
+            }))}
+          />
         </div>
         <div className="field">
           <label>Статус</label>
-          <select className="input" name="status" defaultValue={initial?.status || 'draft'}>
-            <option value="draft">Черновик</option>
-            <option value="open">Открыто</option>
-            <option value="closed">Закрыто</option>
-          </select>
+          <Select
+            name="status"
+            defaultValue={initial?.status || 'draft'}
+            options={[
+              { value: 'draft', label: 'Черновик' },
+              { value: 'open', label: 'Открыто' },
+              { value: 'closed', label: 'Закрыто' },
+            ]}
+          />
         </div>
       </div>
 
@@ -244,29 +272,33 @@ function GmpFormFields({
           {filteredMembers.map((m) => {
             const picked = staff.find((s) => s.userId === Number(m.id));
             return (
-              <label className="gmp-staff-row" key={m.id}>
-                <input
-                  type="checkbox"
-                  checked={!!picked}
-                  onChange={() => toggleStaff(Number(m.id))}
-                />
-                <span>{m.nickname}{m.static_id ? ` · #${m.static_id}` : ''}</span>
+              <div className="gmp-staff-row" key={m.id}>
+                <label className="gmp-staff-check">
+                  <input
+                    type="checkbox"
+                    checked={!!picked}
+                    onChange={() => toggleStaff(Number(m.id))}
+                  />
+                  <span>{m.nickname}{m.static_id ? ` · #${m.static_id}` : ''}</span>
+                </label>
                 {picked ? (
-                  <select
-                    className="input"
+                  <Select
                     value={picked.role}
-                    onChange={(e) => setStaffRole(Number(m.id), e.target.value === 'organizer' ? 'organizer' : 'staff')}
-                  >
-                    <option value="staff">staff</option>
-                    <option value="organizer">organizer</option>
-                  </select>
+                    onChange={(v) => setStaffRole(Number(m.id), v === 'organizer' ? 'organizer' : 'staff')}
+                    options={[
+                      { value: 'staff', label: staffRoleLabel('staff') },
+                      { value: 'organizer', label: staffRoleLabel('organizer') },
+                    ]}
+                  />
                 ) : <span />}
-              </label>
+              </div>
             );
           })}
           {!filteredMembers.length && <div className="role-tag">Никого не найдено</div>}
         </div>
-        <div className="field-hint">Выбрано: {staff.length}. Organizer может редактировать карточку ГМП.</div>
+        <div className="field-hint">
+          Выбрано: {staff.length}. Организатор может редактировать карточку ГМП.
+        </div>
         <input type="hidden" name="staffJson" value={JSON.stringify(staff)} />
       </div>
 
@@ -462,12 +494,15 @@ export function GmpInteractive() {
         >
           <div className="field">
             <label>Фильтр: кто написал</label>
-            <select className="input" value={authorFilter} onChange={(e) => setAuthorFilter(e.target.value)}>
-              <option value="">Все авторы</option>
-              {members.map((m) => (
-                <option value={String(m.id)} key={m.id}>{m.nickname}</option>
-              ))}
-            </select>
+            <Select
+              value={authorFilter}
+              onChange={setAuthorFilter}
+              placeholder="Все авторы"
+              options={[
+                { value: '', label: 'Все авторы' },
+                ...members.map((m) => ({ value: String(m.id), label: String(m.nickname) })),
+              ]}
+            />
           </div>
           <div className="field" style={{ justifyContent: 'flex-end' }}>
             <button className="btn btn-ghost btn-sm" style={{ marginTop: 22 }} type="submit">Применить</button>
@@ -490,7 +525,7 @@ export function GmpInteractive() {
                 {' · '}
                 написал {item.written_by_nickname || '—'}
                 {' · '}
-                staff {item.staff_count || 0}
+                состав {item.staff_count || 0}
                 {' · '}
                 игроков {item.player_count || 0}
               </div>
@@ -509,7 +544,7 @@ export function GmpInteractive() {
       {!events.length && (
         <div className="empty-state">
           <h3>ГМП пока нет</h3>
-          <p>Создайте первое мероприятие или дождитесь назначения в staff.</p>
+          <p>Создайте первое мероприятие или дождитесь назначения в состав.</p>
         </div>
       )}
 
@@ -538,7 +573,10 @@ export function GmpDetailInteractive({ eventId }: { eventId: number }) {
   const [staticId, setStaticId] = useState('');
   const [busyMark, setBusyMark] = useState('');
   const [winnerDraft, setWinnerDraft] = useState<WinnerRow[]>([]);
-  const [detailTab, setDetailTab] = useState<'marks' | 'stats'>('marks');
+  const [detailTab, setDetailTab] = useState<'info' | 'table' | 'stats' | 'winners'>('info');
+  const [blockingPlayer, setBlockingPlayer] = useState<Row | null>(null);
+  const [blockReason, setBlockReason] = useState('');
+  const [busyBlock, setBusyBlock] = useState(false);
   const liveStampRef = useRef('');
 
   async function load() {
@@ -681,6 +719,61 @@ export function GmpDetailInteractive({ eventId }: { eventId: number }) {
     }
   }
 
+  function applyPlayersLive(data: Row) {
+    if (data.liveStamp) liveStampRef.current = String(data.liveStamp);
+    setBundle((prev) => (prev ? {
+      ...prev,
+      players: data.players,
+      marks: data.marks,
+      winners: data.winners,
+      stats: data.stats,
+      liveStamp: data.liveStamp || prev.liveStamp,
+    } : prev));
+  }
+
+  async function submitBlock(event: FormEvent) {
+    event.preventDefault();
+    if (!blockingPlayer) return;
+    const reason = blockReason.trim();
+    if (!reason) return setError('Укажите причину блокировки.');
+    setBusyBlock(true);
+    setError('');
+    try {
+      const data = await request(`/api/gmp/${eventId}/players`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          action: 'block',
+          playerId: Number(blockingPlayer.id),
+          reason,
+        }),
+      });
+      applyPlayersLive(data);
+      setBlockingPlayer(null);
+      setBlockReason('');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusyBlock(false);
+    }
+  }
+
+  async function unblockPlayer(player: Row) {
+    if (!(await askConfirm(
+      `Снять блокировку с #${player.static_id}? Отметки снова можно будет менять.`,
+      { title: 'ГМП', confirmLabel: 'Разблокировать', danger: false },
+    ))) return;
+    setError('');
+    try {
+      const data = await request(`/api/gmp/${eventId}/players`, {
+        method: 'PUT',
+        body: JSON.stringify({ action: 'unblock', playerId: Number(player.id) }),
+      });
+      applyPlayersLive(data);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
   async function toggleMark(playerId: number, checkpointId: number, marked: boolean) {
     const key = `${playerId}:${checkpointId}`;
     setBusyMark(key);
@@ -690,15 +783,7 @@ export function GmpDetailInteractive({ eventId }: { eventId: number }) {
         method: 'PUT',
         body: JSON.stringify({ playerId, checkpointId, marked }),
       });
-      if (data.liveStamp) liveStampRef.current = String(data.liveStamp);
-      setBundle((prev) => (prev ? {
-        ...prev,
-        players: data.players,
-        marks: data.marks,
-        winners: data.winners,
-        stats: data.stats,
-        liveStamp: data.liveStamp || prev.liveStamp,
-      } : prev));
+      applyPlayersLive(data);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -782,61 +867,20 @@ export function GmpDetailInteractive({ eventId }: { eventId: number }) {
         </div>
       ) : null}
 
-      <div className="card card-pad" style={{ marginBottom: 16 }}>
-        <div className="card-header">
-          <h3>{String(event.title)}</h3>
-          <span className={`badge ${isClosed ? 'badge-muted' : event.status === 'open' ? 'badge-green' : 'badge-amber'}`}>
-            {STATUS_LABEL[String(event.status)] || String(event.status)}
-          </span>
-        </div>
-        <div className="role-tag">
-          {new Date(String(event.starts_at)).toLocaleString('ru-RU')}
-          {' · написал '}
-          {String(event.written_by_nickname || '—')}
-        </div>
-        {event.bodyHtml ? (
-          <div className="md-body" style={{ marginTop: 12 }} dangerouslySetInnerHTML={{ __html: String(event.bodyHtml) }} />
-        ) : null}
-      </div>
-
-      <div className="card card-pad" style={{ marginBottom: 16 }}>
-        <div className="card-header">
-          <h3>Победители</h3>
-          {canEditWinners ? (
-            <button className="btn btn-ghost btn-sm" type="button" onClick={openWinnersEditor}>
-              <NavIcon name="edit" /> Изменить
-            </button>
-          ) : null}
-        </div>
-        <div className="field-hint" style={{ marginBottom: 10 }}>
-          Список для ручной выдачи наград. Автозаполнение StaticID из финиша — только в пустые места.
-        </div>
-        <div className="gmp-winners-grid">
-          {winners.map((w) => (
-            <div className="roster-row" key={w.place}>
-              <div className="who">
-                <div>
-                  <div className="nickname">
-                    {Number(w.place)}. · {w.static_id ? `#${w.static_id}` : 'не назначен'}
-                  </div>
-                  <div className="role-tag">
-                    ${Number(w.dollars) || 0} · {Number(w.mc) || 0} MC · {Number(w.battle_pass_xp) || 0} опыта БП
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-        {!winners.length && <div className="empty-state"><h3>Места не заданы</h3></div>}
-      </div>
-
       <div className="segmented roster-tabs" style={{ marginBottom: 16 }}>
         <button
           type="button"
-          className={detailTab === 'marks' ? 'active' : ''}
-          onClick={() => setDetailTab('marks')}
+          className={detailTab === 'info' ? 'active' : ''}
+          onClick={() => setDetailTab('info')}
         >
-          Отметки · {players.length}
+          Описание
+        </button>
+        <button
+          type="button"
+          className={detailTab === 'table' ? 'active' : ''}
+          onClick={() => setDetailTab('table')}
+        >
+          Таблица · {players.length}
         </button>
         <button
           type="button"
@@ -845,9 +889,69 @@ export function GmpDetailInteractive({ eventId }: { eventId: number }) {
         >
           Статистика
         </button>
+        <button
+          type="button"
+          className={detailTab === 'winners' ? 'active' : ''}
+          onClick={() => setDetailTab('winners')}
+        >
+          Победители · {winners.filter((w) => w.static_id).length}/{winners.length || 0}
+        </button>
       </div>
 
-      {detailTab === 'marks' ? (
+      {detailTab === 'info' ? (
+        <>
+          <div className="card card-pad" style={{ marginBottom: 16 }}>
+            <div className="card-header">
+              <h3>{String(event.title)}</h3>
+              <span className={`badge ${isClosed ? 'badge-muted' : event.status === 'open' ? 'badge-green' : 'badge-amber'}`}>
+                {STATUS_LABEL[String(event.status)] || String(event.status)}
+              </span>
+            </div>
+            <div className="role-tag">
+              {new Date(String(event.starts_at)).toLocaleString('ru-RU')}
+              {' · написал '}
+              {String(event.written_by_nickname || '—')}
+            </div>
+            {event.bodyHtml ? (
+              <div className="md-body" style={{ marginTop: 12 }} dangerouslySetInnerHTML={{ __html: String(event.bodyHtml) }} />
+            ) : (
+              <div className="field-hint" style={{ marginTop: 12 }}>Описание пока не заполнено.</div>
+            )}
+          </div>
+
+          <div className="form-row-2" style={{ marginBottom: 16 }}>
+            <div className="card card-pad">
+              <div className="card-header"><h3>Чекпоинты</h3></div>
+              {checkpoints.length ? (
+                <ol className="gmp-checkpoint-list">
+                  {checkpoints.map((cp) => (
+                    <li key={cp.id}>{String(cp.name)}</li>
+                  ))}
+                </ol>
+              ) : (
+                <div className="empty-state"><h3>Точки не заданы</h3></div>
+              )}
+            </div>
+            <div className="card card-pad">
+              <div className="card-header"><h3>Состав</h3></div>
+              {staff.length ? staff.map((s) => (
+                <div className="roster-row" key={s.user_id}>
+                  <div className="who">
+                    <div>
+                      <div className="nickname">{String(s.nickname)}</div>
+                      <div className="role-tag">{staffRoleLabel(s.role)}</div>
+                    </div>
+                  </div>
+                </div>
+              )) : (
+                <div className="empty-state"><h3>Состав не назначен</h3></div>
+              )}
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {detailTab === 'table' ? (
         <div className="card card-pad" style={{ marginBottom: 16 }}>
           <div className="card-header"><h3>Таблица отметок</h3></div>
           {canMark ? (
@@ -871,56 +975,133 @@ export function GmpDetailInteractive({ eventId }: { eventId: number }) {
                   <th>StaticID</th>
                   {checkpoints.map((cp) => <th key={cp.id}>{String(cp.name)}</th>)}
                   <th>Место</th>
-                  {canMark ? <th /> : null}
+                  <th>Статус</th>
+                  {canMark ? <th>Действия</th> : null}
                 </tr>
               </thead>
               <tbody>
-                {players.map((player) => (
-                  <tr key={player.id}>
-                    <td>#{String(player.static_id)}</td>
-                    {checkpoints.map((cp) => {
-                      const key = `${player.id}:${cp.id}`;
-                      const checked = markSet.has(key);
-                      return (
-                        <td key={cp.id}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={!canMark || busyMark === key || isClosed}
-                            onChange={() => void toggleMark(Number(player.id), Number(cp.id), !checked)}
-                          />
-                        </td>
-                      );
-                    })}
-                    <td>{player.place != null ? String(player.place) : '—'}</td>
-                    {canMark ? (
-                      <td>
-                        <button className="icon-btn danger" type="button" onClick={() => void removePlayer(Number(player.id))}>
-                          <NavIcon name="trash" />
-                        </button>
+                {players.map((player) => {
+                  const blocked = !!player.is_blocked;
+                  return (
+                    <tr key={player.id} className={blocked ? 'is-blocked' : undefined}>
+                      <td>#{String(player.static_id)}</td>
+                      {checkpoints.map((cp) => {
+                        const key = `${player.id}:${cp.id}`;
+                        const checked = markSet.has(key);
+                        return (
+                          <td key={cp.id}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={!canMark || blocked || busyMark === key || isClosed}
+                              onChange={() => void toggleMark(Number(player.id), Number(cp.id), !checked)}
+                            />
+                          </td>
+                        );
+                      })}
+                      <td>{player.place != null ? String(player.place) : '—'}</td>
+                      <td className="gmp-status-cell">
+                        {blocked ? (
+                          <div className="gmp-block-info">
+                            <span className="badge badge-red">Заблокирован</span>
+                            <div className="gmp-block-reason">{String(player.block_reason || '—')}</div>
+                            <div className="gmp-block-meta">
+                              {player.blocked_by_nickname
+                                ? String(player.blocked_by_nickname)
+                                : 'неизвестно'}
+                              {player.blocked_at
+                                ? ` · ${new Date(String(player.blocked_at)).toLocaleString('ru-RU')}`
+                                : ''}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="role-tag">Активен</span>
+                        )}
                       </td>
-                    ) : null}
-                  </tr>
-                ))}
+                      {canMark ? (
+                        <td className="gmp-actions-cell">
+                          {blocked ? (
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              type="button"
+                              disabled={isClosed}
+                              onClick={() => void unblockPlayer(player)}
+                            >
+                              Разблокировать
+                            </button>
+                          ) : (
+                            <button
+                              className="btn btn-danger btn-sm"
+                              type="button"
+                              disabled={isClosed}
+                              onClick={() => {
+                                setError('');
+                                setBlockReason('');
+                                setBlockingPlayer(player);
+                              }}
+                            >
+                              Заблокировать
+                            </button>
+                          )}
+                          <button
+                            className="icon-btn danger"
+                            type="button"
+                            title="Убрать из таблицы"
+                            disabled={isClosed}
+                            onClick={() => void removePlayer(Number(player.id))}
+                          >
+                            <NavIcon name="trash" />
+                          </button>
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {!players.length && <div className="empty-state"><h3>Игроков пока нет</h3></div>}
           </div>
         </div>
-      ) : (
+      ) : null}
+
+      {detailTab === 'stats' ? (
         <div className="card card-pad" style={{ marginBottom: 16 }}>
           <div className="card-header"><h3>Статистика</h3></div>
           {canViewStats && stats ? (
             <>
               <div className="gmp-stats-tags">
                 <div className="role-tag">Игроков: {Number(stats.players) || 0}</div>
-                <div className="role-tag">Финиш: {Number(stats.finished) || 0}</div>
-                <div className="role-tag">Staff: {Number(stats.staff) || 0} (organizer: {Number(stats.organizers) || 0})</div>
+                <div className="role-tag">Активных: {Number(stats.active) || 0}</div>
+                <div className="role-tag">Финиш: {Number(stats.finished) || 0} ({Number(stats.finishRate) || 0}%)</div>
+                <div className="role-tag">В процессе: {Number(stats.inProgress) || 0}</div>
+                <div className="role-tag">Без отметок: {Number(stats.notStarted) || 0}</div>
+                <div className="role-tag">Заблокировано: {Number(stats.blocked) || 0}</div>
+                <div className="role-tag">
+                  Состав: {Number(stats.staff) || 0}
+                  {' · '}
+                  {staffRoleLabel('organizer')}: {Number(stats.organizers) || 0}
+                  {' · '}
+                  {staffRoleLabel('staff')}: {Number(stats.helpers) || 0}
+                </div>
+                <div className="role-tag">
+                  Отметок: {Number(stats.marksTotal) || 0}
+                  {Number(stats.marksPossible) ? ` / ${Number(stats.marksPossible)}` : ''}
+                </div>
+                <div className="role-tag">Среднее отметок на игрока: {Number(stats.avgMarksPerPlayer) || 0}</div>
+                <div className="role-tag">
+                  Победители: {Number(stats.winnersAssigned) || 0}/{Number(stats.winnersTotal) || 0}
+                </div>
                 {formatDuration(stats.avgFinishMs as number | null) ? (
                   <div className="role-tag">Среднее время финиша: {formatDuration(stats.avgFinishMs as number | null)}</div>
                 ) : null}
                 {formatDuration(stats.medianFinishMs as number | null) ? (
                   <div className="role-tag">Медиана финиша: {formatDuration(stats.medianFinishMs as number | null)}</div>
+                ) : null}
+                {formatDuration(stats.minFinishMs as number | null) ? (
+                  <div className="role-tag">Лучшее время: {formatDuration(stats.minFinishMs as number | null)}</div>
+                ) : null}
+                {formatDuration(stats.maxFinishMs as number | null) ? (
+                  <div className="role-tag">Худшее время: {formatDuration(stats.maxFinishMs as number | null)}</div>
                 ) : null}
                 {stats.avgMarkedAt ? (
                   <div className="role-tag">
@@ -934,28 +1115,82 @@ export function GmpDetailInteractive({ eventId }: { eventId: number }) {
                 ) : null}
               </div>
               <GmpStatsCharts stats={stats} />
-              <div style={{ marginTop: 14 }}>
-                <div className="card-header"><h3>По точкам</h3></div>
-                {((stats.checkpointStats as Row[]) || []).map((cp) => (
-                  <div className="role-tag" key={cp.id}>
-                    {String(cp.name)}: {Number(cp.percent) || 0}% ({Number(cp.marked) || 0})
-                  </div>
-                ))}
+              <div className="form-row-2" style={{ marginTop: 14 }}>
+                <div>
+                  <div className="card-header"><h3>По точкам</h3></div>
+                  {((stats.checkpointStats as Row[]) || []).map((cp) => (
+                    <div className="role-tag" key={cp.id}>
+                      {String(cp.name)}: {Number(cp.percent) || 0}% ({Number(cp.marked) || 0})
+                    </div>
+                  ))}
+                  {!((stats.checkpointStats as Row[]) || []).length && (
+                    <div className="field-hint">Нет контрольных точек</div>
+                  )}
+                </div>
+                <div>
+                  <div className="card-header"><h3>Лидеры финиша</h3></div>
+                  {((stats.leaders as Row[]) || []).map((leader) => (
+                    <div className="roster-row" key={leader.id}>
+                      <div className="who">
+                        <div>
+                          <div className="nickname">
+                            {leader.place != null ? `${leader.place}. ` : ''}
+                            #{String(leader.static_id)}
+                          </div>
+                          <div className="role-tag">
+                            {formatDuration(leader.durationMs as number | null) || 'время н/д'}
+                            {leader.finished_at
+                              ? ` · ${new Date(String(leader.finished_at)).toLocaleString('ru-RU')}`
+                              : ''}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {!((stats.leaders as Row[]) || []).length && (
+                    <div className="field-hint">Пока никто не финишировал</div>
+                  )}
+                </div>
               </div>
             </>
           ) : (
             <div className="empty-state"><h3>Нет доступа к статистике</h3></div>
           )}
-          <div style={{ marginTop: 12 }}>
-            <div className="card-header"><h3>Staff</h3></div>
-            {staff.map((s) => (
-              <div className="role-tag" key={s.user_id}>
-                {String(s.nickname)} · {String(s.role)}
+        </div>
+      ) : null}
+
+      {detailTab === 'winners' ? (
+        <div className="card card-pad" style={{ marginBottom: 16 }}>
+          <div className="card-header">
+            <h3>Победители</h3>
+            {canEditWinners ? (
+              <button className="btn btn-ghost btn-sm" type="button" onClick={openWinnersEditor}>
+                <NavIcon name="edit" /> Изменить
+              </button>
+            ) : null}
+          </div>
+          <div className="field-hint" style={{ marginBottom: 10 }}>
+            Список для ручной выдачи наград. Автозаполнение StaticID из финиша — только в пустые места.
+          </div>
+          <div className="gmp-winners-grid">
+            {winners.map((w) => (
+              <div className="roster-row" key={w.place}>
+                <div className="who">
+                  <div>
+                    <div className="nickname">
+                      {Number(w.place)}. · {w.static_id ? `#${w.static_id}` : 'не назначен'}
+                    </div>
+                    <div className="role-tag">
+                      ${Number(w.dollars) || 0} · {Number(w.mc) || 0} MC · {Number(w.battle_pass_xp) || 0} опыта БП
+                    </div>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
+          {!winners.length && <div className="empty-state"><h3>Места не заданы</h3></div>}
         </div>
-      )}
+      ) : null}
 
       {editing && (
         <Modal title="Редактирование ГМП" onClose={() => setEditing(false)} editor>
@@ -990,7 +1225,7 @@ export function GmpDetailInteractive({ eventId }: { eventId: number }) {
               Сохранятся только поля, на которые есть права
               {[
                 canEditBody ? 'описание/статус' : null,
-                canManageStaff ? 'staff' : null,
+                canManageStaff ? 'состав' : null,
                 canEditCheckpoints ? 'точки' : null,
                 canEditWinners ? 'победители' : null,
               ].filter(Boolean).join(', ') || '—'}.
@@ -1107,6 +1342,52 @@ export function GmpDetailInteractive({ eventId }: { eventId: number }) {
             <div className="modal-actions">
               <button type="button" className="btn btn-ghost" onClick={() => setEditingWinners(false)}>Отмена</button>
               <button className="btn btn-primary">Сохранить</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {blockingPlayer && canMark && (
+        <Modal
+          title={`Блокировка #${blockingPlayer.static_id}`}
+          onClose={() => {
+            if (!busyBlock) {
+              setBlockingPlayer(null);
+              setBlockReason('');
+            }
+          }}
+        >
+          <form onSubmit={submitBlock}>
+            <ErrorText value={error} />
+            <p className="modal-sub" style={{ textAlign: 'left' }}>
+              Отметки игрока будут заморожены. Причину увидят все, у кого есть доступ к таблице.
+            </p>
+            <div className="field">
+              <label>Причина</label>
+              <textarea
+                className="input"
+                required
+                maxLength={300}
+                value={blockReason}
+                onChange={(e) => setBlockReason(e.target.value)}
+                placeholder="Укажите причину блокировки"
+              />
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busyBlock}
+                onClick={() => {
+                  setBlockingPlayer(null);
+                  setBlockReason('');
+                }}
+              >
+                Отмена
+              </button>
+              <button className="btn btn-danger" disabled={busyBlock || !blockReason.trim()}>
+                {busyBlock ? 'Блокировка…' : 'Заблокировать'}
+              </button>
             </div>
           </form>
         </Modal>
