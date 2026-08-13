@@ -1,10 +1,15 @@
 import { query } from '@/lib/db';
-import type { AchievementTrigger } from '@/lib/achievementsShared';
+import { runtimeEnv } from '@/lib/runtimeEnv';
+import type { AchievementTrigger, GmpPeriod } from '@/lib/achievementsShared';
+import { GMP_PERIODS } from '@/lib/achievementsShared';
 
 export {
   ACHIEVEMENT_TRIGGERS,
   ACHIEVEMENT_TRIGGER_LABELS,
+  GMP_PERIODS,
+  GMP_PERIOD_LABELS,
   type AchievementTrigger,
+  type GmpPeriod,
 } from '@/lib/achievementsShared';
 
 export type AchievementRow = {
@@ -77,26 +82,82 @@ function nextGradeHint(item: AchievementRow, grade: number): string {
   if (item.trigger_type === 'reached_role') {
     return 'Для следующей степени: достигните следующей роли';
   }
+  if (item.trigger_type === 'gmp_total' || item.trigger_type === 'gmp_period') {
+    const thresholds = Array.isArray(cfg.grades)
+      ? (cfg.grades as number[])
+      : [Number(cfg.count) || 1];
+    const next = thresholds[grade];
+    if (next != null) {
+      const period = item.trigger_type === 'gmp_period' ? String(cfg.period || 'week') : '';
+      const periodLabel = period === 'month' ? 'за месяц' : period === 'year' ? 'за год' : period === 'week' ? 'за неделю' : '';
+      return `Для следующей степени: ${next} ГМП${periodLabel ? ` ${periodLabel}` : ''}`;
+    }
+  }
   return `Для следующей степени: ${grade + 1} / ${item.max_grade}`;
 }
 
-/** Каталог достижений для профиля: полученные / неполученные / скрытые. */
-export async function listProfileAchievementCatalog(userId: number): Promise<{
+function gradeFromThresholds(count: number, cfg: Record<string, unknown>, maxGrade: number) {
+  const thresholds = Array.isArray(cfg.grades)
+    ? (cfg.grades as number[])
+    : [Number(cfg.count) || 1];
+  let grade = 0;
+  for (let i = 0; i < thresholds.length && i < maxGrade; i++) {
+    if (count >= Number(thresholds[i])) grade = i + 1;
+  }
+  return grade;
+}
+
+async function countUserGmp(userId: number, period?: GmpPeriod | null) {
+  const tz = runtimeEnv('WEEKLY_RESET_TZ') || 'Europe/Moscow';
+  if (!period) {
+    const result = await query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM gmp_staff s
+       JOIN gmp_events e ON e.id = s.event_id
+       WHERE s.user_id = $1`,
+      [userId],
+    );
+    return Number(result.rows[0]?.count || 0);
+  }
+  const trunc = period === 'month' ? 'month' : period === 'year' ? 'year' : 'week';
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+     FROM gmp_staff s
+     JOIN gmp_events e ON e.id = s.event_id
+     WHERE s.user_id = $1
+       AND (e.starts_at AT TIME ZONE $2) >= date_trunc($3, now() AT TIME ZONE $2)`,
+    [userId, tz, trunc],
+  );
+  return Number(result.rows[0]?.count || 0);
+}
+
+/**
+ * Каталог достижений для профиля.
+ * Описание: у обычных — всегда; у скрытых — только если его получил сам зритель
+ * (в т.ч. при просмотре чужого профиля).
+ */
+export async function listProfileAchievementCatalog(
+  profileUserId: number,
+  viewerUserId: number = profileUserId,
+): Promise<{
   earned: ProfileAchievementCard[];
   locked: ProfileAchievementCard[];
-  hidden: ProfileAchievementCard[];
 }> {
-  const [all, earnedRows] = await Promise.all([
+  const needViewerEarned = viewerUserId !== profileUserId;
+  const [all, earnedRows, viewerEarnedRows] = await Promise.all([
     listAchievements(true),
-    listUserAchievements(userId),
+    listUserAchievements(profileUserId),
+    needViewerEarned ? listUserAchievements(viewerUserId) : Promise.resolve(null),
   ]);
   const byId = new Map(
     earnedRows.map((row) => [Number(row.achievement_id), row] as const),
   );
+  const viewerHas = new Set(
+    (viewerEarnedRows || earnedRows).map((row) => Number(row.achievement_id)),
+  );
 
   const earned: ProfileAchievementCard[] = [];
   const locked: ProfileAchievementCard[] = [];
-  const hidden: ProfileAchievementCard[] = [];
 
   for (const item of all) {
     const got = byId.get(item.id);
@@ -105,6 +166,9 @@ export async function listProfileAchievementCatalog(userId: number): Promise<{
     const icon = grade > 0
       ? (icons[grade - 1] || item.icon || icons[0] || '')
       : (icons[0] || item.icon || '');
+    const isHidden = !!item.is_hidden;
+    const canSeeDescription = !isHidden || viewerHas.has(item.id);
+    const description = canSeeDescription ? String(item.description || '') : '';
     const base = {
       id: item.id,
       name: item.name,
@@ -112,34 +176,38 @@ export async function listProfileAchievementCatalog(userId: number): Promise<{
       max_grade: item.max_grade,
       grade,
       awarded_at: got ? String(got.awarded_at) : null,
-      is_hidden: !!item.is_hidden,
+      is_hidden: isHidden,
       next_hint: '',
+      description,
     };
 
     if (got) {
       earned.push({
         ...base,
-        description: String(item.description || ''),
         status: 'earned',
         next_hint: nextGradeHint(item, grade),
       });
       continue;
     }
 
-    const lockedCard: ProfileAchievementCard = {
+    locked.push({
       ...base,
-      description: '',
-      status: item.is_hidden ? 'hidden' : 'locked',
+      status: isHidden ? 'hidden' : 'locked',
       next_hint: '',
-    };
-    if (item.is_hidden) hidden.push(lockedCard);
-    else locked.push(lockedCard);
+    });
   }
 
-  earned.sort((a, b) => String(b.awarded_at || '').localeCompare(String(a.awarded_at || '')));
-  locked.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-  hidden.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-  return { earned, locked, hidden };
+  // Полученные: скрытые сверху, затем по дате.
+  earned.sort((a, b) => {
+    if (a.is_hidden !== b.is_hidden) return a.is_hidden ? -1 : 1;
+    return String(b.awarded_at || '').localeCompare(String(a.awarded_at || ''));
+  });
+  // Не полученные: обычные сверху, скрытые в самом низу.
+  locked.sort((a, b) => {
+    if (a.is_hidden !== b.is_hidden) return a.is_hidden ? 1 : -1;
+    return a.name.localeCompare(b.name, 'ru');
+  });
+  return { earned, locked };
 }
 
 export type UserAchievementRow = {
@@ -265,6 +333,20 @@ export async function evaluateAchievementsForUser(userId: number): Promise<void>
              ORDER BY u.weekly_events DESC, u.id ASC LIMIT 1`,
       );
       if (top.rows[0]?.id === userId) await award(userId, item.id, 1);
+    }
+    if (item.trigger_type === 'gmp_total') {
+      const count = await countUserGmp(userId);
+      const grade = gradeFromThresholds(count, cfg, item.max_grade);
+      if (grade > 0) await award(userId, item.id, grade);
+    }
+    if (item.trigger_type === 'gmp_period') {
+      const periodRaw = String(cfg.period || 'week');
+      const period = (GMP_PERIODS as readonly string[]).includes(periodRaw)
+        ? (periodRaw as GmpPeriod)
+        : 'week';
+      const count = await countUserGmp(userId, period);
+      const grade = gradeFromThresholds(count, cfg, item.max_grade);
+      if (grade > 0) await award(userId, item.id, grade);
     }
   }
 }

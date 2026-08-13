@@ -408,3 +408,70 @@ CREATE TABLE IF NOT EXISTS user_achievements (
   PRIMARY KEY (user_id, achievement_id)
 );
 CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id);
+
+-- ГМП (большие мероприятия)
+CREATE TABLE IF NOT EXISTS gmp_events (
+  id          SERIAL PRIMARY KEY,
+  title       TEXT NOT NULL,
+  body        TEXT NOT NULL DEFAULT '',
+  starts_at   TIMESTAMPTZ NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'draft'
+                CHECK (status IN ('draft', 'open', 'closed')),
+  written_by  INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_gmp_events_starts ON gmp_events(starts_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gmp_events_status ON gmp_events(status);
+CREATE INDEX IF NOT EXISTS idx_gmp_events_written_by ON gmp_events(written_by);
+
+CREATE TABLE IF NOT EXISTS gmp_staff (
+  event_id  INTEGER NOT NULL REFERENCES gmp_events(id) ON DELETE CASCADE,
+  user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role      TEXT NOT NULL DEFAULT 'staff'
+              CHECK (role IN ('staff', 'organizer')),
+  credited  BOOLEAN NOT NULL DEFAULT FALSE,
+  PRIMARY KEY (event_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_gmp_staff_user ON gmp_staff(user_id);
+
+CREATE TABLE IF NOT EXISTS gmp_checkpoints (
+  id        SERIAL PRIMARY KEY,
+  event_id  INTEGER NOT NULL REFERENCES gmp_events(id) ON DELETE CASCADE,
+  position  INTEGER NOT NULL DEFAULT 0,
+  name      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gmp_checkpoints_event ON gmp_checkpoints(event_id, position);
+
+CREATE TABLE IF NOT EXISTS gmp_reward_places (
+  event_id         INTEGER NOT NULL REFERENCES gmp_events(id) ON DELETE CASCADE,
+  place            INTEGER NOT NULL CHECK (place >= 1),
+  dollars          INTEGER NOT NULL DEFAULT 0,
+  mc               INTEGER NOT NULL DEFAULT 0,
+  battle_pass_xp   INTEGER NOT NULL DEFAULT 0,
+  static_id        TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (event_id, place)
+);
+ALTER TABLE gmp_reward_places ADD COLUMN IF NOT EXISTS battle_pass_xp INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE gmp_reward_places ADD COLUMN IF NOT EXISTS static_id TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS gmp_players (
+  id          SERIAL PRIMARY KEY,
+  event_id    INTEGER NOT NULL REFERENCES gmp_events(id) ON DELETE CASCADE,
+  static_id   TEXT NOT NULL,
+  finished_at TIMESTAMPTZ,
+  place       INTEGER,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (event_id, static_id)
+);
+CREATE INDEX IF NOT EXISTS idx_gmp_players_event ON gmp_players(event_id);
+
+CREATE TABLE IF NOT EXISTS gmp_marks (
+  player_id     INTEGER NOT NULL REFERENCES gmp_players(id) ON DELETE CASCADE,
+  checkpoint_id INTEGER NOT NULL REFERENCES gmp_checkpoints(id) ON DELETE CASCADE,
+  marked_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  marked_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  PRIMARY KEY (player_id, checkpoint_id)
+);
+CREATE INDEX IF NOT EXISTS idx_gmp_marks_checkpoint ON gmp_marks(checkpoint_id);

@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { PublicUser } from '@/lib/auth';
 import { AUDIT_LABELS } from '@/lib/auditShared';
@@ -45,7 +46,7 @@ export function ProfileInteractive({
   const router = useRouter();
   const [user, setUser] = useState(initialUser);
   const [mode, setMode] = useState<'game' | null>(null);
-  const [tab, setTab] = useState<'reprimands' | 'achievements' | 'audit'>('reprimands');
+  const [tab, setTab] = useState<'reprimands' | 'achievements' | 'gmp' | 'audit'>('reprimands');
   const [gameForm, setGameForm] = useState({
     firstName: user.firstName || '',
     lastName: user.lastName || '',
@@ -55,6 +56,8 @@ export function ProfileInteractive({
   const [achievementCatalog, setAchievementCatalog] = useState<ProfileAchievementCatalog>(
     initialAchievementCatalog || emptyAchievementCatalog(),
   );
+  const [gmpItems, setGmpItems] = useState<Row[]>([]);
+  const [gmpWeekCount, setGmpWeekCount] = useState(0);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const needLast = !(user.isAdministrator && !user.isEventHelper);
@@ -108,12 +111,24 @@ export function ProfileInteractive({
     request('/api/achievements/me')
       .then((data) => setAchievementCatalog(catalogFromPayload(data)))
       .catch(() => undefined);
+    request('/api/gmp/user/' + initialUser.id)
+      .then((data) => {
+        setGmpItems(data.items || []);
+        setGmpWeekCount(Number(data.weekCount) || 0);
+      })
+      .catch(() => undefined);
   }, [reprimands, isSelf]);
 
   useEffect(() => {
     if (isSelf || !initialUser.id) return;
     request(`/api/achievements/user/${initialUser.id}`)
       .then((data) => setAchievementCatalog(catalogFromPayload(data)))
+      .catch(() => undefined);
+    request(`/api/gmp/user/${initialUser.id}`)
+      .then((data) => {
+        setGmpItems(data.items || []);
+        setGmpWeekCount(Number(data.weekCount) || 0);
+      })
       .catch(() => undefined);
   }, [isSelf, initialUser.id]);
 
@@ -184,12 +199,19 @@ export function ProfileInteractive({
             </div>
           ) : null}
         </div>
-        <div className="profile-weekly">
-          <div className="stat-value">{user.weeklyEvents}</div>
-          <div className="stat-label">мп за неделю</div>
-          <span className={`badge ${done ? 'badge-green' : 'badge-red'}`}>
-            {done ? 'норма выполнена' : `цель ${target}`}
-          </span>
+        <div className="profile-weekly-group">
+          <div className="profile-weekly">
+            <div className="stat-value">{user.weeklyEvents}</div>
+            <div className="stat-label">мп за неделю</div>
+            <span className={`badge ${done ? 'badge-green' : 'badge-red'}`}>
+              {done ? 'норма' : `цель ${target}`}
+            </span>
+          </div>
+          <div className="profile-weekly">
+            <div className="stat-value">{gmpWeekCount}</div>
+            <div className="stat-label">гмп за неделю</div>
+            <span className="badge badge-muted">всего {gmpItems.length}</span>
+          </div>
         </div>
       </div>
 
@@ -197,6 +219,7 @@ export function ProfileInteractive({
         <div className="segmented roster-tabs" style={{ marginBottom: 16 }}>
           <button className={tab === 'reprimands' ? 'active' : ''} onClick={() => setTab('reprimands')}>Выговоры · {rpData.reprimands.length}</button>
           <button className={tab === 'achievements' ? 'active' : ''} onClick={() => setTab('achievements')}>Достижения · {achievementCatalog.earned.length}</button>
+          <button className={tab === 'gmp' ? 'active' : ''} onClick={() => setTab('gmp')}>ГМП · {gmpWeekCount}/{gmpItems.length}</button>
           {(canViewAudit || initialUser.isOwner) ? (
             <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>Журнал · {audit.length}</button>
           ) : null}
@@ -223,6 +246,20 @@ export function ProfileInteractive({
           </>
         ) : tab === 'achievements' ? (
           <ProfileAchievementsPanel catalog={achievementCatalog} />
+        ) : tab === 'gmp' ? (
+          <>
+            <div className="card-header"><h3>ГМП</h3><span className="badge badge-muted">{gmpItems.length}</span></div>
+            {gmpItems.length ? gmpItems.map((item) => (
+              <div className="roster-row" key={item.id}>
+                <div className="who">
+                  <div>
+                    <div className="nickname"><Link href={`/app/gmp/${item.id}`}>{item.title}</Link></div>
+                    <div className="role-tag">{new Date(String(item.starts_at)).toLocaleString('ru-RU')} · {item.role} · {({ draft: 'Черновик', open: 'Открыто', closed: 'Закрыто' } as Record<string, string>)[String(item.status)] || item.status}</div>
+                  </div>
+                </div>
+              </div>
+            )) : <div className="empty-state"><h3>ГМП нет</h3><p>Пользователь ещё не участвовал в staff ГМП.</p></div>}
+          </>
         ) : (
           <>
             <div className="card-header"><h3>Журнал действий</h3><span className="badge badge-muted">{audit.length}</span></div>

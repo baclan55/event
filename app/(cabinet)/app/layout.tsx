@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getCurrentUser, publicUser } from '@/lib/auth';
+import { query } from '@/lib/db';
 import { runtimeEnv } from '@/lib/runtimeEnv';
 import { userHasAnyRole, userHasPermission } from '@/lib/roleAccess';
 import { CabinetShellServer } from '@/components/CabinetShellServer';
@@ -23,6 +24,7 @@ const TITLES: Record<string, string> = {
   '/app/roles': 'Роли и доступы',
   '/app/blacklist': 'Чёрный список',
   '/app/achievements': 'Достижения',
+  '/app/gmp': 'ГМП',
   '/app/profile-moderation': 'Модерация профиля',
   '/app/blocked': 'Доступ закрыт',
   '/app/pending': 'Ожидание роли',
@@ -44,17 +46,22 @@ const SUBTITLES: Record<string, string> = {
   '/app/roles': 'Создание ролей, доступы и вес в иерархии',
   '/app/blacklist': 'Запрет выдачи ролей и автоотклонение заявок',
   '/app/achievements': 'Создание достижений и триггеры',
+  '/app/gmp': 'Большие мероприятия: чекпоинты, staff и награды',
   '/app/profile-moderation': 'Заявки на смену имени, фамилии и StaticID',
 };
 
 function titleForPath(pathname: string) {
   if (pathname.startsWith('/app/profile/') && pathname !== '/app/profile') return 'Профиль сотрудника';
+  if (pathname.startsWith('/app/gmp/') && pathname !== '/app/gmp') return 'ГМП';
   return TITLES[pathname] || 'Кабинет';
 }
 
 function subtitleForPath(pathname: string, appTitle: string) {
   if (pathname.startsWith('/app/profile/') && pathname !== '/app/profile') {
     return `Карточка сотрудника · ${appTitle}`;
+  }
+  if (pathname.startsWith('/app/gmp/') && pathname !== '/app/gmp') {
+    return `Карточка мероприятия · ${appTitle}`;
   }
   return `${SUBTITLES[pathname] || runtimeEnv('APP_SUBTITLE') || 'Ивент-отдел сервера'} · ${appTitle}`;
 }
@@ -79,6 +86,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     roleNames: user.roles,
     permissions: user.permissions,
     editPermissions: user.editPermissions,
+    gmpCaps: user.gmpCaps,
   };
   const hasRole = userHasAnyRole(roleCtx);
   if (!user.isBlocked && !hasRole && pathname !== '/app/pending') {
@@ -94,6 +102,17 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     redirect(userHasPermission(roleCtx, 'manage_roles') ? '/app/roles' : '/app/profile');
   }
 
+  let isGmpStaff = false;
+  if (!userHasPermission(roleCtx, 'manage_gmp')) {
+    try {
+      const staffHit = await query('SELECT 1 FROM gmp_staff WHERE user_id=$1 LIMIT 1', [user.id]);
+      isGmpStaff = staffHit.rows.length > 0;
+    } catch {
+      isGmpStaff = false;
+    }
+  }
+  const canSeeGmpNav = userHasPermission(roleCtx, 'manage_gmp') || isGmpStaff;
+
   const protectedRoutes: Array<[string, Parameters<typeof userHasPermission>[1]]> = [
     ['/app/reprimands', 'reprimands'],
     ['/app/applications', 'applications'],
@@ -107,6 +126,10 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     if (pathname === route && !userHasPermission(roleCtx, perm)) {
       redirect('/app/dashboard');
     }
+  }
+  // Список ГМП: manage_gmp или участие в staff. Карточка /app/gmp/[id] — по API.
+  if (pathname === '/app/gmp' && !canSeeGmpNav) {
+    redirect('/app/dashboard');
   }
 
   const navGroups = [
@@ -131,6 +154,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
       items: [
         ['roster', 'Состав', true],
         ['vacations', 'Отпуска', true],
+        ['gmp', userHasPermission(roleCtx, 'manage_gmp') ? 'ГМП' : 'Мои ГМП', canSeeGmpNav],
         ['reprimands', 'Система выговоров', userHasPermission(roleCtx, 'reprimands')],
       ],
     },

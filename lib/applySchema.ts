@@ -12,6 +12,12 @@ const REQUIRED_TABLES = [
   'blacklist',
   'achievements',
   'user_achievements',
+  'gmp_events',
+  'gmp_staff',
+  'gmp_checkpoints',
+  'gmp_reward_places',
+  'gmp_players',
+  'gmp_marks',
 ] as const;
 
 function resolveSchemaPath(): string | null {

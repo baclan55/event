@@ -232,7 +232,7 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
       const user = await required();
       if (user instanceof NextResponse) return user;
       await evaluateAchievementsForUser(user.id).catch(() => undefined);
-      const catalog = await listProfileAchievementCatalog(user.id);
+      const catalog = await listProfileAchievementCatalog(user.id, user.id);
       return NextResponse.json({
         ...catalog,
         achievements: catalog.earned,
@@ -243,7 +243,7 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
       if (user instanceof NextResponse) return user;
       const targetId = parseId(params.userId || params.id);
       await evaluateAchievementsForUser(targetId).catch(() => undefined);
-      const catalog = await listProfileAchievementCatalog(targetId);
+      const catalog = await listProfileAchievementCatalog(targetId, user.id);
       return NextResponse.json({
         ...catalog,
         achievements: catalog.earned,

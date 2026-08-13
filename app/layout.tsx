@@ -11,16 +11,16 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="ru">
       <head>
-        <link rel="stylesheet" href="/css/site-1.css?v=13" />
-        <link rel="stylesheet" href="/css/site-2.css?v=13" />
-        <link rel="stylesheet" href="/css/site-3.css?v=13" />
-        <link rel="stylesheet" href="/css/site-4.css?v=13" />
-        <link rel="stylesheet" href="/css/site-5.css?v=13" />
+        <link rel="stylesheet" href="/css/site-1.css?v=16" />
+        <link rel="stylesheet" href="/css/site-2.css?v=16" />
+        <link rel="stylesheet" href="/css/site-3.css?v=16" />
+        <link rel="stylesheet" href="/css/site-4.css?v=16" />
+        <link rel="stylesheet" href="/css/site-5.css?v=16" />
       </head>
       <body>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){var h=location.hash.replace(/^#\\/?/,"");var m={home:"/",apply:"/apply",dashboard:"/app/dashboard",profile:"/app/profile",faq:"/app/faq",roster:"/app/roster",rules:"/app/rules",regulations:"/app/regulations",firstSteps:"/app/first-steps",vacations:"/app/vacations",reprimands:"/app/reprimands",applications:"/app/applications",candidates:"/app/candidates",roles:"/app/roles",owner:"/app/roles",blacklist:"/app/blacklist",achievements:"/app/achievements","profile-moderation":"/app/profile-moderation",blocked:"/app/blocked",pending:"/app/pending"};if(m[h])location.replace(m[h]);})();`,
+            __html: `(function(){var h=location.hash.replace(/^#\\/?/,"");var m={home:"/",apply:"/apply",dashboard:"/app/dashboard",profile:"/app/profile",faq:"/app/faq",roster:"/app/roster",rules:"/app/rules",regulations:"/app/regulations",firstSteps:"/app/first-steps",vacations:"/app/vacations",reprimands:"/app/reprimands",applications:"/app/applications",candidates:"/app/candidates",roles:"/app/roles",owner:"/app/roles",blacklist:"/app/blacklist",achievements:"/app/achievements",gmp:"/app/gmp","profile-moderation":"/app/profile-moderation",blocked:"/app/blocked",pending:"/app/pending"};if(m[h])location.replace(m[h]);})();`,
           }}
         />
         {children}

@@ -10,6 +10,7 @@ import { handleRoster } from './api/roster';
 import { handleSystem } from './api/system';
 import type { ApiContext, ApiHandler } from './api/types';
 import { handleVacations } from './api/vacations';
+import { handleGmp } from './api/gmp';
 
 const handlers: ApiHandler[] = [
   handleSystem,
@@ -20,6 +21,7 @@ const handlers: ApiHandler[] = [
   handleReprimands,
   handleApplications,
   handleVacations,
+  handleGmp,
 ];
 
 export async function handle(

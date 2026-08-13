@@ -2,10 +2,12 @@ import { query } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import {
   editPermissionsFromRole,
+  gmpCapsFromRole,
   permissionsFromRole,
   userHasAnyRole,
   userHasPermission,
   userHasRoleIn,
+  type GmpCap,
   type Permission,
   type PermissionLevel,
   type RoleUser,
@@ -53,6 +55,7 @@ export type DbUser = RoleUser & {
   roles: DbRole[];
   permissions: Permission[];
   editPermissions: Permission[];
+  gmpCaps: GmpCap[];
   is_event_helper?: boolean;
   is_administrator?: boolean;
   dashboard_blocks?: Record<DashboardBlock, boolean>;
@@ -82,6 +85,16 @@ function aggregateEditPermissions(roles: DbRole[]): Permission[] {
   for (const role of roles) {
     for (const perm of editPermissionsFromRole(role.name, role.permissions)) {
       set.add(perm);
+    }
+  }
+  return [...set];
+}
+
+function aggregateGmpCaps(roles: DbRole[]): GmpCap[] {
+  const set = new Set<GmpCap>();
+  for (const role of roles) {
+    for (const cap of gmpCapsFromRole(role.name, role.permissions)) {
+      set.add(cap);
     }
   }
   return [...set];
@@ -127,6 +140,7 @@ function cloneUser(user: DbUser): DbUser {
   const editPermissions = Array.isArray(user.editPermissions)
     ? [...user.editPermissions]
     : aggregateEditPermissions(roles);
+  const gmpCaps = Array.isArray(user.gmpCaps) ? [...user.gmpCaps] : aggregateGmpCaps(roles);
   const flags = aggregateRoleFlags(roles);
   return {
     ...user,
@@ -134,6 +148,7 @@ function cloneUser(user: DbUser): DbUser {
     roleNames: roles.map((r) => r.name),
     permissions,
     editPermissions,
+    gmpCaps,
     is_event_helper: user.is_event_helper ?? flags.isEventHelper,
     is_administrator: user.is_administrator ?? flags.isAdministrator,
     dashboard_blocks: user.dashboard_blocks || flags.dashboardBlocks,
@@ -163,6 +178,7 @@ export type PublicUser = {
   roles: string[];
   permissions: Permission[];
   editPermissions: Permission[];
+  gmpCaps: GmpCap[];
   isBlocked: boolean;
   blockedAt: string | null;
   firstName: string | null;
@@ -183,6 +199,9 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
   const editPermissions = Array.isArray(u.editPermissions)
     ? u.editPermissions
     : aggregateEditPermissions(roles);
+  const gmpCaps = Array.isArray(u.gmpCaps) && u.gmpCaps.length
+    ? u.gmpCaps
+    : aggregateGmpCaps(roles);
   const flags = aggregateRoleFlags(roles);
   const isEventHelper = u.is_event_helper ?? flags.isEventHelper;
   const isAdministrator = u.is_administrator ?? flags.isAdministrator;
@@ -205,6 +224,7 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
     roles: roles.map((r) => r.name),
     permissions,
     editPermissions,
+    gmpCaps,
     isBlocked: !!u.is_blocked,
     blockedAt: u.blocked_at || null,
     firstName,
@@ -269,6 +289,7 @@ export async function loadUserById(userId: number): Promise<DbUser | null> {
   user.roleNames = roles.map((r) => r.name);
   user.permissions = aggregatePermissions(roles);
   user.editPermissions = aggregateEditPermissions(roles);
+  user.gmpCaps = aggregateGmpCaps(roles);
   const flags = aggregateRoleFlags(roles);
   user.is_event_helper = flags.isEventHelper;
   user.is_administrator = flags.isAdministrator;

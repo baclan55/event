@@ -149,7 +149,8 @@
 .profile-main{ min-width:0; flex:1; }
 .profile-main h2{ margin:0; color:var(--text-heading); font-size:20px; }
 .profile-name-line{ display:flex; align-items:center; gap:8px; }
-.profile-weekly{ text-align:right; min-width:130px; }
+.profile-weekly-group{ display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; justify-content:flex-end; }
+.profile-weekly{ text-align:right; min-width:110px; }
 .profile-weekly .stat-value{ font-size:30px; }
 .profile-weekly .badge{ margin-top:8px; }
 .profile-actions{ justify-content:space-between; margin:14px 0; }

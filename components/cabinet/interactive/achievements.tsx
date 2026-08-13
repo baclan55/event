@@ -5,7 +5,10 @@ import { NavIcon } from '@/components/NavIcons';
 import {
   ACHIEVEMENT_TRIGGER_LABELS,
   ACHIEVEMENT_TRIGGERS,
+  GMP_PERIOD_LABELS,
+  GMP_PERIODS,
   type AchievementTrigger,
+  type GmpPeriod,
 } from '@/lib/achievementsShared';
 import { askConfirm, ErrorText, Modal, request, Select, type Row } from './shared';
 
@@ -32,6 +35,7 @@ export function AchievementsInteractive() {
   const [gradeRoles, setGradeRoles] = useState<string[]>(['']);
   const [gradeIcons, setGradeIcons] = useState<string[]>(['']);
   const [tier, setTier] = useState('helper');
+  const [gmpPeriod, setGmpPeriod] = useState<GmpPeriod>('week');
   const [uploading, setUploading] = useState<number | null>(null);
   const [canEdit, setCanEdit] = useState(true);
 
@@ -59,6 +63,8 @@ export function AchievementsInteractive() {
     setGradeRoles(roleIdsFromConfig(cfg, nextMax));
     setGradeIcons(iconsFromRow(editing, nextMax));
     setTier(String(cfg.tier || 'helper'));
+    const period = String(cfg.period || 'week');
+    setGmpPeriod((GMP_PERIODS as readonly string[]).includes(period) ? period as GmpPeriod : 'week');
   }, [editing]);
 
   function setMaxGradeSafe(value: number) {
@@ -107,6 +113,16 @@ export function AchievementsInteractive() {
       triggerConfig = { roleIds, roleId: roleIds[0] };
     } else if (triggerType === 'weekly_top_1') {
       triggerConfig = { tier };
+    } else if (triggerType === 'gmp_total' || triggerType === 'gmp_period') {
+      const grades = String(form.get('gmpGrades') || '')
+        .split(/[,\s]+/)
+        .map(Number)
+        .filter((n) => Number.isFinite(n) && n > 0);
+      triggerConfig = {
+        grades: grades.length ? grades : [1],
+        count: grades[0] || 1,
+        ...(triggerType === 'gmp_period' ? { period: gmpPeriod } : {}),
+      };
     }
     const icons = Array.from({ length: maxGrade }, (_, i) => gradeIcons[i] || '');
     const payload = {
@@ -302,6 +318,32 @@ export function AchievementsInteractive() {
                 />
               </div>
             ) : null}
+            {triggerType === 'gmp_period' ? (
+              <div className="field">
+                <label>Период</label>
+                <Select
+                  value={gmpPeriod}
+                  onChange={(v) => setGmpPeriod(v as GmpPeriod)}
+                  options={GMP_PERIODS.map((key) => ({
+                    value: key,
+                    label: GMP_PERIOD_LABELS[key],
+                  }))}
+                />
+                <div className="field-hint">Считаются ГМП, где сотрудник в staff и дата начала попадает в период.</div>
+              </div>
+            ) : null}
+            {triggerType === 'gmp_total' || triggerType === 'gmp_period' ? (
+              <div className="field">
+                <label>Пороги числа ГМП по степеням</label>
+                <input
+                  className="input"
+                  name="gmpGrades"
+                  defaultValue={Array.isArray(cfg.grades) ? cfg.grades.join(', ') : String(cfg.count || '1, 3, 5')}
+                  placeholder="1, 3, 5"
+                />
+                <div className="field-hint">Через запятую: сколько участий в staff нужно для 1-й, 2-й степени и т.д.</div>
+              </div>
+            ) : null}
             <div className="form-row-2">
               <label className="qform-check-label">
                 <input type="checkbox" name="active" defaultChecked={editing ? editing.active !== false : true} />
@@ -312,7 +354,7 @@ export function AchievementsInteractive() {
                 Скрытое
               </label>
             </div>
-            <div className="field-hint">Скрытое до получения лежит во вкладке «Скрытое»; описание видят только получившие.</div>
+            <div className="field-hint">Скрытое: в «Не полученных» внизу списка, в «Полученных» — сверху; описание видят только получившие.</div>
             <div className="modal-actions">
               <button type="button" className="btn btn-ghost" onClick={() => setEditing(undefined)}>Отмена</button>
               <button className="btn btn-primary">Сохранить</button>

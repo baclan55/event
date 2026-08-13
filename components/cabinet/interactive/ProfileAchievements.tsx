@@ -18,7 +18,8 @@ export type ProfileAchievementCard = {
 export type ProfileAchievementCatalog = {
   earned: ProfileAchievementCard[];
   locked: ProfileAchievementCard[];
-  hidden: ProfileAchievementCard[];
+  /** @deprecated отдельной вкладки больше нет */
+  hidden?: ProfileAchievementCard[];
 };
 
 function AchievementCard({ item }: { item: ProfileAchievementCard }) {
@@ -28,7 +29,7 @@ function AchievementCard({ item }: { item: ProfileAchievementCard }) {
     : '';
 
   return (
-    <article className={`ach-card${earned ? '' : ' is-locked'}${item.status === 'hidden' ? ' is-secret' : ''}`}>
+    <article className={`ach-card${earned ? '' : ' is-locked'}${item.is_hidden ? ' is-secret' : ''}`}>
       <div className="ach-card-medal">
         {item.icon
           ? <img src={item.icon} alt="" className="ach-card-icon" />
@@ -44,15 +45,13 @@ function AchievementCard({ item }: { item: ProfileAchievementCard }) {
             <span className="ach-card-meta">{new Date(item.awarded_at).toLocaleDateString('ru-RU')}</span>
           ) : null}
         </div>
-        {earned && item.description ? (
+        {item.description ? (
           <p className="ach-card-desc">{item.description}</p>
-        ) : (
+        ) : item.is_hidden ? (
           <p className="ach-card-desc is-muted">
-            {item.status === 'hidden'
-              ? 'Скрытое достижение. Описание откроется после получения.'
-              : 'Описание откроется после получения.'}
+            Скрытое достижение. Описание откроется после получения.
           </p>
-        )}
+        ) : null}
         {earned && item.next_hint ? (
           <div className="ach-card-next">{item.next_hint}</div>
         ) : null}
@@ -66,14 +65,13 @@ export function ProfileAchievementsPanel({
 }: {
   catalog: ProfileAchievementCatalog;
 }) {
-  const [section, setSection] = useState<'earned' | 'locked' | 'hidden'>('earned');
+  const [section, setSection] = useState<'earned' | 'locked'>('earned');
   const lists = {
     earned: catalog.earned || [],
     locked: catalog.locked || [],
-    hidden: catalog.hidden || [],
   };
   const items = lists[section];
-  const total = lists.earned.length + lists.locked.length + lists.hidden.length;
+  const total = lists.earned.length + lists.locked.length;
 
   return (
     <>
@@ -88,9 +86,6 @@ export function ProfileAchievementsPanel({
         <button type="button" className={section === 'locked' ? 'active' : ''} onClick={() => setSection('locked')}>
           Не полученные · {lists.locked.length}
         </button>
-        <button type="button" className={section === 'hidden' ? 'active' : ''} onClick={() => setSection('hidden')}>
-          Скрытое · {lists.hidden.length}
-        </button>
       </div>
       <div className="ach-card-list">
         {items.length
@@ -101,9 +96,7 @@ export function ProfileAchievementsPanel({
               <p>
                 {section === 'earned'
                   ? 'Полученных достижений пока нет.'
-                  : section === 'locked'
-                    ? 'Все открытые достижения уже получены.'
-                    : 'Скрытых неполученных достижений нет.'}
+                  : 'Все достижения уже получены.'}
               </p>
             </div>
           )}
@@ -113,21 +106,19 @@ export function ProfileAchievementsPanel({
 }
 
 export function emptyAchievementCatalog(): ProfileAchievementCatalog {
-  return { earned: [], locked: [], hidden: [] };
+  return { earned: [], locked: [] };
 }
 
 export function catalogFromPayload(data: Partial<ProfileAchievementCatalog> & { achievements?: ProfileAchievementCard[] }): ProfileAchievementCatalog {
-  if (Array.isArray(data.earned) || Array.isArray(data.locked) || Array.isArray(data.hidden)) {
+  if (Array.isArray(data.earned) || Array.isArray(data.locked)) {
     return {
       earned: data.earned || [],
-      locked: data.locked || [],
-      hidden: data.hidden || [],
+      // Старый ответ мог отдавать hidden отдельно — кладём вниз «не полученных».
+      locked: [...(data.locked || []), ...(data.hidden || [])],
     };
   }
-  // Совместимость со старым ответом API (только полученные).
   return {
     earned: Array.isArray(data.achievements) ? data.achievements : [],
     locked: [],
-    hidden: [],
   };
 }

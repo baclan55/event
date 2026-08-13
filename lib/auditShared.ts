@@ -33,6 +33,12 @@ export const AUDIT_LABELS: Record<string, string> = {
   'applications.open': 'Набор открыт',
   'applications.close': 'Набор закрыт',
   'applications.message': 'Изменено сообщение о закрытии набора',
+  'gmp.create': 'Создано ГМП',
+  'gmp.update': 'Изменено ГМП',
+  'gmp.delete': 'Удалено ГМП',
+  'gmp.close': 'Закрыто ГМП',
+  'gmp.mark': 'Отметка на ГМП',
+  'gmp.staff': 'Состав staff ГМП',
 };
 
 export function auditHref(entry: {
@@ -57,6 +63,9 @@ export function auditHref(entry: {
   if (entityType === 'role') return '/app/roles';
   if (entityType === 'reprimand') return '/app/reprimands';
   if (entityType === 'rule') return '/app/rules';
+  if (entityType === 'gmp') {
+    return entityId ? `/app/gmp/${entityId}` : '/app/gmp';
+  }
   if (entityType === 'content') {
     const section = entityId.split(':')[0];
     if (section === 'faq') return '/app/faq';

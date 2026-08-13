@@ -4,10 +4,15 @@ import { FormEvent, useEffect, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
 import {
   emptyPermissions,
+  GMP_CAP_LABELS,
+  GMP_CAPS,
+  normalizeGmpAccess,
   normalizeRolePermissions,
   PERMISSION_LABELS,
   PERMISSIONS,
   VIEW_ONLY_PERMISSIONS,
+  type GmpCap,
+  type GmpPermissionAccess,
   type Permission,
   type PermissionAccess,
 } from '@/lib/roleAccess';
@@ -77,6 +82,26 @@ export function RolesInteractive({
         if (!value) next[key].edit = false;
       }
       return next;
+    });
+  }
+
+  function setGmpCap(cap: GmpCap | 'view', value: boolean) {
+    setDraftPerms((prev) => {
+      const current = normalizeGmpAccess(prev.manage_gmp);
+      const next: GmpPermissionAccess = { ...current };
+      if (cap === 'view') {
+        next.view = value;
+        if (!value) {
+          for (const key of GMP_CAPS) next[key] = false;
+          next.edit = false;
+        }
+      } else {
+        next[cap] = value;
+        if (value) next.view = true;
+        next.edit = GMP_CAPS.some((key) => key !== 'view_stats' && next[key]);
+        next.view = next.view || GMP_CAPS.some((key) => next[key]);
+      }
+      return { ...prev, manage_gmp: next };
     });
   }
 
@@ -229,6 +254,36 @@ export function RolesInteractive({
               <label>Доступы</label>
               <div className="perm-grid">
                 {visiblePermissions.map((key) => {
+                  if (key === 'manage_gmp') {
+                    const gmp = normalizeGmpAccess(draftPerms.manage_gmp);
+                    return (
+                      <div className="perm-card perm-card-gmp" key={key}>
+                        <div className="perm-card-title">{PERMISSION_LABELS[key]}</div>
+                        <div className="perm-card-flags perm-card-flags-col">
+                          <label className="perm-flag">
+                            <input
+                              type="checkbox"
+                              checked={!!gmp.view}
+                              disabled={!canEdit}
+                              onChange={(e) => setGmpCap('view', e.target.checked)}
+                            />
+                            Просмотр раздела
+                          </label>
+                          {GMP_CAPS.map((cap) => (
+                            <label className="perm-flag" key={cap}>
+                              <input
+                                type="checkbox"
+                                checked={!!gmp[cap]}
+                                disabled={!canEdit}
+                                onChange={(e) => setGmpCap(cap, e.target.checked)}
+                              />
+                              {GMP_CAP_LABELS[cap]}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
                   const access = draftPerms[key] || { view: false, edit: false };
                   const viewOnly = VIEW_ONLY_PERMISSIONS.has(key);
                   return (

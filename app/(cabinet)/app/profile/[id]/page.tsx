@@ -25,7 +25,7 @@ export default async function UserProfilePage({
   if (!user) notFound();
 
   await evaluateAchievementsForUser(id).catch(() => undefined);
-  const achievementCatalog = await listProfileAchievementCatalog(id);
+  const achievementCatalog = await listProfileAchievementCatalog(id, viewer.id);
   const roleCtx = roleCtxFromPublic(viewer);
   const canSeeReprimands = userHasPermission(roleCtx, 'reprimands');
   const canViewAudit = userHasPermission(roleCtx, 'view_audit');

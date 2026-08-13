@@ -120,6 +120,42 @@ export function NavIcon({ name }: { name: string }) {
           <path d="M3 8.5 6.5 11l3-5.5L12 10l2.5-4.5 3 5.5 3.5-2.5L20 18H4L3 8.5Z" />
         </svg>
       );
+    case 'blacklist':
+      return (
+        <svg {...svgProps}>
+          <circle cx="12" cy="12" r="9" />
+          <line x1="6.2" y1="6.2" x2="17.8" y2="17.8" />
+        </svg>
+      );
+    case 'achievements':
+      return (
+        <svg {...svgProps}>
+          <circle cx="12" cy="9" r="5.2" />
+          <path d="M8.2 13.2 7 21l5-2.4L17 21l-1.2-7.8" />
+          <path d="M9.2 8.2h5.6" />
+        </svg>
+      );
+    case 'gmp':
+      return (
+        <svg {...svgProps}>
+          <path d="M4 19V5" />
+          <path d="M4 19h16" />
+          <path d="M8 15v-3" />
+          <path d="M12 15V8" />
+          <path d="M16 15v-5" />
+          <path d="M8 7h.01M12 5h.01M16 6h.01" />
+        </svg>
+      );
+    case 'profile-moderation':
+      return (
+        <svg {...svgProps}>
+          <circle cx="9" cy="8" r="3.2" />
+          <path d="M3.5 19c0-3 2.5-5 5.5-5 .7 0 1.4.1 2 .3" />
+          <path d="M15 14.5v6" />
+          <path d="M12.5 17.5h5" />
+          <circle cx="17.5" cy="10" r="2.2" />
+        </svg>
+      );
     case 'logout':
       return (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
