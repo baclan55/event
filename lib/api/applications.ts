@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getCurrentUser, jsonError } from '@/lib/auth';
-import { APPLICATIONS_ROLES, CANDIDATES_ROLES } from '@/lib/roleAccess';
 import { addUserRole } from '@/lib/roles';
-import { writeAudit } from '@/lib/audit';
-import { ok, parseId, required } from './helpers';
+import { DEFAULT_CLOSED_MESSAGE, writeAudit } from '@/lib/audit';
+import { ok, parseId, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
+
+const CLOSED_MESSAGE_MAX = 280;
 
 async function releaseCandidate(userId: number | null) {
   if (!userId) return;
@@ -39,8 +40,66 @@ async function notifyDiscord(text: string) {
 export const handleApplications: ApiHandler = async ({ key, params, method, body }) => {
   if (!key.startsWith('application') && key !== 'candidates') return undefined;
 
+  if (key === 'applications-status') {
+    if (method === 'GET') {
+      const settings = await query<{ is_open: boolean; closed_message: string | null }>(
+        'SELECT is_open, closed_message FROM applications_settings WHERE id=1',
+      );
+      return NextResponse.json({
+        isOpen: settings.rows[0]?.is_open ?? true,
+        closedMessage: settings.rows[0]?.closed_message || DEFAULT_CLOSED_MESSAGE,
+      });
+    }
+    if (method === 'PUT') {
+      const user = await requiredPerm('applications');
+      if (user instanceof NextResponse) return user;
+      const current = await query<{ is_open: boolean; closed_message: string | null }>(
+        'SELECT is_open, closed_message FROM applications_settings WHERE id=1',
+      );
+      const isOpen = typeof body.isOpen === 'boolean' || body.isOpen === 'true' || body.isOpen === 'false'
+        ? body.isOpen === true || body.isOpen === 'true'
+        : (current.rows[0]?.is_open ?? true);
+      let closedMessage = current.rows[0]?.closed_message || DEFAULT_CLOSED_MESSAGE;
+      if (typeof body.closedMessage === 'string') {
+        closedMessage = body.closedMessage.trim() || DEFAULT_CLOSED_MESSAGE;
+        if (closedMessage.length > CLOSED_MESSAGE_MAX) {
+          return jsonError(`Сообщение слишком длинное (максимум ${CLOSED_MESSAGE_MAX} символов).`, 400);
+        }
+      }
+      await query(
+        `INSERT INTO applications_settings (id, is_open, closed_message, updated_by, updated_at)
+         VALUES (1, $1, $2, $3, now())
+         ON CONFLICT (id) DO UPDATE SET
+           is_open=EXCLUDED.is_open,
+           closed_message=EXCLUDED.closed_message,
+           updated_by=EXCLUDED.updated_by,
+           updated_at=now()`,
+        [isOpen, closedMessage, user.id],
+      );
+      if (typeof body.isOpen === 'boolean' || body.isOpen === 'true' || body.isOpen === 'false') {
+        await writeAudit({
+          actorId: user.id,
+          action: isOpen ? 'applications.open' : 'applications.close',
+          entityType: 'applications_settings',
+          entityId: 1,
+          details: { isOpen, closedMessage },
+        });
+      } else if (typeof body.closedMessage === 'string') {
+        await writeAudit({
+          actorId: user.id,
+          action: 'applications.message',
+          entityType: 'applications_settings',
+          entityId: 1,
+          details: { closedMessage },
+        });
+      }
+      return ok({ isOpen, closedMessage });
+    }
+    return jsonError('Метод не поддерживается.', 405);
+  }
+
   if (key === 'candidates') {
-    const user = await required(CANDIDATES_ROLES);
+    const user = await requiredPerm('candidates');
     if (user instanceof NextResponse) return user;
     const result = await query(
       `SELECT a.id, a.applicant_name, a.discord, a.nickname_static, a.status, a.created_at,
@@ -54,7 +113,7 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     return NextResponse.json({ candidates: result.rows });
   }
   if (key === 'application-call') {
-    const user = await required(CANDIDATES_ROLES);
+    const user = await requiredPerm('candidates');
     if (user instanceof NextResponse) return user;
     const passed = body.passed === true || body.passed === 'true';
     const { rows } = await query<Record<string, unknown>>('SELECT * FROM applications WHERE id=$1', [
@@ -87,7 +146,7 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     return ok({ passed });
   }
   if (key === 'application' && method === 'DELETE') {
-    const user = await required(APPLICATIONS_ROLES);
+    const user = await requiredPerm('applications');
     if (user instanceof NextResponse) return user;
     const { rows } = await query<{ status: string; candidate_user_id: number | null }>(
       'SELECT status, candidate_user_id FROM applications WHERE id=$1',
@@ -106,7 +165,7 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     return ok();
   }
   if (key === 'application' && method === 'PUT') {
-    const user = await required(APPLICATIONS_ROLES);
+    const user = await requiredPerm('applications');
     if (user instanceof NextResponse) return user;
     const status = String(body.status || '');
     if (!['pending', 'approved', 'rejected'].includes(status)) {
@@ -163,17 +222,20 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     return ok({ status });
   }
   if (method === 'GET') {
-    const user = await required(APPLICATIONS_ROLES);
+    const user = await requiredPerm('applications');
     if (user instanceof NextResponse) return user;
     const result = await query(
       `SELECT a.*, rb.nickname AS reviewed_by_nickname
         FROM applications a LEFT JOIN users rb ON rb.id=a.reviewed_by
         ORDER BY a.created_at DESC`,
     );
-    const settings = await query<{ is_open: boolean }>('SELECT is_open FROM applications_settings WHERE id=1');
+    const settings = await query<{ is_open: boolean; closed_message: string | null }>(
+      'SELECT is_open, closed_message FROM applications_settings WHERE id=1',
+    );
     return NextResponse.json({
       applications: result.rows,
       isOpen: settings.rows[0]?.is_open ?? true,
+      closedMessage: settings.rows[0]?.closed_message || DEFAULT_CLOSED_MESSAGE,
     });
   }
 

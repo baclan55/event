@@ -3,30 +3,75 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PublicUser } from '@/lib/auth';
+import { AUDIT_LABELS } from '@/lib/audit';
 import { NavIcon } from '@/components/NavIcons';
 import { Avatar, DEFAULT_LIMITS, ErrorText, Modal, ReprimandBadge, ReprimandLegend, ReprimandSummary, request, type Row } from './shared';
+
+function formatAuditDetails(entry: Row): string {
+  const details = (entry.details || {}) as Row;
+  const bits: string[] = [];
+  if (entry.target_nickname) bits.push(`кому: ${entry.target_nickname}`);
+  if (details.reason) bits.push(`причина: ${details.reason}`);
+  if (details.type) bits.push(`тип: ${details.type}`);
+  if (typeof details.isOpen === 'boolean') bits.push(details.isOpen ? 'открыт' : 'закрыт');
+  if (details.nickname && !entry.target_nickname) bits.push(`ник: ${details.nickname}`);
+  if (entry.entity_type) bits.push(`${entry.entity_type}${entry.entity_id ? ` #${entry.entity_id}` : ''}`);
+  return bits.join(' · ');
+}
 
 export function ProfileInteractive({
   initialUser,
   reprimands,
   target,
+  canViewAudit = false,
+  initialAudit = [],
 }: {
   initialUser: PublicUser;
   reprimands: Row[];
   target: number;
+  canViewAudit?: boolean;
+  initialAudit?: Row[];
 }) {
   const router = useRouter();
   const [user, setUser] = useState(initialUser);
   const [mode, setMode] = useState<'nickname' | null>(null);
+  const [tab, setTab] = useState<'reprimands' | 'audit'>('reprimands');
   const [nickname, setNickname] = useState(user.nickname || '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [audit, setAudit] = useState(initialAudit);
+  const [auditActions, setAuditActions] = useState<string[]>([]);
+  const [filterAction, setFilterAction] = useState('');
+  const [filterActor, setFilterActor] = useState('');
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo, setFilterTo] = useState('');
   const [rpData, setRpData] = useState({
     reprimands,
     tier: initialUser.rolePriority != null && initialUser.rolePriority <= 5 ? 'admin' : 'helper',
     limits: DEFAULT_LIMITS as Row,
   });
   const done = user.weeklyEvents >= target;
+
+  async function loadAudit(next?: {
+    action?: string;
+    actor?: string;
+    from?: string;
+    to?: string;
+  }) {
+    if (!canViewAudit) return;
+    const params = new URLSearchParams();
+    const action = next?.action ?? filterAction;
+    const actor = next?.actor ?? filterActor;
+    const from = next?.from ?? filterFrom;
+    const to = next?.to ?? filterTo;
+    if (action) params.set('action', action);
+    if (actor.trim()) params.set('actor', actor.trim());
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const data = await request(`/api/audit${params.toString() ? `?${params}` : ''}`);
+    setAudit(data.audit || []);
+    if (Array.isArray(data.actions)) setAuditActions(data.actions);
+  }
 
   useEffect(() => {
     request('/api/reprimands/me')
@@ -37,6 +82,13 @@ export function ProfileInteractive({
       }))
       .catch((err) => setError((err as Error).message));
   }, [reprimands]);
+
+  useEffect(() => {
+    if (!canViewAudit) return;
+    void loadAudit().catch((err) => setError((err as Error).message));
+    // initial load only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canViewAudit]);
 
   async function saveNickname(event: FormEvent) {
     event.preventDefault();
@@ -82,22 +134,100 @@ export function ProfileInteractive({
       </div>
 
       <div className="card card-pad" style={{ marginTop: 20 }}>
-        <div className="card-header">
-          <h3>Мои выговоры</h3>
-          <ReprimandSummary items={rpData.reprimands} tier={rpData.tier} limits={rpData.limits} />
-        </div>
-        <ReprimandLegend tier={rpData.tier} limits={rpData.limits} />
-        {rpData.reprimands.length ? rpData.reprimands.map((item) => (
-          <div className={`roster-row rp-entry${item.active === false || item.converted ? ' rp-expired' : ''}`} key={item.id}>
-            <ReprimandBadge item={item} />
-            <div className="who">
-              <div>
-                <div className="nickname">{item.reason}</div>
-                <div className="role-tag">{new Date(item.created_at).toLocaleString('ru-RU')}{item.expires_at ? ` · спишется ${new Date(item.expires_at).toLocaleDateString('ru-RU')}` : ''} · {item.issued_by_nickname || 'Система'}</div>
-              </div>
-            </div>
+        {canViewAudit ? (
+          <div className="segmented roster-tabs" style={{ marginBottom: 16 }}>
+            <button className={tab === 'reprimands' ? 'active' : ''} onClick={() => setTab('reprimands')}>Выговоры · {rpData.reprimands.length}</button>
+            <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>Журнал · {audit.length}</button>
           </div>
-        )) : <div className="empty-state"><h3>Выговоров нет</h3><p>Записей о взысканиях нет.</p></div>}
+        ) : null}
+
+        {tab === 'reprimands' ? (
+          <>
+            <div className="card-header">
+              <h3>Мои выговоры</h3>
+              <ReprimandSummary items={rpData.reprimands} tier={rpData.tier} limits={rpData.limits} />
+            </div>
+            <ReprimandLegend tier={rpData.tier} limits={rpData.limits} />
+            {rpData.reprimands.length ? rpData.reprimands.map((item) => (
+              <div className={`roster-row rp-entry${item.active === false || item.converted ? ' rp-expired' : ''}`} key={item.id}>
+                <ReprimandBadge item={item} />
+                <div className="who">
+                  <div>
+                    <div className="nickname">{item.reason}</div>
+                    <div className="role-tag">{new Date(item.created_at).toLocaleString('ru-RU')}{item.expires_at ? ` · спишется ${new Date(item.expires_at).toLocaleDateString('ru-RU')}` : ''} · {item.issued_by_nickname || 'Система'}</div>
+                  </div>
+                </div>
+              </div>
+            )) : <div className="empty-state"><h3>Выговоров нет</h3><p>Записей о взысканиях нет.</p></div>}
+          </>
+        ) : (
+          <>
+            <div className="card-header"><h3>Журнал действий</h3><span className="badge badge-muted">{audit.length}</span></div>
+            <form
+              className="form-row-2"
+              style={{ marginBottom: 14, gap: 10 }}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void loadAudit().catch((err) => setError((err as Error).message));
+              }}
+            >
+              <div className="field">
+                <label>Действие</label>
+                <select className="input" value={filterAction} onChange={(e) => setFilterAction(e.target.value)}>
+                  <option value="">Все</option>
+                  {auditActions.map((action) => (
+                    <option value={action} key={action}>{AUDIT_LABELS[action] || action}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Кто</label>
+                <input className="input" value={filterActor} onChange={(e) => setFilterActor(e.target.value)} placeholder="Никнейм" />
+              </div>
+              <div className="field">
+                <label>С даты</label>
+                <input className="input" type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} />
+              </div>
+              <div className="field">
+                <label>По дату</label>
+                <input className="input" type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} />
+              </div>
+              <div className="modal-actions" style={{ gridColumn: '1 / -1', justifyContent: 'flex-start' }}>
+                <button className="btn btn-primary btn-sm" type="submit">Применить</button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  type="button"
+                  onClick={() => {
+                    setFilterAction('');
+                    setFilterActor('');
+                    setFilterFrom('');
+                    setFilterTo('');
+                    void loadAudit({ action: '', actor: '', from: '', to: '' }).catch((err) => setError((err as Error).message));
+                  }}
+                >
+                  Сбросить
+                </button>
+              </div>
+            </form>
+            <div className="audit-list">
+              {audit.map((entry) => (
+                <div className="audit-row" key={entry.id}>
+                  <div className="audit-main">
+                    <span className="nickname">{AUDIT_LABELS[entry.action] || entry.action}</span>
+                    <span className="role-tag">{formatAuditDetails(entry)}</span>
+                  </div>
+                  <div className="audit-meta">
+                    кто: {entry.actor_nickname || 'Удалённый пользователь'}
+                    {' · '}
+                    когда: {new Date(entry.created_at).toLocaleString('ru-RU')}
+                    {entry.href ? <> · <a href={entry.href}>открыть</a></> : null}
+                  </div>
+                </div>
+              ))}
+              {!audit.length && <div className="empty-state"><p>По выбранным фильтрам записей нет.</p></div>}
+            </div>
+          </>
+        )}
       </div>
 
       {mode === 'nickname' && (
@@ -119,12 +249,20 @@ export function RosterInteractive({
   target,
   canEdit,
   canViewProfiles,
+  canGrantOwner = false,
+  actorRolePriority = null,
+  actorIsOwner = false,
+  actorId = null,
 }: {
   initialMembers: Row[];
   roles: Row[];
   target: number;
   canEdit: boolean;
   canViewProfiles: boolean;
+  canGrantOwner?: boolean;
+  actorRolePriority?: number | null;
+  actorIsOwner?: boolean;
+  actorId?: number | null;
 }) {
   const [members, setMembers] = useState(initialMembers);
   const [tab, setTab] = useState<'with' | 'without' | 'candidates'>('with');
@@ -132,6 +270,22 @@ export function RosterInteractive({
   const [profile, setProfile] = useState<{ user: Row; reprimands: Row[]; limits: Row } | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [error, setError] = useState('');
+
+  function canAssignRole(role: Row) {
+    if (actorIsOwner || actorRolePriority == null) return true;
+    // Уже назначенные роли оставляем доступными (чтобы не сбрасывались из формы).
+    if ((editing?.roles || []).some((item: Row) => item.id === role.id)) return true;
+    return Number(role.priority) > actorRolePriority;
+  }
+
+  function canManageMember(member: Row) {
+    if (actorIsOwner) return true;
+    if (actorId != null && member.id === actorId) return true;
+    if (member.is_owner) return false;
+    if (actorRolePriority == null) return false;
+    if (member.role_priority == null) return true;
+    return Number(member.role_priority) > actorRolePriority;
+  }
 
   async function reload() {
     const data = await request('/api/roster');
@@ -150,16 +304,26 @@ export function RosterInteractive({
     }
   }
 
+  useEffect(() => {
+    if (!canViewProfiles || typeof window === 'undefined') return;
+    const userId = Number(new URLSearchParams(window.location.search).get('user'));
+    if (Number.isFinite(userId) && userId > 0) void openProfile(userId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canViewProfiles]);
+
   async function saveMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const roleIds = form.getAll('roleIds').map(Number);
-    const payload = {
+    const payload: Row = {
       nickname: String(form.get('nickname') || ''),
       weeklyEvents: Number(form.get('weeklyEvents') || 0),
       note: String(form.get('note') || ''),
       roleIds,
     };
+    if (canGrantOwner && editing?.id) {
+      payload.isOwner = form.get('isOwner') === 'on';
+    }
     try {
       let id = editing?.id;
       if (id) {
@@ -204,14 +368,19 @@ export function RosterInteractive({
       <button className={`who member-profile-trigger${canViewProfiles && !candidate ? ' who-clickable' : ''}`} type="button" onClick={() => !candidate && void openProfile(member.id)} disabled={!canViewProfiles || candidate}>
         <Avatar row={member} />
         <span className="member-copy">
-          <span className="nickname">{member.nickname}</span>
+          <span className="nickname">{member.nickname}{member.is_owner ? ' · владелец' : ''}</span>
           <span className="role-tag">{candidate ? 'Кандидат' : (member.roles || []).map((r: Row) => r.name).join(' · ') || 'Без роли'}{member.discord_username ? ` · ${member.discord_username}` : ''}</span>
         </span>
       </button>
       {candidate ? <span className="badge badge-amber">Ожидает обзвона</span> : <>
         {member.is_blocked && <span className="badge badge-red">Заблокирован</span>}
         <span className={`badge ${member.weekly_events >= target ? 'badge-green' : 'badge-red'}`}>{member.weekly_events || 0} / нед.</span>
-        {canEdit && <div className="row-actions"><button className="icon-btn" title="Редактировать" onClick={() => setEditing(member)}><NavIcon name="edit" /></button><button className="icon-btn danger" title="Удалить" onClick={() => void removeMember(member.id)}><NavIcon name="trash" /></button></div>}
+        {canEdit && canManageMember(member) && (
+          <div className="row-actions">
+            <button className="icon-btn" title="Редактировать" onClick={() => setEditing(member)}><NavIcon name="edit" /></button>
+            <button className="icon-btn danger" title="Удалить" onClick={() => void removeMember(member.id)}><NavIcon name="trash" /></button>
+          </div>
+        )}
       </>}
     </div>
   );
@@ -239,11 +408,41 @@ export function RosterInteractive({
             <ErrorText value={error} />
             <div className="field"><label>Никнейм</label><input className="input" name="nickname" required defaultValue={editing?.nickname || ''} /></div>
             <div className="form-row-2">
-              <div className="field"><label>Роли</label><div className="role-checklist">{roles.map((role) => <label className="role-check-item" key={role.id}><input type="checkbox" name="roleIds" value={role.id} defaultChecked={(editing?.roles || []).some((r: Row) => r.id === role.id)} />{role.name}</label>)}</div></div>
+              <div className="field">
+                <label>Роли</label>
+                <div className="role-checklist">
+                  {roles.map((role) => {
+                    const allowed = canAssignRole(role);
+                    const checked = (editing?.roles || []).some((r: Row) => r.id === role.id);
+                    return (
+                      <label className={`role-check-item${!allowed ? ' is-disabled' : ''}`} key={role.id} title={!allowed ? 'Роль равна или выше вашей' : undefined}>
+                        <input
+                          type="checkbox"
+                          name="roleIds"
+                          value={role.id}
+                          defaultChecked={checked}
+                          disabled={!allowed}
+                        />
+                        {role.name}
+                        {!allowed ? ' · недоступна' : ''}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="field"><label>МП за неделю</label><input className="input" name="weeklyEvents" type="number" min="0" defaultValue={editing?.weekly_events || 0} /></div>
             </div>
             <div className="field"><label>Заметка</label><textarea className="input" name="note" defaultValue={editing?.note || ''} /></div>
-            <div className="field-hint">Аватар синхронизируется автоматически при входе пользователя через Discord.</div>
+            {canGrantOwner && editing?.id ? (
+              <label className="qform-check-label">
+                <input type="checkbox" name="isOwner" defaultChecked={!!editing.is_owner} />
+                Владелец портала
+              </label>
+            ) : null}
+            <div className="field-hint">
+              Можно назначать только роли ниже вашей в иерархии.
+              Аватар синхронизируется при входе через Discord.
+            </div>
             <div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={() => setEditing(undefined)}>Отмена</button><button className="btn btn-primary">Сохранить</button></div>
           </form>
         </Modal>

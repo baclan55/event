@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { invalidateUserCache, jsonError } from '@/lib/auth';
-import { REPRIMANDS_ROLES } from '@/lib/roleAccess';
 import { tierForPriority } from '@/lib/tier';
 import { getRolesForUsers } from '@/lib/roles';
 import { writeAudit } from '@/lib/audit';
@@ -15,8 +14,34 @@ import {
   ADMIN_POINT_LIMIT,
   HELPER_BLOCK_POINTS,
 } from '@/lib/reprimandRules';
-import { ok, parseId, required } from './helpers';
+import { ok, parseId, required, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
+import type { DbUser } from '@/lib/auth';
+
+function canPunish(actor: DbUser, targetPriority: number | null | undefined): boolean {
+  if (actor.is_owner) return true;
+  if (actor.role_priority == null || targetPriority == null) return false;
+  // Меньший priority = выше. Равные и ниже по иерархии наказывать нельзя.
+  return actor.role_priority < targetPriority;
+}
+
+async function assertCanPunishUser(actor: DbUser, targetUserId: number) {
+  const target = await query<{
+    is_owner: boolean;
+    role_priority: number | null;
+    nickname: string;
+  }>(
+    `SELECT u.is_owner, r.priority AS role_priority, u.nickname
+     FROM users u LEFT JOIN roles r ON r.id=u.role_id WHERE u.id=$1`,
+    [targetUserId],
+  );
+  if (!target.rows[0]) return jsonError('Участник не найден.', 404);
+  if (target.rows[0].is_owner) return jsonError('Нельзя наказывать владельца.', 403);
+  if (!canPunish(actor, target.rows[0].role_priority)) {
+    return jsonError('Нельзя наказывать сотрудника с равной или более высокой ролью.', 403);
+  }
+  return null;
+}
 
 function active<T extends Record<string, unknown>>(
   rows: T[],
@@ -53,7 +78,7 @@ export const handleReprimands: ApiHandler = async ({ key, params, method, body }
     });
   }
   if (key === 'reprimands-user') {
-    const user = await required(REPRIMANDS_ROLES);
+    const user = await requiredPerm('reprimands');
     if (user instanceof NextResponse) return user;
     const userId = parseId(params.userId);
     const userResult = await query<Record<string, unknown>>(
@@ -81,8 +106,10 @@ export const handleReprimands: ApiHandler = async ({ key, params, method, body }
     });
   }
   if (key === 'reprimands-unblock') {
-    const user = await required(REPRIMANDS_ROLES);
+    const user = await requiredPerm('reprimands');
     if (user instanceof NextResponse) return user;
+    const denied = await assertCanPunishUser(user, parseId(params.userId));
+    if (denied) return denied;
     await query('UPDATE users SET is_blocked=FALSE, blocked_at=NULL WHERE id=$1', [parseId(params.userId)]);
     await writeAudit({
       actorId: user.id,
@@ -94,13 +121,17 @@ export const handleReprimands: ApiHandler = async ({ key, params, method, body }
     return ok();
   }
   if (key === 'reprimand' && method === 'DELETE') {
-    const user = await required(REPRIMANDS_ROLES);
+    const user = await requiredPerm('reprimands');
     if (user instanceof NextResponse) return user;
     const { rows } = await query<{ user_id: number; type: string; reason: string; auto_generated: boolean }>(
       'SELECT user_id, type, reason, auto_generated FROM reprimands WHERE id=$1',
       [parseId(params.id)],
     );
     const target = rows[0];
+    if (target) {
+      const denied = await assertCanPunishUser(user, target.user_id);
+      if (denied) return denied;
+    }
     if (target?.auto_generated && target.type === 'strict') {
       await query('UPDATE reprimands SET converted=FALSE WHERE merged_into=$1', [parseId(params.id)]);
     }
@@ -119,7 +150,7 @@ export const handleReprimands: ApiHandler = async ({ key, params, method, body }
     return ok();
   }
 
-  const user = await required(REPRIMANDS_ROLES);
+  const user = await requiredPerm('reprimands');
   if (user instanceof NextResponse) return user;
   if (method === 'GET') {
     const result = await query<Record<string, unknown>>(
@@ -169,8 +200,8 @@ export const handleReprimands: ApiHandler = async ({ key, params, method, body }
   }
   if (target.rows[0].is_blocked) return jsonError('Участник уже заблокирован.', 400);
   const targetPriority = target.rows[0].role_priority;
-  if (!user.is_owner && user.role_priority != null && targetPriority != null && targetPriority < user.role_priority) {
-    return jsonError('Нельзя выдать выговор сотруднику выше по иерархии.', 403);
+  if (!canPunish(user, targetPriority)) {
+    return jsonError('Нельзя выдать выговор сотруднику с равной или более высокой ролью.', 403);
   }
   const tier = tierForPriority(targetPriority);
   let reprimandId: number;

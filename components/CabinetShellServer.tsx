@@ -10,7 +10,6 @@ type NavItem = { key: string; label: string };
 export function CabinetShellServer({
   user,
   nav,
-  showOwner,
   title,
   subtitle,
   pathname,
@@ -18,7 +17,6 @@ export function CabinetShellServer({
 }: {
   user: PublicUser;
   nav: NavItem[];
-  showOwner: boolean;
   title: string;
   subtitle: string;
   pathname: string;
@@ -78,15 +76,6 @@ export function CabinetShellServer({
             </a>
           ))}
         </nav>
-        {showOwner ? (
-          <div className="nav-group">
-            <div className="nav-label">Владелец</div>
-            <a href="/app/owner" className={`nav-item${pathname === '/app/owner' ? ' active' : ''}`}>
-              <NavIcon name="owner" />
-              <span>Панель владельца</span>
-            </a>
-          </div>
-        ) : null}
         <div className="sidebar-spacer" />
         <div className="sidebar-user">
           <div className="avatar">
@@ -114,7 +103,6 @@ export function CabinetShellServer({
           </button>
           {accountOpen && <div className="card account-dropdown">
             <a className="nav-item" href="/app/profile"><NavIcon name="profile" /><span>Моя страница</span></a>
-            {showOwner && <a className="nav-item" href="/app/owner"><NavIcon name="owner" /><span>Панель владельца</span></a>}
             <a className="nav-item" href="/api/auth/logout"><NavIcon name="logout" /><span>Выйти</span></a>
           </div>}
         </header>

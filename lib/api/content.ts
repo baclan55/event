@@ -1,18 +1,22 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { jsonError } from '@/lib/auth';
-import { EDIT_ROLES } from '@/lib/roleAccess';
+import { userHasPermission } from '@/lib/roleAccess';
 import { tierForPriority } from '@/lib/tier';
 import { saveImage } from '@/lib/images';
 import { renderBody, rawBodyForEdit, normalizeMarkdownSource } from '@/lib/richText';
 import { writeAudit } from '@/lib/audit';
-import { ok, parseId, readImage, required } from './helpers';
+import { ok, parseId, readImage, required, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
 
 export const handleContent: ApiHandler = async ({ key, request, params, method, body }) => {
   if (key.startsWith('content')) {
-    const user = await required(method === 'GET' ? undefined : EDIT_ROLES);
+    const user = method === 'GET' ? await required() : await requiredPerm('edit_content');
     if (user instanceof NextResponse) return user;
+    const canSeeAuthor = user.is_owner
+      || user.is_admin
+      || tierForPriority(user.role_priority) === 'admin'
+      || userHasPermission(user, 'edit_content');
     const section = params.section;
     if (!['faq', 'regulations', 'first_steps'].includes(section)) {
       return jsonError('Неизвестный раздел.', 404);
@@ -38,7 +42,7 @@ export const handleContent: ApiHandler = async ({ key, request, params, method, 
                 bodyRaw: rawBodyForEdit(row.body),
                 imageId: row.image_id,
                 updatedAt: row.updated_at,
-                updatedBy: row.updated_by_name,
+                updatedBy: canSeeAuthor ? row.updated_by_name : null,
               },
             ]),
         );
@@ -87,7 +91,7 @@ export const handleContent: ApiHandler = async ({ key, request, params, method, 
   }
 
   if (key.startsWith('rule')) {
-    const user = await required(method === 'GET' ? undefined : EDIT_ROLES);
+    const user = method === 'GET' ? await required() : await requiredPerm('edit_content');
     if (user instanceof NextResponse) return user;
     if (key === 'rules' && method === 'GET') {
       const result = await query<Record<string, unknown>>(

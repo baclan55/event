@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/client/api';
+import type { Permission } from '@/lib/roleAccess';
 
 export type PortalUser = {
   id: number;
@@ -16,6 +17,7 @@ export type PortalUser = {
   roleName: string | null;
   rolePriority: number | null;
   roles: string[];
+  permissions?: Permission[];
   isBlocked: boolean;
   blockedAt: string | null;
 };

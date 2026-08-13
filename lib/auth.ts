@@ -1,10 +1,22 @@
 import { query } from '@/lib/db';
 import { getSession } from '@/lib/session';
-import { userHasAnyRole, userHasRoleIn, type RoleUser } from '@/lib/roleAccess';
+import {
+  permissionsFromRole,
+  userHasAnyRole,
+  userHasPermission,
+  userHasRoleIn,
+  type Permission,
+  type RoleUser,
+} from '@/lib/roleAccess';
 import { syncBlockStatus } from '@/lib/reprimandRules';
 import { NextResponse } from 'next/server';
 
-export type DbRole = { id: number; name: string; priority: number };
+export type DbRole = {
+  id: number;
+  name: string;
+  priority: number;
+  permissions?: Record<string, boolean> | null;
+};
 
 export type DbUser = RoleUser & {
   id: number;
@@ -24,6 +36,7 @@ export type DbUser = RoleUser & {
   role_name: string | null;
   role_priority: number | null;
   roles: DbRole[];
+  permissions: Permission[];
 };
 
 const BLOCKED_MESSAGE =
@@ -35,12 +48,26 @@ const USER_CACHE_TTL_MS = Number.parseInt(process.env.USER_CACHE_TTL_MS || '3000
 const blockSyncAt = new Map<number, number>();
 const userCache = new Map<string, { at: number; user: DbUser }>();
 
+function aggregatePermissions(roles: DbRole[]): Permission[] {
+  const set = new Set<Permission>();
+  for (const role of roles) {
+    for (const perm of permissionsFromRole(role.name, role.permissions)) {
+      set.add(perm);
+    }
+  }
+  return [...set];
+}
+
 function cloneUser(user: DbUser): DbUser {
   const roles = Array.isArray(user.roles) ? user.roles.map((r) => ({ ...r })) : [];
+  const permissions = Array.isArray(user.permissions)
+    ? [...user.permissions]
+    : aggregatePermissions(roles);
   return {
     ...user,
     roles,
     roleNames: roles.map((r) => r.name),
+    permissions,
   };
 }
 
@@ -65,12 +92,17 @@ export type PublicUser = {
   roleName: string | null;
   rolePriority: number | null;
   roles: string[];
+  permissions: Permission[];
   isBlocked: boolean;
   blockedAt: string | null;
 };
 
 export function publicUser(u: DbUser | null | undefined): PublicUser | null {
   if (!u) return null;
+  const roles = Array.isArray(u.roles) ? u.roles : [];
+  const permissions = Array.isArray(u.permissions) && u.permissions.length
+    ? u.permissions
+    : aggregatePermissions(roles);
   return {
     id: u.id,
     nickname: u.nickname,
@@ -83,7 +115,8 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
     roleId: u.role_id,
     roleName: u.role_name,
     rolePriority: u.role_priority != null ? u.role_priority : null,
-    roles: (u.roles || []).map((r) => r.name),
+    roles: roles.map((r) => r.name),
+    permissions,
     isBlocked: !!u.is_blocked,
     blockedAt: u.blocked_at || null,
   };
@@ -103,8 +136,12 @@ export async function loadUserById(userId: number): Promise<DbUser | null> {
             u.is_blocked, u.blocked_at,
             u.role_id, r.name AS role_name, r.priority AS role_priority,
             COALESCE(
-              (SELECT json_agg(json_build_object('id', rr.id, 'name', rr.name, 'priority', rr.priority)
-                               ORDER BY rr.priority ASC)
+              (SELECT json_agg(json_build_object(
+                  'id', rr.id,
+                  'name', rr.name,
+                  'priority', rr.priority,
+                  'permissions', COALESCE(rr.permissions, '{}'::jsonb)
+                ) ORDER BY rr.priority ASC)
                FROM user_roles ur
                JOIN roles rr ON rr.id = ur.role_id
                WHERE ur.user_id = u.id),
@@ -125,6 +162,7 @@ export async function loadUserById(userId: number): Promise<DbUser | null> {
   const roles = Array.isArray(user.roles) ? user.roles : [];
   user.roles = roles;
   user.roleNames = roles.map((r) => r.name);
+  user.permissions = aggregatePermissions(roles);
 
   if (user.is_blocked) {
     const last = blockSyncAt.get(user.id) || 0;
@@ -177,6 +215,17 @@ export async function requireRoleInUser(
   const user = await requireUser();
   if (user instanceof NextResponse) return user;
   if (!userHasRoleIn(user, roles)) {
+    return jsonError('Недостаточно прав для доступа к этому разделу.', 403);
+  }
+  return user;
+}
+
+export async function requirePermissionUser(
+  permission: Permission
+): Promise<DbUser | NextResponse> {
+  const user = await requireUser();
+  if (user instanceof NextResponse) return user;
+  if (!userHasPermission(user, permission)) {
     return jsonError('Недостаточно прав для доступа к этому разделу.', 403);
   }
   return user;

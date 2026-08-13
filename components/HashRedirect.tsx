@@ -6,7 +6,7 @@ const routes: Record<string, string> = {
   home: '/', apply: '/apply', dashboard: '/app/dashboard', profile: '/app/profile',
   faq: '/app/faq', roster: '/app/roster', rules: '/app/rules', regulations: '/app/regulations',
   firstSteps: '/app/first-steps', vacations: '/app/vacations', reprimands: '/app/reprimands',
-  applications: '/app/applications', candidates: '/app/candidates', owner: '/app/owner',
+  applications: '/app/applications', candidates: '/app/candidates', roles: '/app/roles', owner: '/app/roles',
   blocked: '/app/blocked', pending: '/app/pending',
 };
 

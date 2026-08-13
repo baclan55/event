@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
-import { requireAnyRoleUser, requireRoleInUser } from '@/lib/auth';
+import { requireAnyRoleUser, requirePermissionUser, requireRoleInUser } from '@/lib/auth';
+import type { Permission } from '@/lib/roleAccess';
 import { readUploadedImage } from '@/lib/images';
 
 export const required = async (roles?: readonly string[]) =>
   roles ? requireRoleInUser(roles) : requireAnyRoleUser();
+
+export const requiredPerm = async (permission: Permission) =>
+  requirePermissionUser(permission);
 
 export const readBody = async (request: Request) =>
   request.clone().json().catch(() => ({})) as Promise<Record<string, unknown>>;

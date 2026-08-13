@@ -1,34 +1,12 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { jsonError } from '@/lib/auth';
-import { APPLICATIONS_ROLES, VACATIONS_REVIEW_ROLES, userHasRoleIn } from '@/lib/roleAccess';
+import { userHasPermission } from '@/lib/roleAccess';
 import { writeAudit } from '@/lib/audit';
-import { ok, parseId, required } from './helpers';
+import { ok, parseId, required, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
 
 export const handleVacations: ApiHandler = async ({ key, params, method, body }) => {
-  if (key === 'applications-status') {
-    if (method === 'GET') {
-      const result = await query<{ is_open: boolean }>('SELECT is_open FROM applications_settings WHERE id=1');
-      return NextResponse.json({ isOpen: result.rows[0]?.is_open ?? true });
-    }
-    const user = await required(APPLICATIONS_ROLES);
-    if (user instanceof NextResponse) return user;
-    const isOpen = body.isOpen === true || body.isOpen === 'true';
-    await query('UPDATE applications_settings SET is_open=$1,updated_by=$2,updated_at=now() WHERE id=1', [
-      isOpen,
-      user.id,
-    ]);
-    await writeAudit({
-      actorId: user.id,
-      action: 'applications.recruitment',
-      entityType: 'applications_settings',
-      entityId: 1,
-      details: { isOpen },
-    });
-    return ok({ isOpen });
-  }
-
   if (key !== 'vacations-mine' && key !== 'vacations' && key !== 'vacation') return undefined;
 
   const user = await required();
@@ -47,13 +25,11 @@ export const handleVacations: ApiHandler = async ({ key, params, method, body })
       `SELECT ${fields} FROM vacations v JOIN users u ON u.id=v.user_id LEFT JOIN users rb ON rb.id=v.reviewed_by ORDER BY v.start_date`,
     );
     const mine = result.rows.filter((row) => row.user_id === user.id);
+    const canReview = userHasPermission(user, 'vacations_review');
     return NextResponse.json({
       vacations: result.rows.map((row) => ({
         ...row,
-        reason:
-          user.is_owner || user.id === row.user_id || userHasRoleIn(user, VACATIONS_REVIEW_ROLES)
-            ? row.reason
-            : '',
+        reason: user.is_owner || user.id === row.user_id || canReview ? row.reason : '',
       })),
       mine,
     });
@@ -80,7 +56,7 @@ export const handleVacations: ApiHandler = async ({ key, params, method, body })
     return ok({ id: result.rows[0].id });
   }
   if (method === 'DELETE') {
-    const reviewer = await required(VACATIONS_REVIEW_ROLES);
+    const reviewer = await requiredPerm('vacations_review');
     if (reviewer instanceof NextResponse) return reviewer;
     const target = await query<{ user_id: number; status: string }>(
       'SELECT user_id,status FROM vacations WHERE id=$1',
@@ -105,7 +81,7 @@ export const handleVacations: ApiHandler = async ({ key, params, method, body })
   if (!['approved', 'rejected', 'cancelled'].includes(status)) {
     return jsonError('Некорректный статус заявки.', 400);
   }
-  const reviewer = userHasRoleIn(user, VACATIONS_REVIEW_ROLES);
+  const reviewer = userHasPermission(user, 'vacations_review');
   const ownPendingCancellation =
     status === 'cancelled' && vacation.rows[0].user_id === user.id && vacation.rows[0].status === 'pending';
   if (!reviewer && !ownPendingCancellation) {

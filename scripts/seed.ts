@@ -4,6 +4,7 @@
 // чтобы страницы не были пустыми сразу после установки.
 // Запуск: npm run db:seed  (безопасно запускать повторно — не создаёт дублей)
 import 'dotenv/config';
+import { defaultPermissionsForRoleName } from '../lib/roleAccess';
 import { scriptPool as pool } from './db-pool';
 
 // Иерархия ролей — от самой высокой (priority 1) до самой низкой.
@@ -87,10 +88,16 @@ const DEFAULT_RULES = [
 
 async function ensureRoles(client) {
   for (let i = 0; i < ROLES.length; i++) {
+    const permissions = defaultPermissionsForRoleName(ROLES[i]);
     await client.query(
-      `INSERT INTO roles (name, priority) VALUES ($1, $2)
-       ON CONFLICT (name) DO UPDATE SET priority = EXCLUDED.priority`,
-      [ROLES[i], i + 1]
+      `INSERT INTO roles (name, priority, permissions) VALUES ($1, $2, $3::jsonb)
+       ON CONFLICT (name) DO UPDATE SET
+         priority = EXCLUDED.priority,
+         permissions = CASE
+           WHEN roles.permissions = '{}'::jsonb THEN EXCLUDED.permissions
+           ELSE roles.permissions
+         END`,
+      [ROLES[i], i + 1, JSON.stringify(permissions)]
     );
   }
   console.log(`[seed] Роли готовы (${ROLES.length}).`);

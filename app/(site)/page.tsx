@@ -1,4 +1,5 @@
 import { getCurrentUser, publicUser } from '@/lib/auth';
+import { isApplicationsOpen } from '@/lib/cabinetData';
 import { runtimeEnv } from '@/lib/runtimeEnv';
 
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,7 @@ export default async function HomePage() {
     user = null;
   }
   const subtitle = runtimeEnv('APP_SUBTITLE') || 'Ивент-отдел сервера Denver';
+  const applyOpen = await isApplicationsOpen();
 
   return (
     <>
@@ -26,7 +28,11 @@ export default async function HomePage() {
           ) : (
             <a className="btn btn-primary" href="/api/auth/discord?consent=1">Войти через Discord</a>
           )}
-          <a className="btn btn-ghost" href="/apply">Оставить заявку</a>
+          {applyOpen ? (
+            <a className="btn btn-ghost" href="/apply">Оставить заявку</a>
+          ) : (
+            <span className="btn btn-ghost" style={{ opacity: 0.6, cursor: 'default' }}>Набор закрыт</span>
+          )}
         </div>
       </section>
       <section className="site-section">
@@ -40,7 +46,11 @@ export default async function HomePage() {
         <div className="site-callout">
           <h3>Хотите стать частью команды?</h3>
           <div className="site-callout-underline" />
-          <a className="btn btn-primary" href="/apply">Подать заявку</a>
+          {applyOpen ? (
+            <a className="btn btn-primary" href="/apply">Подать заявку</a>
+          ) : (
+            <p className="role-tag">Набор в отдел сейчас закрыт.</p>
+          )}
         </div>
       </section>
     </>

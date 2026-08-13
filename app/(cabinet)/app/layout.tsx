@@ -2,7 +2,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getCurrentUser, publicUser } from '@/lib/auth';
 import { runtimeEnv } from '@/lib/runtimeEnv';
-import { userHasAnyRole, userHasRoleIn, APPLICATIONS_ROLES, CANDIDATES_ROLES, OWNER_PANEL_ROLES, REPRIMANDS_ROLES } from '@/lib/roleAccess';
+import { userHasAnyRole, userHasPermission } from '@/lib/roleAccess';
 import { CabinetShellServer } from '@/components/CabinetShellServer';
 
 export const dynamic = 'force-dynamic';
@@ -20,7 +20,7 @@ const TITLES: Record<string, string> = {
   '/app/reprimands': 'Система выговоров',
   '/app/applications': 'Заявки',
   '/app/candidates': 'Кандидаты',
-  '/app/owner': 'Панель владельца',
+  '/app/roles': 'Роли и доступы',
   '/app/blocked': 'Доступ закрыт',
   '/app/pending': 'Ожидание роли',
 };
@@ -28,7 +28,7 @@ const TITLES: Record<string, string> = {
 const SUBTITLES: Record<string, string> = {
   '/app': 'Обзор состава и присутствия на мероприятиях',
   '/app/dashboard': 'Обзор состава и присутствия на мероприятиях',
-  '/app/profile': 'Ваши мероприятия за неделю и выговоры',
+  '/app/profile': 'Ваши мероприятия за неделю, выговоры и журнал',
   '/app/faq': 'Последовательность проведения мероприятий',
   '/app/roster': 'Иерархия сотрудников и мероприятия за неделю',
   '/app/rules': 'Правила проведения мероприятий и их суть',
@@ -38,7 +38,7 @@ const SUBTITLES: Record<string, string> = {
   '/app/reprimands': 'Учёт дисциплинарных взысканий',
   '/app/applications': 'Заявки на роль Event Helper',
   '/app/candidates': 'Кандидаты, ожидающие результата обзвона',
-  '/app/owner': 'Управление пользователями и правами',
+  '/app/roles': 'Создание ролей, доступы и вес в иерархии',
 };
 
 export default async function CabinetLayout({ children }: { children: React.ReactNode }) {
@@ -55,11 +55,13 @@ export default async function CabinetLayout({ children }: { children: React.Reac
   if (user.isBlocked && pathname !== '/app/blocked') {
     redirect('/app/blocked');
   }
-  const hasRole = userHasAnyRole({
+  const roleCtx = {
     role_id: user.roleId,
     is_owner: user.isOwner,
     roleNames: user.roles,
-  });
+    permissions: user.permissions,
+  };
+  const hasRole = userHasAnyRole(roleCtx);
   if (!user.isBlocked && !hasRole && pathname !== '/app/pending') {
     redirect('/app/pending');
   }
@@ -69,16 +71,20 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     return <div className="site"><div className="bg-decor" />{children}</div>;
   }
 
-  const roleCtx = { is_owner: user.isOwner, roleNames: user.roles };
-  const protectedRoutes: Record<string, readonly string[]> = {
-    '/app/reprimands': REPRIMANDS_ROLES,
-    '/app/applications': APPLICATIONS_ROLES,
-    '/app/candidates': CANDIDATES_ROLES,
-    '/app/owner': OWNER_PANEL_ROLES,
+  if (pathname === '/app/owner') {
+    redirect(userHasPermission(roleCtx, 'manage_roles') ? '/app/roles' : '/app/profile');
+  }
+
+  const protectedRoutes: Record<string, Parameters<typeof userHasPermission>[1]> = {
+    '/app/reprimands': 'reprimands',
+    '/app/applications': 'applications',
+    '/app/candidates': 'candidates',
+    '/app/roles': 'manage_roles',
   };
-  if (protectedRoutes[pathname] && !userHasRoleIn(roleCtx, protectedRoutes[pathname])) {
+  if (protectedRoutes[pathname] && !userHasPermission(roleCtx, protectedRoutes[pathname])) {
     redirect('/app/dashboard');
   }
+
   const nav = [
     ['dashboard', 'Главная', true],
     ['profile', 'Моя страница', true],
@@ -88,12 +94,12 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     ['regulations', 'Регламент', true],
     ['first-steps', 'Первые шаги', true],
     ['vacations', 'Отпуска', true],
-    ['reprimands', 'Система выговоров', userHasRoleIn(roleCtx, REPRIMANDS_ROLES)],
-    ['applications', 'Заявки', userHasRoleIn(roleCtx, APPLICATIONS_ROLES)],
-    ['candidates', 'Кандидаты', userHasRoleIn(roleCtx, CANDIDATES_ROLES)],
+    ['reprimands', 'Система выговоров', userHasPermission(roleCtx, 'reprimands')],
+    ['applications', 'Заявки', userHasPermission(roleCtx, 'applications')],
+    ['candidates', 'Кандидаты', userHasPermission(roleCtx, 'candidates')],
+    ['roles', 'Роли и доступы', userHasPermission(roleCtx, 'manage_roles')],
   ].filter((item) => item[2]) as [string, string, boolean][];
 
-  const showOwner = userHasRoleIn(roleCtx, OWNER_PANEL_ROLES);
   const title = TITLES[pathname] || 'Кабинет';
   const appTitle = runtimeEnv('APP_TITLE') || 'Events Denver';
   const subtitle = `${SUBTITLES[pathname] || runtimeEnv('APP_SUBTITLE') || 'Ивент-отдел сервера'} · ${appTitle}`;
@@ -102,7 +108,6 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     <CabinetShellServer
       user={user}
       nav={nav.map(([key, label]) => ({ key, label }))}
-      showOwner={showOwner}
       title={title}
       subtitle={subtitle}
       pathname={pathname}

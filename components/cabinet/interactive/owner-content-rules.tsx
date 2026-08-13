@@ -143,7 +143,12 @@ export function ContentInteractive({
         </div>
         {block.body ? <div className="md-body" dangerouslySetInnerHTML={{ __html: block.body }} /> : <div className="empty-state"><p>Текст пока не добавлен.</p></div>}
         {block.imageId && <div className="section-image"><img src={`/media/${block.imageId}`} alt="" /></div>}
-        {block.updatedAt && <div className="meta-line">Обновлено {new Date(block.updatedAt).toLocaleString('ru-RU')}{block.updatedBy ? ` · ${block.updatedBy}` : ''}</div>}
+        {block.updatedAt && (
+          <div className="meta-line">
+            Последнее редактирование: {new Date(block.updatedAt).toLocaleString('ru-RU')}
+            {block.updatedBy ? ` · автор ${block.updatedBy}` : ''}
+          </div>
+        )}
       </div>
       {editing && <Modal title={`Редактирование · ${splitByAudience ? audience === 'helper' ? 'Event Helper' : 'Event Administrator' : title}`} onClose={() => setEditing(false)} wide><form onSubmit={save}><ErrorText value={error} /><div className="field"><label>Текст (Markdown)</label><MarkdownFormField name="body" initialValue={block.bodyRaw || ''} /></div><div className="field"><label>Картинка</label><input className="input" name="image" type="file" accept="image/*" />{block.imageId && <button className="btn btn-ghost btn-sm" type="button" onClick={() => void removeImage()}><NavIcon name="trash" /> Удалить текущую</button>}</div><div className="modal-actions"><button className="btn btn-ghost" type="button" onClick={() => setEditing(false)}>Отмена</button><button className="btn btn-primary">Сохранить</button></div></form></Modal>}
     </>

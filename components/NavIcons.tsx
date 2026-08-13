@@ -114,6 +114,7 @@ export function NavIcon({ name }: { name: string }) {
         </svg>
       );
     case 'owner':
+    case 'roles':
       return (
         <svg {...svgProps}>
           <path d="M3 8.5 6.5 11l3-5.5L12 10l2.5-4.5 3 5.5 3.5-2.5L20 18H4L3 8.5Z" />

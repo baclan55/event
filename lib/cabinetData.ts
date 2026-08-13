@@ -5,8 +5,9 @@ import { runtimeEnv } from '@/lib/runtimeEnv';
 import { rawBodyForEdit, renderBody } from '@/lib/richText';
 import { getRolesForUsers } from '@/lib/roles';
 import { tierForPriority } from '@/lib/tier';
-import { VACATIONS_REVIEW_ROLES, userHasRoleIn } from '@/lib/roleAccess';
+import { userHasPermission } from '@/lib/roleAccess';
 import { ADMIN_POINT_DECAY_DAYS, adminPointActive } from '@/lib/reprimandRules';
+import { DEFAULT_CLOSED_MESSAGE } from '@/lib/audit';
 
 export async function requirePortalUser(): Promise<PublicUser> {
   const user = publicUser(await getCurrentUser());
@@ -58,6 +59,15 @@ export async function loadReprimandsMe(userId: number) {
 }
 
 export async function loadContent(section: string, viewer?: PublicUser) {
+  const canSeeAuthor = !!viewer && (
+    viewer.isOwner
+    || viewer.isAdmin
+    || (viewer.rolePriority != null && tierForPriority(viewer.rolePriority) === 'admin')
+    || userHasPermission(
+      { is_owner: viewer.isOwner, roleNames: viewer.roles, permissions: viewer.permissions },
+      'edit_content',
+    )
+  );
   const r = await query<Record<string, unknown>>(
     `SELECT c.audience, c.body, c.image_id, c.updated_at, u.nickname AS updated_by_name
      FROM content_blocks c
@@ -75,7 +85,7 @@ export async function loadContent(section: string, viewer?: PublicUser) {
         bodyRaw: rawBodyForEdit(x.body),
         imageId: x.image_id as number | null,
         updatedAt: x.updated_at as string | null,
-        updatedBy: x.updated_by_name as string | null,
+        updatedBy: canSeeAuthor ? (x.updated_by_name as string | null) : null,
       },
     ])
   );
@@ -96,12 +106,15 @@ export async function loadRoster() {
   const r = await query<Record<string, unknown>>(
     `SELECT u.id, u.nickname, u.discord_username, u.avatar_image_id, u.avatar_url,
             u.weekly_events, u.note, u.status, u.is_blocked, u.blocked_at,
-            u.role_id, r.name AS role_name, r.priority AS role_priority
+            u.is_owner, u.is_admin, u.role_id, r.name AS role_name, r.priority AS role_priority
      FROM users u LEFT JOIN roles r ON r.id = u.role_id
      ORDER BY COALESCE(r.priority, 999), u.nickname`
   );
   const rolesMap = await getRolesForUsers(r.rows.map((x) => x.id as number));
-  const allRoles = await query('SELECT id, name, priority FROM roles ORDER BY priority');
+  const allRoles = await query(
+    `SELECT id, name, priority, COALESCE(permissions, '{}'::jsonb) AS permissions
+     FROM roles ORDER BY priority`,
+  );
   return {
     members: r.rows.map((x) => ({
       ...x,
@@ -121,9 +134,9 @@ export async function loadVacations(viewer?: PublicUser) {
      JOIN users u ON u.id = v.user_id
      ORDER BY v.start_date`
   );
-  const canReview = viewer && userHasRoleIn(
-    { is_owner: viewer.isOwner, roleNames: viewer.roles },
-    VACATIONS_REVIEW_ROLES
+  const canReview = viewer && userHasPermission(
+    { is_owner: viewer.isOwner, roleNames: viewer.roles, permissions: viewer.permissions },
+    'vacations_review',
   );
   return r.rows.map((row) => ({
     ...row,
@@ -131,18 +144,39 @@ export async function loadVacations(viewer?: PublicUser) {
   }));
 }
 
+export async function getApplicationsSettings() {
+  try {
+    await query(
+      `INSERT INTO applications_settings (id, is_open) VALUES (1, TRUE)
+       ON CONFLICT (id) DO NOTHING`,
+    );
+    const settings = await query<{ is_open: boolean; closed_message: string | null }>(
+      'SELECT is_open, closed_message FROM applications_settings WHERE id=1',
+    );
+    return {
+      isOpen: settings.rows[0]?.is_open ?? true,
+      closedMessage: settings.rows[0]?.closed_message || DEFAULT_CLOSED_MESSAGE,
+    };
+  } catch {
+    return { isOpen: true, closedMessage: DEFAULT_CLOSED_MESSAGE };
+  }
+}
+
+export async function isApplicationsOpen(): Promise<boolean> {
+  return (await getApplicationsSettings()).isOpen;
+}
+
 export async function loadApplications() {
-  const [applications, settings] = await Promise.all([
-    query<Record<string, unknown>>(
-      `SELECT a.*, rb.nickname AS reviewed_by_nickname
-       FROM applications a LEFT JOIN users rb ON rb.id = a.reviewed_by
-       ORDER BY a.created_at DESC LIMIT 100`
-    ),
-    query<{ is_open: boolean }>('SELECT is_open FROM applications_settings WHERE id=1'),
-  ]);
+  const settings = await getApplicationsSettings();
+  const applications = await query<Record<string, unknown>>(
+    `SELECT a.*, rb.nickname AS reviewed_by_nickname
+     FROM applications a LEFT JOIN users rb ON rb.id = a.reviewed_by
+     ORDER BY a.created_at DESC LIMIT 100`,
+  );
   return {
     rows: applications.rows,
-    isOpen: settings.rows[0]?.is_open ?? true,
+    isOpen: settings.isOpen,
+    closedMessage: settings.closedMessage,
   };
 }
 

@@ -1,9 +1,8 @@
-import { requirePortalUser } from '@/lib/cabinetData';
-import { OwnerInteractive } from '@/components/cabinet/InteractiveCore';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
-export default async function OwnerPage() {
-  const user = await requirePortalUser();
-  return <OwnerInteractive canManageOwners={user.isOwner} />;
+/** Панель владельца удалена — редирект на роли / профиль. */
+export default function OwnerPage() {
+  redirect('/app/roles');
 }

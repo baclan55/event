@@ -5,12 +5,15 @@
 -- поэтому его безопасно запускать повторно.
 -- ============================================================================
 
--- Иерархия ролей (от высшей к низшей — определяется полем priority)
+-- Иерархия ролей (от высшей к низшей — определяется полем priority:
+-- меньший priority = выше в списке = главнее).
 CREATE TABLE IF NOT EXISTS roles (
   id         SERIAL PRIMARY KEY,
   name       TEXT UNIQUE NOT NULL,
   priority   INTEGER NOT NULL
 );
+-- Набор доступов роли (JSONB: ключи из lib/roleAccess PERMISSIONS).
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS permissions JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 -- Универсальное хранилище картинок (аватары, иллюстрации к разделам и правилам).
 -- Храним прямо в базе (bytea), чтобы не зависеть от диска Render, который
@@ -178,6 +181,9 @@ CREATE TABLE IF NOT EXISTS applications_settings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT applications_settings_single_row CHECK (id = 1)
 );
+ALTER TABLE applications_settings
+  ADD COLUMN IF NOT EXISTS closed_message TEXT NOT NULL
+  DEFAULT 'Набор закрыт — следите за новостями о новом наборе.';
 INSERT INTO applications_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 -- Таблица сессий для connect-pg-simple (тем же способом её создаёт сама

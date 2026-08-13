@@ -4,6 +4,7 @@ import { handleApplications } from './api/applications';
 import { handleContent } from './api/content';
 import { readBody } from './api/helpers';
 import { handleReprimands } from './api/reprimands';
+import { handleRoles } from './api/roles';
 import { handleRoster } from './api/roster';
 import { handleSystem } from './api/system';
 import type { ApiContext, ApiHandler } from './api/types';
@@ -13,9 +14,10 @@ const handlers: ApiHandler[] = [
   handleSystem,
   handleContent,
   handleRoster,
+  handleRoles,
   handleReprimands,
-  handleVacations,
   handleApplications,
+  handleVacations,
 ];
 
 export async function handle(

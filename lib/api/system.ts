@@ -10,9 +10,8 @@ import {
 } from '@/lib/auth';
 import { getSession } from '@/lib/session';
 import { runtimeEnv } from '@/lib/runtimeEnv';
-import { EDIT_ROLES } from '@/lib/roleAccess';
 import { renderMarkdown } from '@/lib/richText';
-import { ok, parseId, plain, required } from './helpers';
+import { ok, parseId, plain, required, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
 
 function redirectUri() {
@@ -197,7 +196,7 @@ export const handleSystem: ApiHandler = async ({ key, request, params, method, b
       : new NextResponse(null, { status: 404 });
   }
   if (key === 'markdown') {
-    const user = await required(EDIT_ROLES);
+    const user = await requiredPerm('edit_content');
     if (user instanceof NextResponse) return user;
     return NextResponse.json({ html: renderMarkdown(String(body.body || '')) });
   }
