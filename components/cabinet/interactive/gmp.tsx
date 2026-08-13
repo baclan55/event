@@ -37,6 +37,71 @@ function fromLocalInputValue(value: string) {
   return Number.isNaN(d.getTime()) ? '' : d.toISOString();
 }
 
+function GmpStatsCharts({ stats }: { stats: Row }) {
+  const players = Number(stats.players) || 0;
+  const finished = Number(stats.finished) || 0;
+  const unfinished = Math.max(0, players - finished);
+  const checkpointStats = ((stats.checkpointStats as Row[]) || []);
+  const barMax = Math.max(100, ...checkpointStats.map((cp) => Number(cp.percent) || 0), 1);
+
+  const donutR = 54;
+  const donutC = 2 * Math.PI * donutR;
+  const finishFrac = players > 0 ? finished / players : 0;
+  const finishLen = donutC * finishFrac;
+
+  return (
+    <div className="gmp-charts">
+      <div className="gmp-chart-card">
+        <div className="gmp-chart-title">Финиш</div>
+        <div className="gmp-donut-wrap">
+          <svg className="gmp-donut" viewBox="0 0 140 140" aria-hidden>
+            <circle className="gmp-donut-track" cx="70" cy="70" r={donutR} />
+            <circle
+              className="gmp-donut-value"
+              cx="70"
+              cy="70"
+              r={donutR}
+              strokeDasharray={`${finishLen} ${donutC - finishLen}`}
+              strokeDashoffset={donutC * 0.25}
+            />
+          </svg>
+          <div className="gmp-donut-center">
+            <strong>{players ? Math.round(finishFrac * 100) : 0}%</strong>
+            <span>{finished}/{players}</span>
+          </div>
+        </div>
+        <div className="gmp-chart-legend">
+          <span><i className="gmp-dot gmp-dot-finish" /> Финиш · {finished}</span>
+          <span><i className="gmp-dot gmp-dot-rest" /> Без финиша · {unfinished}</span>
+        </div>
+      </div>
+
+      <div className="gmp-chart-card">
+        <div className="gmp-chart-title">Отметки по точкам</div>
+        {checkpointStats.length ? (
+          <div className="gmp-bars" role="img" aria-label="Процент отметок по контрольным точкам">
+            {checkpointStats.map((cp) => {
+              const pct = Number(cp.percent) || 0;
+              const h = Math.max(4, (pct / barMax) * 100);
+              return (
+                <div className="gmp-bar-col" key={cp.id} title={`${String(cp.name)}: ${pct}%`}>
+                  <div className="gmp-bar-value">{pct}%</div>
+                  <div className="gmp-bar-track">
+                    <div className="gmp-bar-fill" style={{ height: `${h}%` }} />
+                  </div>
+                  <div className="gmp-bar-label">{String(cp.name)}</div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="field-hint">Нет контрольных точек</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 type StaffPick = { userId: number; role: 'staff' | 'organizer' };
 type WinnerRow = {
   place: number;
@@ -473,6 +538,7 @@ export function GmpDetailInteractive({ eventId }: { eventId: number }) {
   const [staticId, setStaticId] = useState('');
   const [busyMark, setBusyMark] = useState('');
   const [winnerDraft, setWinnerDraft] = useState<WinnerRow[]>([]);
+  const [detailTab, setDetailTab] = useState<'marks' | 'stats'>('marks');
   const liveStampRef = useRef('');
 
   async function load() {
@@ -702,7 +768,7 @@ export function GmpDetailInteractive({ eventId }: { eventId: number }) {
           ) : null}
           {canEditMeta ? (
             <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>
-              <NavIcon name="edit" /> Редактировать
+              Редактировать
             </button>
           ) : null}
         </div>
@@ -734,78 +800,18 @@ export function GmpDetailInteractive({ eventId }: { eventId: number }) {
       </div>
 
       <div className="card card-pad" style={{ marginBottom: 16 }}>
-        <div className="card-header"><h3>Таблица отметок</h3></div>
-        {canMark ? (
-          <form className="gmp-add-player" onSubmit={addPlayer}>
-            <input
-              className="input"
-              value={staticId}
-              maxLength={6}
-              placeholder="StaticID"
-              onChange={(e) => setStaticId(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            />
-            <button className="btn btn-primary btn-sm" type="submit" disabled={staticId.length < 2}>
-              <NavIcon name="plus" /> Игрок
+        <div className="card-header">
+          <h3>Победители</h3>
+          {canEditWinners ? (
+            <button className="btn btn-ghost btn-sm" type="button" onClick={openWinnersEditor}>
+              <NavIcon name="edit" /> Изменить
             </button>
-          </form>
-        ) : null}
-        <div className="gmp-table-wrap">
-          <table className="gmp-table">
-            <thead>
-              <tr>
-                <th>StaticID</th>
-                {checkpoints.map((cp) => <th key={cp.id}>{String(cp.name)}</th>)}
-                <th>Место</th>
-                {canMark ? <th /> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {players.map((player) => (
-                <tr key={player.id}>
-                  <td>#{String(player.static_id)}</td>
-                  {checkpoints.map((cp) => {
-                    const key = `${player.id}:${cp.id}`;
-                    const checked = markSet.has(key);
-                    return (
-                      <td key={cp.id}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={!canMark || busyMark === key || isClosed}
-                          onChange={() => void toggleMark(Number(player.id), Number(cp.id), !checked)}
-                        />
-                      </td>
-                    );
-                  })}
-                  <td>{player.place != null ? String(player.place) : '—'}</td>
-                  {canMark ? (
-                    <td>
-                      <button className="icon-btn danger" type="button" onClick={() => void removePlayer(Number(player.id))}>
-                        <NavIcon name="trash" />
-                      </button>
-                    </td>
-                  ) : null}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!players.length && <div className="empty-state"><h3>Игроков пока нет</h3></div>}
+          ) : null}
         </div>
-      </div>
-
-      <div className="form-row-2" style={{ marginBottom: 16 }}>
-        <div className="card card-pad">
-          <div className="card-header">
-            <h3>Победители</h3>
-            {canEditWinners ? (
-              <button className="btn btn-ghost btn-sm" type="button" onClick={openWinnersEditor}>
-                <NavIcon name="edit" /> Изменить
-              </button>
-            ) : null}
-          </div>
-          <div className="field-hint" style={{ marginBottom: 10 }}>
-            Список для ручной выдачи наград. Автозаполнение StaticID из финиша — только в пустые места.
-          </div>
+        <div className="field-hint" style={{ marginBottom: 10 }}>
+          Список для ручной выдачи наград. Автозаполнение StaticID из финиша — только в пустые места.
+        </div>
+        <div className="gmp-winners-grid">
           {winners.map((w) => (
             <div className="roster-row" key={w.place}>
               <div className="who">
@@ -820,33 +826,116 @@ export function GmpDetailInteractive({ eventId }: { eventId: number }) {
               </div>
             </div>
           ))}
-          {!winners.length && <div className="empty-state"><h3>Места не заданы</h3></div>}
         </div>
+        {!winners.length && <div className="empty-state"><h3>Места не заданы</h3></div>}
+      </div>
 
-        <div className="card card-pad">
+      <div className="segmented roster-tabs" style={{ marginBottom: 16 }}>
+        <button
+          type="button"
+          className={detailTab === 'marks' ? 'active' : ''}
+          onClick={() => setDetailTab('marks')}
+        >
+          Отметки · {players.length}
+        </button>
+        <button
+          type="button"
+          className={detailTab === 'stats' ? 'active' : ''}
+          onClick={() => setDetailTab('stats')}
+        >
+          Статистика
+        </button>
+      </div>
+
+      {detailTab === 'marks' ? (
+        <div className="card card-pad" style={{ marginBottom: 16 }}>
+          <div className="card-header"><h3>Таблица отметок</h3></div>
+          {canMark ? (
+            <form className="gmp-add-player" onSubmit={addPlayer}>
+              <input
+                className="input"
+                value={staticId}
+                maxLength={6}
+                placeholder="StaticID"
+                onChange={(e) => setStaticId(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              />
+              <button className="btn btn-primary btn-sm" type="submit" disabled={staticId.length < 2}>
+                <NavIcon name="plus" /> Игрок
+              </button>
+            </form>
+          ) : null}
+          <div className="gmp-table-wrap">
+            <table className="gmp-table">
+              <thead>
+                <tr>
+                  <th>StaticID</th>
+                  {checkpoints.map((cp) => <th key={cp.id}>{String(cp.name)}</th>)}
+                  <th>Место</th>
+                  {canMark ? <th /> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {players.map((player) => (
+                  <tr key={player.id}>
+                    <td>#{String(player.static_id)}</td>
+                    {checkpoints.map((cp) => {
+                      const key = `${player.id}:${cp.id}`;
+                      const checked = markSet.has(key);
+                      return (
+                        <td key={cp.id}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={!canMark || busyMark === key || isClosed}
+                            onChange={() => void toggleMark(Number(player.id), Number(cp.id), !checked)}
+                          />
+                        </td>
+                      );
+                    })}
+                    <td>{player.place != null ? String(player.place) : '—'}</td>
+                    {canMark ? (
+                      <td>
+                        <button className="icon-btn danger" type="button" onClick={() => void removePlayer(Number(player.id))}>
+                          <NavIcon name="trash" />
+                        </button>
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!players.length && <div className="empty-state"><h3>Игроков пока нет</h3></div>}
+          </div>
+        </div>
+      ) : (
+        <div className="card card-pad" style={{ marginBottom: 16 }}>
           <div className="card-header"><h3>Статистика</h3></div>
           {canViewStats && stats ? (
             <>
-              <div className="role-tag">Игроков: {Number(stats.players) || 0}</div>
-              <div className="role-tag">Финиш: {Number(stats.finished) || 0}</div>
-              <div className="role-tag">Staff: {Number(stats.staff) || 0} (organizer: {Number(stats.organizers) || 0})</div>
-              {formatDuration(stats.avgFinishMs as number | null) ? (
-                <div className="role-tag">Среднее время финиша: {formatDuration(stats.avgFinishMs as number | null)}</div>
-              ) : null}
-              {formatDuration(stats.medianFinishMs as number | null) ? (
-                <div className="role-tag">Медиана финиша: {formatDuration(stats.medianFinishMs as number | null)}</div>
-              ) : null}
-              {stats.avgMarkedAt ? (
-                <div className="role-tag">
-                  Среднее время отметок: {new Date(String(stats.avgMarkedAt)).toLocaleString('ru-RU')}
-                </div>
-              ) : null}
-              {stats.medianMarkedAt ? (
-                <div className="role-tag">
-                  Медиана отметок: {new Date(String(stats.medianMarkedAt)).toLocaleString('ru-RU')}
-                </div>
-              ) : null}
-              <div style={{ marginTop: 10 }}>
+              <div className="gmp-stats-tags">
+                <div className="role-tag">Игроков: {Number(stats.players) || 0}</div>
+                <div className="role-tag">Финиш: {Number(stats.finished) || 0}</div>
+                <div className="role-tag">Staff: {Number(stats.staff) || 0} (organizer: {Number(stats.organizers) || 0})</div>
+                {formatDuration(stats.avgFinishMs as number | null) ? (
+                  <div className="role-tag">Среднее время финиша: {formatDuration(stats.avgFinishMs as number | null)}</div>
+                ) : null}
+                {formatDuration(stats.medianFinishMs as number | null) ? (
+                  <div className="role-tag">Медиана финиша: {formatDuration(stats.medianFinishMs as number | null)}</div>
+                ) : null}
+                {stats.avgMarkedAt ? (
+                  <div className="role-tag">
+                    Среднее время отметок: {new Date(String(stats.avgMarkedAt)).toLocaleString('ru-RU')}
+                  </div>
+                ) : null}
+                {stats.medianMarkedAt ? (
+                  <div className="role-tag">
+                    Медиана отметок: {new Date(String(stats.medianMarkedAt)).toLocaleString('ru-RU')}
+                  </div>
+                ) : null}
+              </div>
+              <GmpStatsCharts stats={stats} />
+              <div style={{ marginTop: 14 }}>
+                <div className="card-header"><h3>По точкам</h3></div>
                 {((stats.checkpointStats as Row[]) || []).map((cp) => (
                   <div className="role-tag" key={cp.id}>
                     {String(cp.name)}: {Number(cp.percent) || 0}% ({Number(cp.marked) || 0})
@@ -866,7 +955,7 @@ export function GmpDetailInteractive({ eventId }: { eventId: number }) {
             ))}
           </div>
         </div>
-      </div>
+      )}
 
       {editing && (
         <Modal title="Редактирование ГМП" onClose={() => setEditing(false)} editor>

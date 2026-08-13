@@ -9,6 +9,7 @@ import {
   useState,
   type ChangeEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { MarkdownEditor } from '@/components/MarkdownEditor';
 
 export type Row = Record<string, any>;
@@ -43,15 +44,21 @@ export function Modal({
   /** Крупная панель под Markdown (FAQ / регламент / правила МП). */
   editor?: boolean;
 }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const sizeClass = editor ? ' editor' : xl ? ' xl' : wide ? ' wide' : '';
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className={`modal-dialog${sizeClass}`} role="dialog" aria-modal="true" aria-label={title}>
         <button type="button" className="icon-btn modal-close" onClick={onClose}>×</button>
         <h2>{title}</h2>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -212,7 +219,7 @@ export function ConfirmHost() {
   }, []);
 
   if (!state) return null;
-  return (
+  return createPortal(
     <div className="modal-overlay confirm-overlay" onMouseDown={(event) => event.target === event.currentTarget && close(false)}>
       <div className="modal-dialog confirm-modal" role="dialog" aria-modal="true" aria-label={state.title}>
         <div className={`confirm-icon${state.danger ? '' : ' confirm-icon-neutral'}`}>
@@ -244,7 +251,8 @@ export function ConfirmHost() {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

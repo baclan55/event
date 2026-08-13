@@ -275,7 +275,8 @@ img{ max-width:100%; display:block; }
 .toolbar{ display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:20px; flex-wrap:wrap; }
 .roster-tabs{ margin-bottom:20px; }
 .toolbar-left{ color:var(--text-muted); font-size:13px; }
-.toolbar-right{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.toolbar-right,.toolbar .row-actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.btn-sm svg{ width:14px; height:14px; flex-shrink:0; }
 
 .search-input{
   display:flex; align-items:center; gap:8px;

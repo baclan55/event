@@ -1,6 +1,7 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import type { PublicUser } from '@/lib/auth';
 import { requiresLastName } from '@/lib/profileGame';
@@ -17,6 +18,8 @@ export function ProfileGate({ user }: { user: PublicUser }) {
   const [staticId, setStaticId] = useState(user.staticId || '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -38,7 +41,9 @@ export function ProfileGate({ user }: { user: PublicUser }) {
     }
   }
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="modal-overlay profile-gate-overlay">
       <div className="modal-dialog wide" role="dialog" aria-modal="true" aria-labelledby="profile-gate-title">
         <h2 id="profile-gate-title">Игровые данные</h2>
@@ -75,6 +80,7 @@ export function ProfileGate({ user }: { user: PublicUser }) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

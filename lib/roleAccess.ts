@@ -83,12 +83,12 @@ export type GmpPermissionAccess = PermissionAccess & Record<GmpCap, boolean>;
 
 export const GMP_CAP_LABELS: Record<GmpCap, string> = {
   create: 'Создание',
-  manage_staff: 'Добавление помощников организаторов',
-  edit_winners: 'Редактирование списка победителей',
-  edit_body: 'Редактирование описания ГМП',
-  edit_checkpoints: 'Редактирование таблицы точек',
-  marks: 'Добавление/удаление отметок из таблицы точек',
-  view_stats: 'Просмотр статистики мероприятия',
+  manage_staff: 'Помощники / staff',
+  edit_winners: 'Список победителей',
+  edit_body: 'Описание ГМП',
+  edit_checkpoints: 'Таблица точек',
+  marks: 'Отметки в таблице',
+  view_stats: 'Статистика',
 };
 
 const GMP_WRITE_CAPS: readonly GmpCap[] = [

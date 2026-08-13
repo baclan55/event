@@ -259,7 +259,7 @@ export function RolesInteractive({
                     return (
                       <div className="perm-card perm-card-gmp" key={key}>
                         <div className="perm-card-title">{PERMISSION_LABELS[key]}</div>
-                        <div className="perm-card-flags perm-card-flags-col">
+                        <div className="perm-card-flags">
                           <label className="perm-flag">
                             <input
                               type="checkbox"

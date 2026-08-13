@@ -1,0 +1,42 @@
+
+.gmp-dot{
+  display:inline-block; width:8px; height:8px; border-radius:50%;
+  margin-right:6px; vertical-align:middle;
+}
+.gmp-dot-finish{ background:var(--green); }
+.gmp-dot-rest{ background:rgba(255,255,255,.18); }
+.gmp-bars{
+  display:flex; align-items:flex-end; gap:10px; min-height:160px;
+  padding:4px 2px 0; overflow-x:auto;
+}
+.gmp-bar-col{
+  flex:1 0 44px; max-width:72px; display:flex; flex-direction:column;
+  align-items:center; gap:6px; min-width:44px;
+}
+.gmp-bar-value{ font-size:11px; color:var(--text-muted); }
+.gmp-bar-track{
+  width:100%; height:120px; border-radius:8px 8px 4px 4px;
+  background:rgba(255,255,255,.06); display:flex; align-items:flex-end; overflow:hidden;
+}
+.gmp-bar-fill{
+  width:100%; border-radius:8px 8px 4px 4px;
+  background:linear-gradient(180deg, var(--accent-light), var(--accent));
+  min-height:4px; transition:height .35s ease;
+}
+.gmp-bar-label{
+  font-size:11px; color:var(--text-muted); text-align:center;
+  max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+@media (max-width:760px){
+  .gmp-charts{ grid-template-columns:1fr; }
+}
+
+@media (max-width:640px){
+  .site-header-inner{ justify-content:center; text-align:center; }
+  .site-nav{ gap:16px; }
+  .site-hero{ padding:52px 18px 40px; }
+  .site-hero h1{ font-size:30px; }
+  .site-section{ padding:30px 18px 10px; }
+  .qform{ padding:18px 16px 48px; }
+  .qform-card{ padding:18px 18px; }
+}
