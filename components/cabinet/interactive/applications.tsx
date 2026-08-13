@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
-import { DEFAULT_CLOSED_MESSAGE } from '@/lib/audit';
+import { DEFAULT_CLOSED_MESSAGE } from '@/lib/auditShared';
 import { Avatar, ErrorText, request, type Row } from './shared';
 
 export function ApplicationsInteractive({

@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PublicUser } from '@/lib/auth';
-import { AUDIT_LABELS } from '@/lib/audit';
+import { AUDIT_LABELS } from '@/lib/auditShared';
 import { NavIcon } from '@/components/NavIcons';
 import { Avatar, DEFAULT_LIMITS, ErrorText, Modal, ReprimandBadge, ReprimandLegend, ReprimandSummary, request, type Row } from './shared';
 
