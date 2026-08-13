@@ -5,18 +5,18 @@ import { useRouter } from 'next/navigation';
 import type { PublicUser } from '@/lib/auth';
 import { AUDIT_LABELS } from '@/lib/auditShared';
 import { NavIcon } from '@/components/NavIcons';
-import { askConfirm, Avatar, DEFAULT_LIMITS, ErrorText, Modal, ReprimandBadge, ReprimandLegend, ReprimandSummary, request, Select, type Row } from './shared';
+import { Avatar, DEFAULT_LIMITS, ErrorText, Modal, ReprimandBadge, ReprimandLegend, ReprimandSummary, request, type Row } from './shared';
 
 function formatAuditDetails(entry: Row): string {
   const details = (entry.details || {}) as Row;
   const bits: string[] = [];
-  if (entry.target_nickname) bits.push(`ÐºÐ¾Ð¼Ñ: ${entry.target_nickname}`);
-  if (details.reason) bits.push(`Ð¿ÑÐ¸ÑÐ¸Ð½Ð°: ${details.reason}`);
-  if (details.type) bits.push(`ÑÐ¸Ð¿: ${details.type}`);
-  if (typeof details.isOpen === 'boolean') bits.push(details.isOpen ? 'Ð¾ÑÐºÑÑÑ' : 'Ð·Ð°ÐºÑÑÑ');
-  if (details.nickname && !entry.target_nickname) bits.push(`Ð½Ð¸Ðº: ${details.nickname}`);
+  if (entry.target_nickname) bits.push(`кому: ${entry.target_nickname}`);
+  if (details.reason) bits.push(`причина: ${details.reason}`);
+  if (details.type) bits.push(`тип: ${details.type}`);
+  if (typeof details.isOpen === 'boolean') bits.push(details.isOpen ? 'открыт' : 'закрыт');
+  if (details.nickname && !entry.target_nickname) bits.push(`ник: ${details.nickname}`);
   if (entry.entity_type) bits.push(`${entry.entity_type}${entry.entity_id ? ` #${entry.entity_id}` : ''}`);
-  return bits.join(' Â· ');
+  return bits.join(' · ');
 }
 
 export function ProfileInteractive({
@@ -158,46 +158,46 @@ export function ProfileInteractive({
             <h2>{user.nickname || user.firstName || 'Без имени'}</h2>
           </div>
           <div className="role-tag">
-            {user.roles.join(' Â· ') || 'ÐÐµÐ· ÑÐ¾Ð»Ð¸'}
-            {user.discordUsername ? ` Â· ${user.discordUsername}` : ''}
+            {user.roles.join(' · ') || 'Без роли'}
+            {user.discordUsername ? ` · ${user.discordUsername}` : ''}
           </div>
           <div className="role-tag" style={{ marginTop: 6 }}>
-            {gameLabel || 'ÐÐ³ÑÐ¾Ð²ÑÐµ Ð´Ð°Ð½Ð½ÑÐµ Ð½Ðµ ÑÐºÐ°Ð·Ð°Ð½Ñ'}
+            {gameLabel || 'Игровые данные не указаны'}
             {isSelf ? (
               <>
-                {' Â· '}
-                <button type="button" className="linkish" onClick={() => setMode('game')}>Ð¸Ð·Ð¼ÐµÐ½Ð¸ÑÑ</button>
+                {' · '}
+                <button type="button" className="linkish" onClick={() => setMode('game')}>изменить</button>
               </>
             ) : null}
           </div>
           {pendingGame && isSelf ? (
             <div className="badge badge-amber" style={{ marginTop: 8 }}>
-              ÐÐ° Ð¼Ð¾Ð´ÐµÑÐ°ÑÐ¸Ð¸: {[pendingGame.first_name, pendingGame.last_name, pendingGame.static_id].filter(Boolean).join(' Â· ')}
+              На модерации: {[pendingGame.first_name, pendingGame.last_name, pendingGame.static_id].filter(Boolean).join(' · ')}
             </div>
           ) : null}
         </div>
         <div className="profile-weekly">
           <div className="stat-value">{user.weeklyEvents}</div>
-          <div className="stat-label">Ð¼Ð¿ Ð·Ð° Ð½ÐµÐ´ÐµÐ»Ñ</div>
+          <div className="stat-label">мп за неделю</div>
           <span className={`badge ${done ? 'badge-green' : 'badge-red'}`}>
-            {done ? 'Ð½Ð¾ÑÐ¼Ð° Ð²ÑÐ¿Ð¾Ð»Ð½ÐµÐ½Ð°' : `ÑÐµÐ»Ñ ${target}`}
+            {done ? 'норма выполнена' : `цель ${target}`}
           </span>
         </div>
       </div>
 
       <div className="card card-pad" style={{ marginTop: 20 }}>
         <div className="segmented roster-tabs" style={{ marginBottom: 16 }}>
-          <button className={tab === 'reprimands' ? 'active' : ''} onClick={() => setTab('reprimands')}>ÐÑÐ³Ð¾Ð²Ð¾ÑÑ Â· {rpData.reprimands.length}</button>
-          <button className={tab === 'achievements' ? 'active' : ''} onClick={() => setTab('achievements')}>ÐÐ¾ÑÑÐ¸Ð¶ÐµÐ½Ð¸Ñ Â· {achievements.length}</button>
+          <button className={tab === 'reprimands' ? 'active' : ''} onClick={() => setTab('reprimands')}>Выговоры · {rpData.reprimands.length}</button>
+          <button className={tab === 'achievements' ? 'active' : ''} onClick={() => setTab('achievements')}>Достижения · {achievements.length}</button>
           {(canViewAudit || initialUser.isOwner) ? (
-            <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>ÐÑÑÐ½Ð°Ð» Â· {audit.length}</button>
+            <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>Журнал · {audit.length}</button>
           ) : null}
         </div>
 
         {tab === 'reprimands' ? (
           <>
             <div className="card-header">
-              <h3>{isSelf ? 'ÐÐ¾Ð¸ Ð²ÑÐ³Ð¾Ð²Ð¾ÑÑ' : 'ÐÑÐ³Ð¾Ð²Ð¾ÑÑ'}</h3>
+              <h3>{isSelf ? 'Мои выговоры' : 'Выговоры'}</h3>
               <ReprimandSummary items={rpData.reprimands} tier={rpData.tier} limits={rpData.limits} />
             </div>
             <ReprimandLegend tier={rpData.tier} limits={rpData.limits} />
@@ -207,15 +207,15 @@ export function ProfileInteractive({
                 <div className="who">
                   <div>
                     <div className="nickname">{item.reason}</div>
-                    <div className="role-tag">{new Date(item.created_at).toLocaleString('ru-RU')}{item.expires_at ? ` Â· ÑÐ¿Ð¸ÑÐµÑÑÑ ${new Date(item.expires_at).toLocaleDateString('ru-RU')}` : ''} Â· {item.issued_by_nickname || 'Ð¡Ð¸ÑÑÐµÐ¼Ð°'}</div>
+                    <div className="role-tag">{new Date(item.created_at).toLocaleString('ru-RU')}{item.expires_at ? ` · спишется ${new Date(item.expires_at).toLocaleDateString('ru-RU')}` : ''} · {item.issued_by_nickname || 'Система'}</div>
                   </div>
                 </div>
               </div>
-            )) : <div className="empty-state"><h3>ÐÑÐ³Ð¾Ð²Ð¾ÑÐ¾Ð² Ð½ÐµÑ</h3><p>ÐÐ°Ð¿Ð¸ÑÐµÐ¹ Ð¾ Ð²Ð·ÑÑÐºÐ°Ð½Ð¸ÑÑ Ð½ÐµÑ.</p></div>}
+            )) : <div className="empty-state"><h3>Выговоров нет</h3><p>Записей о взысканиях нет.</p></div>}
           </>
         ) : tab === 'achievements' ? (
           <>
-            <div className="card-header"><h3>ÐÐ¾ÑÑÐ¸Ð¶ÐµÐ½Ð¸Ñ</h3><span className="badge badge-muted">{achievements.length}</span></div>
+            <div className="card-header"><h3>Достижения</h3><span className="badge badge-muted">{achievements.length}</span></div>
             {achievements.length ? achievements.map((item) => (
               <div className="roster-row" key={`${item.achievement_id}-${item.grade}`}>
                 <div className="ach-icon-wrap">
@@ -225,16 +225,16 @@ export function ProfileInteractive({
                 </div>
                 <div className="who">
                   <div>
-                    <div className="nickname">{item.name}{item.max_grade > 1 ? ` Â· ${item.grade}/${item.max_grade} ÑÑ.` : ''}</div>
-                    <div className="role-tag">{item.description || 'â'} Â· {new Date(item.awarded_at).toLocaleDateString('ru-RU')}</div>
+                    <div className="nickname">{item.name}{item.max_grade > 1 ? ` · ${item.grade}/${item.max_grade} ст.` : ''}</div>
+                    <div className="role-tag">{item.description || '—'} · {new Date(item.awarded_at).toLocaleDateString('ru-RU')}</div>
                   </div>
                 </div>
               </div>
-            )) : <div className="empty-state"><h3>ÐÐ¾ÐºÐ° Ð¿ÑÑÑÐ¾</h3><p>ÐÐ¾ÑÑÐ¸Ð¶ÐµÐ½Ð¸Ñ Ð¿Ð¾ÑÐ²ÑÑÑÑ Ð¿Ð¾ ÑÑÐ¸Ð³Ð³ÐµÑÐ°Ð¼.</p></div>}
+            )) : <div className="empty-state"><h3>Пока пусто</h3><p>Достижения появятся по триггерам.</p></div>}
           </>
         ) : (
           <>
-            <div className="card-header"><h3>ÐÑÑÐ½Ð°Ð» Ð´ÐµÐ¹ÑÑÐ²Ð¸Ð¹</h3><span className="badge badge-muted">{audit.length}</span></div>
+            <div className="card-header"><h3>Журнал действий</h3><span className="badge badge-muted">{audit.length}</span></div>
             <form
               className="form-row-2"
               style={{ marginBottom: 14, gap: 10 }}
@@ -244,28 +244,28 @@ export function ProfileInteractive({
               }}
             >
               <div className="field">
-                <label>ÐÐµÐ¹ÑÑÐ²Ð¸Ðµ</label>
-                <Select
-                  value={filterAction}
-                  onChange={setFilterAction}
-                  placeholder="ÐÑÐµ"
-                  options={[{ value: '', label: 'ÐÑÐµ' }, ...auditActions.map((action) => ({ value: action, label: AUDIT_LABELS[action] || action }))]}
-                />
+                <label>Действие</label>
+                <select className="input" value={filterAction} onChange={(e) => setFilterAction(e.target.value)}>
+                  <option value="">Все</option>
+                  {auditActions.map((action) => (
+                    <option value={action} key={action}>{AUDIT_LABELS[action] || action}</option>
+                  ))}
+                </select>
               </div>
               <div className="field">
-                <label>ÐÑÐ¾</label>
-                <input className="input" value={filterActor} onChange={(e) => setFilterActor(e.target.value)} placeholder="ÐÐ¸ÐºÐ½ÐµÐ¹Ð¼" />
+                <label>Кто</label>
+                <input className="input" value={filterActor} onChange={(e) => setFilterActor(e.target.value)} placeholder="Никнейм" />
               </div>
               <div className="field">
-                <label>Ð¡ Ð´Ð°ÑÑ</label>
+                <label>С даты</label>
                 <input className="input" type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} />
               </div>
               <div className="field">
-                <label>ÐÐ¾ Ð´Ð°ÑÑ</label>
+                <label>По дату</label>
                 <input className="input" type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} />
               </div>
               <div className="modal-actions" style={{ gridColumn: '1 / -1', justifyContent: 'flex-start' }}>
-                <button className="btn btn-primary btn-sm" type="submit">ÐÑÐ¸Ð¼ÐµÐ½Ð¸ÑÑ</button>
+                <button className="btn btn-primary btn-sm" type="submit">Применить</button>
                 <button
                   className="btn btn-ghost btn-sm"
                   type="button"
@@ -277,7 +277,7 @@ export function ProfileInteractive({
                     void loadAudit({ action: '', actor: '', from: '', to: '' }).catch((err) => setError((err as Error).message));
                   }}
                 >
-                  Ð¡Ð±ÑÐ¾ÑÐ¸ÑÑ
+                  Сбросить
                 </button>
               </div>
             </form>
@@ -289,31 +289,31 @@ export function ProfileInteractive({
                     <span className="role-tag">{formatAuditDetails(entry)}</span>
                   </div>
                   <div className="audit-meta">
-                    ÐºÑÐ¾: {entry.actor_nickname || 'Ð£Ð´Ð°Ð»ÑÐ½Ð½ÑÐ¹ Ð¿Ð¾Ð»ÑÐ·Ð¾Ð²Ð°ÑÐµÐ»Ñ'}
-                    {' Â· '}
-                    ÐºÐ¾Ð³Ð´Ð°: {new Date(entry.created_at).toLocaleString('ru-RU')}
-                    {entry.href ? <> Â· <a href={entry.href}>Ð¾ÑÐºÑÑÑÑ</a></> : null}
+                    кто: {entry.actor_nickname || 'Удалённый пользователь'}
+                    {' · '}
+                    когда: {new Date(entry.created_at).toLocaleString('ru-RU')}
+                    {entry.href ? <> · <a href={entry.href}>открыть</a></> : null}
                   </div>
                 </div>
               ))}
-              {!audit.length && <div className="empty-state"><p>ÐÐ¾ Ð²ÑÐ±ÑÐ°Ð½Ð½ÑÐ¼ ÑÐ¸Ð»ÑÑÑÐ°Ð¼ Ð·Ð°Ð¿Ð¸ÑÐµÐ¹ Ð½ÐµÑ.</p></div>}
+              {!audit.length && <div className="empty-state"><p>По выбранным фильтрам записей нет.</p></div>}
             </div>
           </>
         )}
       </div>
 
       {mode === 'game' && (
-        <Modal title="ÐÐ³ÑÐ¾Ð²ÑÐµ Ð´Ð°Ð½Ð½ÑÐµ" onClose={() => setMode(null)}>
+        <Modal title="Игровые данные" onClose={() => setMode(null)}>
           <form onSubmit={saveGame}>
             <ErrorText value={error} />
-            <p className="field-hint">ÐÐ¾ÑÐ»Ðµ Ð¿ÐµÑÐ²Ð¾Ð³Ð¾ Ð·Ð°Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ñ Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸Ñ ÑÑÐ¾Ð´ÑÑ Ð½Ð° Ð¼Ð¾Ð´ÐµÑÐ°ÑÐ¸Ñ.</p>
+            <p className="field-hint">После первого заполнения изменения уходят на модерацию.</p>
             <div className="field">
-              <label>ÐÐ¼Ñ</label>
+              <label>Имя</label>
               <input className="input" required maxLength={60} value={gameForm.firstName} onChange={(e) => setGameForm({ ...gameForm, firstName: e.target.value })} />
             </div>
             {needLast ? (
               <div className="field">
-                <label>Ð¤Ð°Ð¼Ð¸Ð»Ð¸Ñ</label>
+                <label>Фамилия</label>
                 <input className="input" required maxLength={60} value={gameForm.lastName} onChange={(e) => setGameForm({ ...gameForm, lastName: e.target.value })} />
               </div>
             ) : null}
@@ -329,8 +329,8 @@ export function ProfileInteractive({
               />
             </div>
             <div className="modal-actions">
-              <button type="button" className="btn btn-ghost" onClick={() => setMode(null)}>ÐÑÐ¼ÐµÐ½Ð°</button>
-              <button className="btn btn-primary" disabled={saving}>Ð¡Ð¾ÑÑÐ°Ð½Ð¸ÑÑ</button>
+              <button type="button" className="btn btn-ghost" onClick={() => setMode(null)}>Отмена</button>
+              <button className="btn btn-primary" disabled={saving}>Сохранить</button>
             </div>
           </form>
         </Modal>
@@ -367,7 +367,7 @@ export function RosterInteractive({
 
   function canAssignRole(role: Row) {
     if (actorIsOwner || actorRolePriority == null) return true;
-    // Ð£Ð¶Ðµ Ð½Ð°Ð·Ð½Ð°ÑÐµÐ½Ð½ÑÐµ ÑÐ¾Ð»Ð¸ Ð¾ÑÑÐ°Ð²Ð»ÑÐµÐ¼ Ð´Ð¾ÑÑÑÐ¿Ð½ÑÐ¼Ð¸ (ÑÑÐ¾Ð±Ñ Ð½Ðµ ÑÐ±ÑÐ°ÑÑÐ²Ð°Ð»Ð¸ÑÑ Ð¸Ð· ÑÐ¾ÑÐ¼Ñ).
+    // Уже назначенные роли оставляем доступными (чтобы не сбрасывались из формы).
     if ((editing?.roles || []).some((item: Row) => item.id === role.id)) return true;
     return Number(role.priority) > actorRolePriority;
   }
@@ -423,7 +423,7 @@ export function RosterInteractive({
   }
 
   async function removeMember(id: number) {
-    if (!(await askConfirm('Ð£Ð´Ð°Ð»Ð¸ÑÑ ÑÑÐ°ÑÑÐ½Ð¸ÐºÐ° Ð¸Ð· ÑÐ¾ÑÑÐ°Ð²Ð°?', { title: 'Ð£Ð´Ð°Ð»ÐµÐ½Ð¸Ðµ', confirmLabel: 'Ð£Ð´Ð°Ð»Ð¸ÑÑ' }))) return;
+    if (!confirm('Удалить участника из состава?')) return;
     try {
       await request(`/api/roster/${id}`, { method: 'DELETE' });
       await reload();
@@ -440,7 +440,7 @@ export function RosterInteractive({
     member.role_id,
     {
       id: member.role_id,
-      label: member.role_name || 'ÐÐµÐ· ÑÐ¾Ð»Ð¸',
+      label: member.role_name || 'Без роли',
       priority: member.role_priority ?? 999,
       members: withRoles.filter((item) => item.role_id === member.role_id),
     },
@@ -453,7 +453,7 @@ export function RosterInteractive({
           <Avatar row={member} />
           <span className="member-copy">
             <span className="nickname">{member.nickname}</span>
-            <span className="role-tag">{(member.roles || []).map((r: Row) => r.name).join(' Â· ') || 'ÐÐµÐ· ÑÐ¾Ð»Ð¸'}{member.discord_username ? ` Â· ${member.discord_username}` : ''}</span>
+            <span className="role-tag">{(member.roles || []).map((r: Row) => r.name).join(' · ') || 'Без роли'}{member.discord_username ? ` · ${member.discord_username}` : ''}</span>
           </span>
         </a>
       ) : (
@@ -461,17 +461,17 @@ export function RosterInteractive({
           <Avatar row={member} />
           <span className="member-copy">
             <span className="nickname">{member.nickname}</span>
-            <span className="role-tag">{candidate ? 'ÐÐ°Ð½Ð´Ð¸Ð´Ð°Ñ' : (member.roles || []).map((r: Row) => r.name).join(' Â· ') || 'ÐÐµÐ· ÑÐ¾Ð»Ð¸'}{member.discord_username ? ` Â· ${member.discord_username}` : ''}</span>
+            <span className="role-tag">{candidate ? 'Кандидат' : (member.roles || []).map((r: Row) => r.name).join(' · ') || 'Без роли'}{member.discord_username ? ` · ${member.discord_username}` : ''}</span>
           </span>
         </div>
       )}
-      {candidate ? <span className="badge badge-amber">ÐÐ¶Ð¸Ð´Ð°ÐµÑ Ð¾Ð±Ð·Ð²Ð¾Ð½Ð°</span> : <>
-        {member.is_blocked && <span className="badge badge-red">ÐÐ°Ð±Ð»Ð¾ÐºÐ¸ÑÐ¾Ð²Ð°Ð½</span>}
-        <span className={`badge ${member.weekly_events >= target ? 'badge-green' : 'badge-red'}`}>{member.weekly_events || 0} / Ð½ÐµÐ´.</span>
+      {candidate ? <span className="badge badge-amber">Ожидает обзвона</span> : <>
+        {member.is_blocked && <span className="badge badge-red">Заблокирован</span>}
+        <span className={`badge ${member.weekly_events >= target ? 'badge-green' : 'badge-red'}`}>{member.weekly_events || 0} / нед.</span>
         {canEdit && canManageMember(member) && (
           <div className="row-actions">
-            <button className="icon-btn" title="Ð ÐµÐ´Ð°ÐºÑÐ¸ÑÐ¾Ð²Ð°ÑÑ" onClick={() => setEditing(member)}><NavIcon name="edit" /></button>
-            <button className="icon-btn danger" title="Ð£Ð´Ð°Ð»Ð¸ÑÑ" onClick={() => void removeMember(member.id)}><NavIcon name="trash" /></button>
+            <button className="icon-btn" title="Редактировать" onClick={() => setEditing(member)}><NavIcon name="edit" /></button>
+            <button className="icon-btn danger" title="Удалить" onClick={() => void removeMember(member.id)}><NavIcon name="trash" /></button>
           </div>
         )}
       </>}
@@ -481,34 +481,34 @@ export function RosterInteractive({
   return (
     <>
       <div className="toolbar">
-        <div className="toolbar-left">{members.length} ÑÑÐ°ÑÑÐ½Ð¸ÐºÐ¾Ð² Â· Ð½Ð¾ÑÐ¼Ð° {target}+ ÐÐ</div>
-        {canEdit && <button className="btn btn-primary btn-sm" onClick={() => setEditing(null)}><NavIcon name="plus" /> ÐÐ¾Ð±Ð°Ð²Ð¸ÑÑ ÑÑÐ°ÑÑÐ½Ð¸ÐºÐ°</button>}
+        <div className="toolbar-left">{members.length} участников · норма {target}+ МП</div>
+        {canEdit && <button className="btn btn-primary btn-sm" onClick={() => setEditing(null)}><NavIcon name="plus" /> Добавить участника</button>}
       </div>
       <div className="segmented roster-tabs">
-        <button className={tab === 'with' ? 'active' : ''} onClick={() => setTab('with')}>Ð¡ ÑÐ¾Ð»ÑÐ¼Ð¸ Â· {withRoles.length}</button>
-        <button className={tab === 'without' ? 'active' : ''} onClick={() => setTab('without')}>ÐÐµÐ· ÑÐ¾Ð»ÐµÐ¹ Â· {without.length}</button>
-        <button className={tab === 'candidates' ? 'active' : ''} onClick={() => setTab('candidates')}>ÐÐ°Ð½Ð´Ð¸Ð´Ð°ÑÑ Â· {candidates.length}</button>
+        <button className={tab === 'with' ? 'active' : ''} onClick={() => setTab('with')}>С ролями · {withRoles.length}</button>
+        <button className={tab === 'without' ? 'active' : ''} onClick={() => setTab('without')}>Без ролей · {without.length}</button>
+        <button className={tab === 'candidates' ? 'active' : ''} onClick={() => setTab('candidates')}>Кандидаты · {candidates.length}</button>
       </div>
       <ErrorText value={error} />
       {tab === 'with'
-        ? roleGroups.map((group) => <section key={group.id}><div className="role-group-label">{group.label} Â· {group.members.length}</div>{group.members.map((member) => memberRow(member))}</section>)
+        ? roleGroups.map((group) => <section key={group.id}><div className="role-group-label">{group.label} · {group.members.length}</div>{group.members.map((member) => memberRow(member))}</section>)
         : shown.map((member) => memberRow(member, tab === 'candidates'))}
-      {!shown.length && <div className="empty-state"><h3>ÐÐ´ÐµÑÑ Ð½Ð¸ÐºÐ¾Ð³Ð¾ Ð½ÐµÑ</h3></div>}
+      {!shown.length && <div className="empty-state"><h3>Здесь никого нет</h3></div>}
 
       {editing !== undefined && (
-        <Modal title={editing ? 'Ð ÐµÐ´Ð°ÐºÑÐ¸ÑÐ¾Ð²Ð°Ð½Ð¸Ðµ ÑÑÐ°ÑÑÐ½Ð¸ÐºÐ°' : 'ÐÐ¾Ð²ÑÐ¹ ÑÑÐ°ÑÑÐ½Ð¸Ðº'} onClose={() => setEditing(undefined)} wide>
+        <Modal title={editing ? 'Редактирование участника' : 'Новый участник'} onClose={() => setEditing(undefined)} wide>
           <form onSubmit={saveMember}>
             <ErrorText value={error} />
             <div className="field"><label>Имя</label><input className="input" name="nickname" required defaultValue={editing?.nickname || ''} /></div>
             <div className="form-row-2">
               <div className="field">
-                <label>Ð Ð¾Ð»Ð¸</label>
+                <label>Роли</label>
                 <div className="role-checklist">
                   {roles.map((role) => {
                     const allowed = canAssignRole(role);
                     const checked = (editing?.roles || []).some((r: Row) => r.id === role.id);
                     return (
-                      <label className={`role-check-item${!allowed ? ' is-disabled' : ''}`} key={role.id} title={!allowed ? 'Ð Ð¾Ð»Ñ ÑÐ°Ð²Ð½Ð° Ð¸Ð»Ð¸ Ð²ÑÑÐµ Ð²Ð°ÑÐµÐ¹' : undefined}>
+                      <label className={`role-check-item${!allowed ? ' is-disabled' : ''}`} key={role.id} title={!allowed ? 'Роль равна или выше вашей' : undefined}>
                         <input
                           type="checkbox"
                           name="roleIds"
@@ -517,26 +517,26 @@ export function RosterInteractive({
                           disabled={!allowed}
                         />
                         {role.name}
-                        {!allowed ? ' Â· Ð½ÐµÐ´Ð¾ÑÑÑÐ¿Ð½Ð°' : ''}
+                        {!allowed ? ' · недоступна' : ''}
                       </label>
                     );
                   })}
                 </div>
               </div>
-              <div className="field"><label>ÐÐ Ð·Ð° Ð½ÐµÐ´ÐµÐ»Ñ</label><input className="input" name="weeklyEvents" type="number" min="0" defaultValue={editing?.weekly_events || 0} /></div>
+              <div className="field"><label>МП за неделю</label><input className="input" name="weeklyEvents" type="number" min="0" defaultValue={editing?.weekly_events || 0} /></div>
             </div>
-            <div className="field"><label>ÐÐ°Ð¼ÐµÑÐºÐ°</label><textarea className="input" name="note" defaultValue={editing?.note || ''} /></div>
+            <div className="field"><label>Заметка</label><textarea className="input" name="note" defaultValue={editing?.note || ''} /></div>
             {canGrantOwner && editing?.id ? (
               <label className="qform-check-label">
                 <input type="checkbox" name="isOwner" defaultChecked={!!editing.is_owner} />
-                ÐÐ»Ð°Ð´ÐµÐ»ÐµÑ Ð¿Ð¾ÑÑÐ°Ð»Ð°
+                Владелец портала
               </label>
             ) : null}
             <div className="field-hint">
-              ÐÐ¾Ð¶Ð½Ð¾ Ð½Ð°Ð·Ð½Ð°ÑÐ°ÑÑ ÑÐ¾Ð»ÑÐºÐ¾ ÑÐ¾Ð»Ð¸ Ð½Ð¸Ð¶Ðµ Ð²Ð°ÑÐµÐ¹ Ð² Ð¸ÐµÑÐ°ÑÑÐ¸Ð¸.
-              ÐÐ²Ð°ÑÐ°Ñ ÑÐ¸Ð½ÑÑÐ¾Ð½Ð¸Ð·Ð¸ÑÑÐµÑÑÑ Ð¿ÑÐ¸ Ð²ÑÐ¾Ð´Ðµ ÑÐµÑÐµÐ· Discord.
+              Можно назначать только роли ниже вашей в иерархии.
+              Аватар синхронизируется при входе через Discord.
             </div>
-            <div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={() => setEditing(undefined)}>ÐÑÐ¼ÐµÐ½Ð°</button><button className="btn btn-primary">Ð¡Ð¾ÑÑÐ°Ð½Ð¸ÑÑ</button></div>
+            <div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={() => setEditing(undefined)}>Отмена</button><button className="btn btn-primary">Сохранить</button></div>
           </form>
         </Modal>
       )}
@@ -563,7 +563,7 @@ function MemberProfileBody({ data, onChanged }: { data: { user: Row; reprimands:
   }
 
   async function remove(id: number) {
-    if (!(await askConfirm('Ð£Ð´Ð°Ð»Ð¸ÑÑ Ð·Ð°Ð¿Ð¸ÑÑ?', { title: 'Ð£Ð´Ð°Ð»ÐµÐ½Ð¸Ðµ', confirmLabel: 'Ð£Ð´Ð°Ð»Ð¸ÑÑ' }))) return;
+    if (!confirm('Удалить запись?')) return;
     try { await request(`/api/reprimands/${id}`, { method: 'DELETE' }); await onChanged(); }
     catch (err) { setError((err as Error).message); }
   }
@@ -577,19 +577,19 @@ function MemberProfileBody({ data, onChanged }: { data: { user: Row; reprimands:
     <>
       <div className="profile-hero compact">
         <Avatar row={user} size={64} />
-        <div className="profile-main"><h2>{user.nickname}</h2><div className="role-tag">{(user.roles || []).map((r: Row) => r.name).join(' Â· ') || 'ÐÐµÐ· ÑÐ¾Ð»Ð¸'}</div></div>
-        <div className="profile-weekly"><div className="stat-value">{user.weekly_events || 0}</div><div className="stat-label">Ð¼Ð¿ Ð·Ð° Ð½ÐµÐ´ÐµÐ»Ñ</div></div>
+        <div className="profile-main"><h2>{user.nickname}</h2><div className="role-tag">{(user.roles || []).map((r: Row) => r.name).join(' · ') || 'Без роли'}</div></div>
+        <div className="profile-weekly"><div className="stat-value">{user.weekly_events || 0}</div><div className="stat-label">мп за неделю</div></div>
       </div>
       <ErrorText value={error} />
       <div className="modal-actions profile-actions">
-        {user.is_blocked && <button className="btn btn-ghost btn-sm" onClick={() => void unblock()}>Ð Ð°Ð·Ð±Ð»Ð¾ÐºÐ¸ÑÐ¾Ð²Ð°ÑÑ</button>}
-        <button className="btn btn-primary btn-sm" disabled={user.is_blocked} onClick={() => setAdding(!adding)}><NavIcon name="plus" /> ÐÐ¾Ð±Ð°Ð²Ð¸ÑÑ Ð²ÑÐ³Ð¾Ð²Ð¾Ñ</button>
+        {user.is_blocked && <button className="btn btn-ghost btn-sm" onClick={() => void unblock()}>Разблокировать</button>}
+        <button className="btn btn-primary btn-sm" disabled={user.is_blocked} onClick={() => setAdding(!adding)}><NavIcon name="plus" /> Добавить выговор</button>
       </div>
-      {adding && <form className="card card-pad inline-form" onSubmit={add}>{tier === 'helper' && <div className="field"><label>Ð¢Ð¸Ð¿</label><Select name="type" defaultValue="verbal" options={[{ value: 'verbal', label: `Ð£ÑÑÐ½ÑÐ¹ (+${data.limits.helper.verbalPoints} Ð±Ð°Ð»Ð»)` }, { value: 'strict', label: `Ð¡ÑÑÐ¾Ð³Ð¸Ð¹ (+${data.limits.helper.strictPoints} Ð±Ð°Ð»Ð»Ð°)` }]} /></div>}<div className="field"><label>ÐÑÐ¸ÑÐ¸Ð½Ð°</label><textarea className="input" name="reason" required /></div><button className="btn btn-primary">ÐÑÐ´Ð°ÑÑ</button></form>}
-      <div className="card-header" style={{ marginTop: 18 }}><h3>ÐÑÑÐ¾ÑÐ¸Ñ Ð²ÑÐ³Ð¾Ð²Ð¾ÑÐ¾Ð²</h3><ReprimandSummary items={data.reprimands} tier={tier} limits={data.limits} /></div>
+      {adding && <form className="card card-pad inline-form" onSubmit={add}>{tier === 'helper' && <div className="field"><label>Тип</label><select className="input" name="type"><option value="verbal">Устный (+{data.limits.helper.verbalPoints} балл)</option><option value="strict">Строгий (+{data.limits.helper.strictPoints} балла)</option></select></div>}<div className="field"><label>Причина</label><textarea className="input" name="reason" required /></div><button className="btn btn-primary">Выдать</button></form>}
+      <div className="card-header" style={{ marginTop: 18 }}><h3>История выговоров</h3><ReprimandSummary items={data.reprimands} tier={tier} limits={data.limits} /></div>
       <ReprimandLegend tier={tier} limits={data.limits} />
-      {data.reprimands.map((item) => <div className={`roster-row rp-entry${item.active === false || item.converted ? ' rp-expired' : ''}`} key={item.id}><ReprimandBadge item={item} /><div className="who"><div><div className="nickname">{item.reason}</div><div className="role-tag">{new Date(item.created_at).toLocaleString('ru-RU')}{item.issued_by_nickname ? ` Â· Ð²ÑÐ´Ð°Ð» ${item.issued_by_nickname}` : ''}</div></div></div><button className="icon-btn danger" onClick={() => void remove(item.id)}><NavIcon name="trash" /></button></div>)}
-      {!data.reprimands.length && <div className="empty-state">ÐÑÐ³Ð¾Ð²Ð¾ÑÐ¾Ð² Ð½ÐµÑ.</div>}
+      {data.reprimands.map((item) => <div className={`roster-row rp-entry${item.active === false || item.converted ? ' rp-expired' : ''}`} key={item.id}><ReprimandBadge item={item} /><div className="who"><div><div className="nickname">{item.reason}</div><div className="role-tag">{new Date(item.created_at).toLocaleString('ru-RU')}{item.issued_by_nickname ? ` · выдал ${item.issued_by_nickname}` : ''}</div></div></div><button className="icon-btn danger" onClick={() => void remove(item.id)}><NavIcon name="trash" /></button></div>)}
+      {!data.reprimands.length && <div className="empty-state">Выговоров нет.</div>}
     </>
   );
 }
@@ -616,7 +616,7 @@ export function ReprimandsInteractive() {
   }
 
   async function remove(id: number) {
-    if (!(await askConfirm('Ð£Ð´Ð°Ð»Ð¸ÑÑ Ð²ÑÐ³Ð¾Ð²Ð¾Ñ?', { title: 'Ð£Ð´Ð°Ð»ÐµÐ½Ð¸Ðµ', confirmLabel: 'Ð£Ð´Ð°Ð»Ð¸ÑÑ' }))) return;
+    if (!confirm('Удалить выговор?')) return;
     try { await request(`/api/reprimands/${id}`, { method: 'DELETE' }); await load(); }
     catch (err) { setError((err as Error).message); }
   }
@@ -646,22 +646,22 @@ export function ReprimandsInteractive() {
 
   return (
     <>
-      <div className="toolbar"><div className="toolbar-left">{data.reprimands.length} Ð·Ð°Ð¿Ð¸ÑÐµÐ¹ Ð²ÑÐµÐ³Ð¾</div><button className="btn btn-primary btn-sm" disabled={!tabMembers.length} onClick={() => setAdding(true)}><NavIcon name="plus" /> ÐÐ¾Ð±Ð°Ð²Ð¸ÑÑ Ð²ÑÐ³Ð¾Ð²Ð¾Ñ</button></div>
+      <div className="toolbar"><div className="toolbar-left">{data.reprimands.length} записей всего</div><button className="btn btn-primary btn-sm" disabled={!tabMembers.length} onClick={() => setAdding(true)}><NavIcon name="plus" /> Добавить выговор</button></div>
       <div className="segmented roster-tabs">
-        <button className={tab === 'helper' ? 'active' : ''} onClick={() => setTab('helper')}>Ð¥ÐµÐ»Ð¿ÐµÑÑ Â· {data.reprimands.filter((item) => item.tier === 'helper').length}</button>
-        <button className={tab === 'admin' ? 'active' : ''} onClick={() => setTab('admin')}>ÐÐ´Ð¼Ð¸Ð½Ð¸ÑÑÑÐ°ÑÐ¾ÑÑ Â· {data.reprimands.filter((item) => item.tier === 'admin').length}</button>
+        <button className={tab === 'helper' ? 'active' : ''} onClick={() => setTab('helper')}>Хелперы · {data.reprimands.filter((item) => item.tier === 'helper').length}</button>
+        <button className={tab === 'admin' ? 'active' : ''} onClick={() => setTab('admin')}>Администраторы · {data.reprimands.filter((item) => item.tier === 'admin').length}</button>
       </div>
       <ErrorText value={error} />
       <ReprimandLegend tier={tab} limits={limits} />
       {groups.map((group) => <section className="rp-group" key={group.id}>
         <div className="rp-group-head">
-          <div className="who"><Avatar row={{ ...group, nickname: group.nickname }} /><div><div className="nickname">{group.nickname} {group.isBlocked && <span className="badge badge-red">ÐÐ°Ð±Ð»Ð¾ÐºÐ¸ÑÐ¾Ð²Ð°Ð½</span>}</div><div className="role-tag">{group.role || 'ÐÐµÐ· ÑÐ¾Ð»Ð¸'}</div></div></div>
-          <div className="rp-group-badges"><ReprimandSummary items={group.entries} tier={tab} limits={limits} />{group.isBlocked && <button className="btn btn-ghost btn-sm" onClick={() => void unblock(group.id)}>Ð Ð°Ð·Ð±Ð»Ð¾ÐºÐ¸ÑÐ¾Ð²Ð°ÑÑ</button>}</div>
+          <div className="who"><Avatar row={{ ...group, nickname: group.nickname }} /><div><div className="nickname">{group.nickname} {group.isBlocked && <span className="badge badge-red">Заблокирован</span>}</div><div className="role-tag">{group.role || 'Без роли'}</div></div></div>
+          <div className="rp-group-badges"><ReprimandSummary items={group.entries} tier={tab} limits={limits} />{group.isBlocked && <button className="btn btn-ghost btn-sm" onClick={() => void unblock(group.id)}>Разблокировать</button>}</div>
         </div>
-        <div className="rp-group-entries">{group.entries.map((item) => <div className={`roster-row rp-entry${item.active === false || item.converted ? ' rp-expired' : ''}`} key={item.id}><ReprimandBadge item={item} /><div className="who"><div><div className="nickname">{item.reason}</div><div className="role-tag">{new Date(item.created_at).toLocaleString('ru-RU')}{item.issued_by_nickname ? ` Â· Ð²ÑÐ´Ð°Ð» ${item.issued_by_nickname}` : ''}</div></div></div><button className="icon-btn danger" onClick={() => void remove(item.id)}><NavIcon name="trash" /></button></div>)}</div>
+        <div className="rp-group-entries">{group.entries.map((item) => <div className={`roster-row rp-entry${item.active === false || item.converted ? ' rp-expired' : ''}`} key={item.id}><ReprimandBadge item={item} /><div className="who"><div><div className="nickname">{item.reason}</div><div className="role-tag">{new Date(item.created_at).toLocaleString('ru-RU')}{item.issued_by_nickname ? ` · выдал ${item.issued_by_nickname}` : ''}</div></div></div><button className="icon-btn danger" onClick={() => void remove(item.id)}><NavIcon name="trash" /></button></div>)}</div>
       </section>)}
-      {!groups.length && <div className="empty-state"><h3>ÐÑÐ³Ð¾Ð²Ð¾ÑÐ¾Ð² Ð½ÐµÑ</h3><p>Ð Ð²ÑÐ±ÑÐ°Ð½Ð½Ð¾Ð¹ Ð³ÑÑÐ¿Ð¿Ðµ Ð·Ð°Ð¿Ð¸ÑÐµÐ¹ Ð¿Ð¾ÐºÐ° Ð½ÐµÑ.</p></div>}
-      {adding && <Modal title="ÐÐ¾Ð²ÑÐ¹ Ð²ÑÐ³Ð¾Ð²Ð¾Ñ" onClose={() => setAdding(false)}><form onSubmit={add}><ErrorText value={error} /><div className="field"><label>Ð¡Ð¾ÑÑÑÐ´Ð½Ð¸Ðº</label><Select name="userId" required placeholder="ÐÑÐ±ÐµÑÐ¸ÑÐµ" options={tabMembers.map((m) => ({ value: String(m.id), label: `${m.nickname} Â· ${m.role_name || 'ÐÐµÐ· ÑÐ¾Ð»Ð¸'}` }))} /></div>{tab === 'helper' && <div className="field"><label>Ð¢Ð¸Ð¿</label><Select name="type" defaultValue="verbal" options={[{ value: 'verbal', label: `Ð£ÑÑÐ½ÑÐ¹ (+${limits.helper.verbalPoints} Ð±Ð°Ð»Ð»)` }, { value: 'strict', label: `Ð¡ÑÑÐ¾Ð³Ð¸Ð¹ (+${limits.helper.strictPoints} Ð±Ð°Ð»Ð»Ð°)` }]} /></div>}<div className="field"><label>ÐÑÐ¸ÑÐ¸Ð½Ð°</label><textarea className="input" name="reason" required /></div><div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={() => setAdding(false)}>ÐÑÐ¼ÐµÐ½Ð°</button><button className="btn btn-primary">ÐÐ¾Ð±Ð°Ð²Ð¸ÑÑ</button></div></form></Modal>}
+      {!groups.length && <div className="empty-state"><h3>Выговоров нет</h3><p>В выбранной группе записей пока нет.</p></div>}
+      {adding && <Modal title="Новый выговор" onClose={() => setAdding(false)}><form onSubmit={add}><ErrorText value={error} /><div className="field"><label>Сотрудник</label><select className="input" name="userId" required><option value="">Выберите</option>{tabMembers.map((m) => <option value={m.id} key={m.id}>{m.nickname} · {m.role_name || 'Без роли'}</option>)}</select></div>{tab === 'helper' && <div className="field"><label>Тип</label><select className="input" name="type"><option value="verbal">Устный (+{limits.helper.verbalPoints} балл)</option><option value="strict">Строгий (+{limits.helper.strictPoints} балла)</option></select></div>}<div className="field"><label>Причина</label><textarea className="input" name="reason" required /></div><div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={() => setAdding(false)}>Отмена</button><button className="btn btn-primary">Добавить</button></div></form></Modal>}
     </>
   );
 }

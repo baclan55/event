@@ -1,5 +1,4 @@
 
-.site-nav-link{ font-size:13.5px; font-weight:600; color:var(--text-body); }
 .site-nav-link:hover{ color:var(--text-heading); }
 .site-nav-link.active{ color:var(--text-heading); }
 

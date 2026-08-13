@@ -142,7 +142,6 @@
   color:var(--text-body); cursor:pointer; margin:0;
 }
 .perm-flag.muted{ color:var(--text-muted); cursor:default; font-weight:500; }
-.perm-flag input{ margin:0; }
 /* Редактор текстов: +40% к wide (600→840), поле Markdown +20% по высоте */
 .modal-dialog.editor{
   max-width:840px;
@@ -274,3 +273,4 @@ button.linkish{
 }
 .site-brand-name{ font-weight:800; font-size:14.5px; color:var(--text-heading); letter-spacing:.03em; }
 .site-nav{ display:flex; align-items:center; gap:26px; }
+.site-nav-link{ font-size:13.5px; font-weight:600; color:var(--text-body); }
