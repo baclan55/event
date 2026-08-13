@@ -142,6 +142,7 @@ async function upsertGather(pool, {
   createdAt,
   hasButtons,
   participantIds,
+  force = false,
 }) {
   const client = await pool.connect();
   try {
@@ -152,7 +153,18 @@ async function upsertGather(pool, {
     );
     const prevStatus = existing.rows[0]?.status || null;
 
-    if (!prevStatus) {
+    // При полном ресинке: abandoned без кнопок снова открываем → затем complete.
+    if (force && prevStatus === 'abandoned' && !hasButtons) {
+      await client.query(
+        `UPDATE discord_gather_events SET
+           status='open', abandoned_at=NULL, has_buttons=FALSE,
+           event_key=COALESCE(NULLIF($2,''), event_key),
+           title=CASE WHEN $3<>'' THEN $3 ELSE title END,
+           last_seen_at=now(), updated_at=now()
+         WHERE message_id=$1`,
+        [messageId, eventKey || '', title || ''],
+      );
+    } else if (!prevStatus) {
       await client.query(
         `INSERT INTO discord_gather_events(
            message_id, channel_id, source_bot_id, event_key, title,
@@ -180,7 +192,6 @@ async function upsertGather(pool, {
         [messageId, eventKey || '', title || '', hasButtons],
       );
     } else {
-      // completed/abandoned — только last_seen
       await client.query(
         `UPDATE discord_gather_events SET last_seen_at=now(), updated_at=now()
          WHERE message_id=$1`,
@@ -188,7 +199,6 @@ async function upsertGather(pool, {
       );
     }
 
-    // Участников обновляем, пока сбор открыт (или только что создан).
     const statusNow = (await client.query(
       'SELECT status FROM discord_gather_events WHERE message_id=$1',
       [messageId],
@@ -318,7 +328,7 @@ async function abandonStaleOpens(pool) {
   return result.rowCount;
 }
 
-async function handleMessage(pool, rawMessage, { channelId, sourceBotId }) {
+async function handleMessage(pool, rawMessage, { channelId, sourceBotId, force = false }) {
   try {
     if (!rawMessage) return;
     const msgChannelId = rawMessage.channelId || rawMessage.channel_id;
@@ -349,6 +359,7 @@ async function handleMessage(pool, rawMessage, { channelId, sourceBotId }) {
       createdAt,
       hasButtons,
       participantIds,
+      force,
     });
 
     if (status !== 'open') return;
@@ -409,6 +420,101 @@ function normalizeRestMessage(m, channelId) {
   };
 }
 
+async function claimResyncJob(pool) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const picked = await client.query(
+      `SELECT id, requested_by FROM event_bot_jobs
+       WHERE kind='resync' AND status='pending'
+       ORDER BY created_at ASC
+       LIMIT 1
+       FOR UPDATE SKIP LOCKED`,
+    );
+    if (!picked.rows[0]) {
+      await client.query('COMMIT');
+      return null;
+    }
+    await client.query(
+      `UPDATE event_bot_jobs
+       SET status='running', started_at=now(), error=NULL
+       WHERE id=$1`,
+      [picked.rows[0].id],
+    );
+    await client.query('COMMIT');
+    return picked.rows[0];
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function finishResyncJob(pool, jobId, { ok, result, error }) {
+  await pool.query(
+    `UPDATE event_bot_jobs
+     SET status=$2, finished_at=now(), result=$3::jsonb, error=$4
+     WHERE id=$1`,
+    [jobId, ok ? 'done' : 'failed', JSON.stringify(result || null), error || null],
+  );
+}
+
+/** Полный проход истории канала (для кнопки «Пересобрать МП»). */
+async function runHistoryResync(pool, {
+  fetchPage,
+  channelId,
+  sourceBotId,
+}) {
+  const maxPages = Math.min(parseInt(process.env.EVENT_BOT_RESYNC_MAX_PAGES, 10) || 50, 200);
+  let before = null;
+  let pages = 0;
+  let scanned = 0;
+  let fromSource = 0;
+
+  while (pages < maxPages) {
+    const list = await fetchPage(before);
+    pages += 1;
+    if (!Array.isArray(list) || !list.length) break;
+    scanned += list.length;
+    const batch = list.filter((m) => m.author && m.author.id === sourceBotId);
+    fromSource += batch.length;
+    // от старых к новым внутри страницы (Discord отдаёт от новых к старым)
+    for (const raw of [...batch].reverse()) {
+      await handleMessage(pool, normalizeRestMessage(raw, channelId), {
+        channelId,
+        sourceBotId,
+        force: true,
+      });
+      await new Promise((r) => setTimeout(r, 35));
+    }
+    const oldest = list[list.length - 1];
+    if (!oldest?.id || list.length < 100) break;
+    before = oldest.id;
+  }
+
+  await abandonStaleOpens(pool);
+  return { pages, scanned, fromSource };
+}
+
+async function processResyncJobs(pool, deps) {
+  const job = await claimResyncJob(pool);
+  if (!job) return false;
+  console.log(`[event-bot] Старт пересборки МП (job #${job.id})…`);
+  try {
+    const stats = await runHistoryResync(pool, deps);
+    await finishResyncJob(pool, job.id, { ok: true, result: stats });
+    console.log(
+      `[event-bot] Пересборка #${job.id} готова: страниц ${stats.pages}, ` +
+      `сообщений ${stats.scanned}, от источника ${stats.fromSource}.`,
+    );
+  } catch (err) {
+    await finishResyncJob(pool, job.id, { ok: false, error: err.message || String(err) });
+    console.error(`[event-bot] Пересборка #${job.id} ошибка:`, err.message || err);
+  }
+  return true;
+}
+
 function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }) {
   const relayUrl = (process.env.DISCORD_RELAY_URL || '').trim().replace(/\/$/, '');
   const relaySecret = (process.env.DISCORD_RELAY_SECRET || '').trim();
@@ -450,6 +556,17 @@ function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }
   }
 
   async function pollOnce(label) {
+    await processResyncJobs(pool, {
+      channelId,
+      sourceBotId,
+      fetchPage: async (before) => {
+        const q = before
+          ? `/channels/${channelId}/messages?limit=100&before=${before}`
+          : `/channels/${channelId}/messages?limit=100`;
+        return discordGet(q);
+      },
+    });
+
     await abandonStaleOpens(pool);
 
     const list = await discordGet(
@@ -557,16 +674,46 @@ function startEventAttendanceBot(pool) {
   const client = new Client(clientOptions);
   let staleTimer = null;
 
+  async function gatewayResyncFetch(before) {
+    const channel = await client.channels.fetch(channelId);
+    if (!channel || !channel.isTextBased()) return [];
+    const opts = { limit: 100 };
+    if (before) opts.before = before;
+    const col = await channel.messages.fetch(opts);
+    return [...col.values()].map((m) => ({
+      id: m.id,
+      channel_id: channelId,
+      author: m.author ? { id: m.author.id } : null,
+      content: m.content || '',
+      embeds: m.embeds?.map((e) => e.toJSON?.() || e) || [],
+      components: m.components?.map((r) => (typeof r.toJSON === 'function' ? r.toJSON() : r)) || [],
+      timestamp: m.createdAt?.toISOString?.() || null,
+    }));
+  }
+
   client.once(Events.ClientReady, async (c) => {
     console.log(`[event-bot] Подключен как ${c.user.tag}. Слежу за каналом ${channelId}.`);
     await abandonStaleOpens(pool).catch((err) => {
       console.error('[event-bot] Проверка просроченных сборов:', err.message);
     });
+    await processResyncJobs(pool, {
+      channelId,
+      sourceBotId,
+      fetchPage: gatewayResyncFetch,
+    }).catch((err) => console.error('[event-bot] Resync:', err.message));
+
     staleTimer = setInterval(() => {
-      void abandonStaleOpens(pool).catch((err) => {
-        console.error('[event-bot] Проверка просроченных сборов:', err.message);
-      });
-    }, 15 * 60 * 1000);
+      void (async () => {
+        await processResyncJobs(pool, {
+          channelId,
+          sourceBotId,
+          fetchPage: gatewayResyncFetch,
+        }).catch((err) => console.error('[event-bot] Resync:', err.message));
+        await abandonStaleOpens(pool).catch((err) => {
+          console.error('[event-bot] Проверка просроченных сборов:', err.message);
+        });
+      })();
+    }, Math.min(60_000, Math.max(15_000, parseInt(process.env.EVENT_BOT_POLL_MS, 10) || 30_000)));
 
     const catchupDelayMs = Math.max(0, parseInt(process.env.EVENT_BOT_CATCHUP_DELAY_MS, 10) || 15_000);
     setTimeout(async () => {

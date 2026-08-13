@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ErrorText, request, Select, type Row } from './shared';
+import { askConfirm, ErrorText, request, Select, type Row } from './shared';
 
 const STATUS_LABEL: Record<string, string> = {
   completed: 'Проведено',
@@ -9,26 +9,71 @@ const STATUS_LABEL: Record<string, string> = {
   abandoned: 'Не проведено',
 };
 
+const JOB_LABEL: Record<string, string> = {
+  pending: 'В очереди у бота…',
+  running: 'Бот собирает историю…',
+  done: 'Пересборка завершена',
+  failed: 'Ошибка пересборки',
+};
+
 export function DiscordEventsInteractive() {
   const [events, setEvents] = useState<Row[]>([]);
   const [status, setStatus] = useState('completed');
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [canResync, setCanResync] = useState(false);
+  const [resyncJob, setResyncJob] = useState<Row | null>(null);
+  const [busyResync, setBusyResync] = useState(false);
 
   async function load(nextStatus = status) {
     const data = await request(`/api/discord-events?status=${encodeURIComponent(nextStatus)}`);
     setEvents(data.events || []);
+    setCanResync(!!data.canResync);
+    setResyncJob(data.resyncJob || null);
   }
 
   useEffect(() => {
     void load().catch((err) => setError((err as Error).message));
   }, []);
 
+  useEffect(() => {
+    const jobStatus = String(resyncJob?.status || '');
+    if (jobStatus !== 'pending' && jobStatus !== 'running') return;
+    const timer = setInterval(() => {
+      void load().catch(() => undefined);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [resyncJob?.status, status]);
+
+  async function requestResync() {
+    if (!(await askConfirm(
+      'Бот заново пройдёт историю канала Discord и импортирует все доступные сборы МП. Уже учтённые начисления не задублируются. Запустить?',
+      { title: 'Пересобрать МП', confirmLabel: 'Запустить', danger: false },
+    ))) return;
+    setBusyResync(true);
+    setError('');
+    try {
+      const data = await request('/api/discord-events/resync', { method: 'POST', body: '{}' });
+      setResyncJob(data.job || null);
+      if (data.alreadyQueued) {
+        setError('Пересборка уже в очереди или выполняется.');
+      }
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusyResync(false);
+    }
+  }
+
+  const jobStatus = String(resyncJob?.status || '');
+  const jobBusy = jobStatus === 'pending' || jobStatus === 'running';
+
   return (
     <>
       <div className="toolbar">
         <div className="toolbar-left">Сборы МП из Discord-канала</div>
-        <div className="row-actions" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div className="row-actions" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 200 }}>
             <Select
               value={status}
@@ -44,8 +89,39 @@ export function DiscordEventsInteractive() {
               ]}
             />
           </div>
+          {canResync ? (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={busyResync || jobBusy}
+              onClick={() => void requestResync()}
+            >
+              {jobBusy ? 'Пересборка…' : 'Пересобрать МП'}
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {resyncJob ? (
+        <div className="field-hint" style={{ marginBottom: 12 }}>
+          {JOB_LABEL[jobStatus] || jobStatus}
+          {resyncJob.finished_at
+            ? ` · ${new Date(String(resyncJob.finished_at)).toLocaleString('ru-RU')}`
+            : ''}
+          {resyncJob.result && typeof resyncJob.result === 'object' ? (
+            <>
+              {' · '}
+              страниц {(resyncJob.result as Row).pages ?? '—'}
+              {', сообщений '}
+              {(resyncJob.result as Row).scanned ?? '—'}
+              {', от источника '}
+              {(resyncJob.result as Row).fromSource ?? '—'}
+            </>
+          ) : null}
+          {resyncJob.error ? ` · ${String(resyncJob.error)}` : ''}
+        </div>
+      ) : null}
+
       <ErrorText value={error} />
       {events.map((item) => {
         const id = String(item.message_id);
@@ -97,7 +173,7 @@ export function DiscordEventsInteractive() {
       {!events.length && (
         <div className="empty-state">
           <h3>Записей нет</h3>
-          <p>Бот ещё не зафиксировал сборы с выбранным статусом.</p>
+          <p>Бот ещё не зафиксировал сборы с выбранным статусом. Можно запустить «Пересобрать МП».</p>
         </div>
       )}
     </>

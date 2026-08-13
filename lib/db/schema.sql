@@ -349,6 +349,23 @@ CREATE TABLE IF NOT EXISTS discord_gather_participants (
 CREATE INDEX IF NOT EXISTS idx_discord_gather_participants_discord
   ON discord_gather_participants(discord_id);
 
+-- Задачи для бота (кнопка «Пересобрать МП» на сайте).
+CREATE TABLE IF NOT EXISTS event_bot_jobs (
+  id           SERIAL PRIMARY KEY,
+  kind         TEXT NOT NULL DEFAULT 'resync',
+  status       TEXT NOT NULL DEFAULT 'pending'
+               CHECK (status IN ('pending', 'running', 'done', 'failed')),
+  requested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  started_at   TIMESTAMPTZ,
+  finished_at  TIMESTAMPTZ,
+  result       JSONB,
+  error        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_event_bot_jobs_pending
+  ON event_bot_jobs(status, created_at)
+  WHERE status IN ('pending', 'running');
+
 -- ---------------------------------------------------------------------------
 -- Классификация роли (не доступ к функциям) + блоки главной.
 -- ---------------------------------------------------------------------------

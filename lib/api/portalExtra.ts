@@ -385,12 +385,70 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
       byMessage.set(row.message_id, list);
     }
 
+    const job = await query<{
+      id: number;
+      status: string;
+      created_at: string;
+      started_at: string | null;
+      finished_at: string | null;
+      result: unknown;
+      error: string | null;
+    }>(
+      `SELECT id, status, created_at, started_at, finished_at, result, error
+       FROM event_bot_jobs
+       WHERE kind='resync'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+    ).catch(() => ({ rows: [] as Array<{
+      id: number;
+      status: string;
+      created_at: string;
+      started_at: string | null;
+      finished_at: string | null;
+      result: unknown;
+      error: string | null;
+    }> }));
+
+    const canResync = !!user.is_owner || userHasPermission(user, 'manage_roles', 'edit');
     return NextResponse.json({
       ok: true,
+      canResync,
+      resyncJob: job.rows[0] || null,
       events: events.rows.map((e) => ({
         ...e,
         participants: byMessage.get(e.message_id) || [],
       })),
+    });
+  }
+
+  if (key === 'discord-events-resync' && method === 'POST') {
+    const user = await required();
+    if (user instanceof NextResponse) return user;
+    if (!user.is_owner && !userHasPermission(user, 'manage_roles', 'edit')) {
+      return jsonError('Недостаточно прав.', 403);
+    }
+    const active = await query<{ id: number; status: string }>(
+      `SELECT id, status FROM event_bot_jobs
+       WHERE kind='resync' AND status IN ('pending','running')
+       ORDER BY created_at DESC LIMIT 1`,
+    );
+    if (active.rows[0]) {
+      return NextResponse.json({
+        ok: true,
+        alreadyQueued: true,
+        job: active.rows[0],
+      });
+    }
+    const inserted = await query<{ id: number; status: string; created_at: string }>(
+      `INSERT INTO event_bot_jobs(kind, status, requested_by)
+       VALUES ('resync', 'pending', $1)
+       RETURNING id, status, created_at`,
+      [user.id],
+    );
+    return NextResponse.json({
+      ok: true,
+      alreadyQueued: false,
+      job: inserted.rows[0],
     });
   }
 
