@@ -457,7 +457,10 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .field .role-check-item input[type="checkbox"],
 .qform-check-label input[type="checkbox"],
 .perm-flag input[type="checkbox"],
-.field .perm-flag input[type="checkbox"]{
+.field .perm-flag input[type="checkbox"],
+.gmp-staff-row input[type="checkbox"],
+.field .gmp-staff-row input[type="checkbox"],
+.gmp-table input[type="checkbox"]{
   -webkit-appearance:none; appearance:none;
   width:18px; height:18px; flex-shrink:0; margin:0;
   border:1.5px solid var(--border-strong); border-radius:5px;
@@ -468,14 +471,20 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .field .role-check-item input[type="checkbox"]:hover,
 .qform-check-label input[type="checkbox"]:hover,
 .perm-flag input[type="checkbox"]:hover,
-.field .perm-flag input[type="checkbox"]:hover{
+.field .perm-flag input[type="checkbox"]:hover,
+.gmp-staff-row input[type="checkbox"]:hover,
+.field .gmp-staff-row input[type="checkbox"]:hover,
+.gmp-table input[type="checkbox"]:hover{
   border-color:var(--accent-light);
 }
 .role-check-item input[type="checkbox"]:checked,
 .field .role-check-item input[type="checkbox"]:checked,
 .qform-check-label input[type="checkbox"]:checked,
 .perm-flag input[type="checkbox"]:checked,
-.field .perm-flag input[type="checkbox"]:checked{
+.field .perm-flag input[type="checkbox"]:checked,
+.gmp-staff-row input[type="checkbox"]:checked,
+.field .gmp-staff-row input[type="checkbox"]:checked,
+.gmp-table input[type="checkbox"]:checked{
   background:var(--accent); border-color:var(--accent);
   box-shadow:0 0 0 3px var(--accent-soft);
 }
@@ -483,7 +492,10 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .field .role-check-item input[type="checkbox"]:checked::after,
 .qform-check-label input[type="checkbox"]:checked::after,
 .perm-flag input[type="checkbox"]:checked::after,
-.field .perm-flag input[type="checkbox"]:checked::after{
+.field .perm-flag input[type="checkbox"]:checked::after,
+.gmp-staff-row input[type="checkbox"]:checked::after,
+.field .gmp-staff-row input[type="checkbox"]:checked::after,
+.gmp-table input[type="checkbox"]:checked::after{
   content:""; position:absolute; left:5px; top:1px;
   width:5px; height:9px; border:solid #fff; border-width:0 2px 2px 0;
   transform:rotate(45deg);
@@ -492,7 +504,10 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .field .role-check-item input[type="checkbox"]:disabled,
 .qform-check-label input[type="checkbox"]:disabled,
 .perm-flag input[type="checkbox"]:disabled,
-.field .perm-flag input[type="checkbox"]:disabled{
+.field .perm-flag input[type="checkbox"]:disabled,
+.gmp-staff-row input[type="checkbox"]:disabled,
+.field .gmp-staff-row input[type="checkbox"]:disabled,
+.gmp-table input[type="checkbox"]:disabled{
   opacity:.45; cursor:not-allowed;
 }
 .error-text{ color:var(--red); font-size:12.5px; min-height:1.3em; margin:2px 0 6px; }
@@ -1298,8 +1313,11 @@ button.linkish{
 }
 .gmp-staff-row{
   display:grid; grid-template-columns:auto 1fr minmax(110px,140px); gap:8px; align-items:center;
-  font-size:13px; color:var(--text-body);
+  font-size:13px; color:var(--text-body); cursor:pointer;
+  padding:4px 6px; border-radius:8px;
 }
+.gmp-staff-row:hover{ background:var(--bg-card-2); }
+.gmp-table input[type="checkbox"]{ display:inline-block; vertical-align:middle; }
 .gmp-add-player{ display:flex; gap:8px; margin-bottom:12px; max-width:360px; }
 .gmp-table-wrap{ overflow:auto; }
 .gmp-table{

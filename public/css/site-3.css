@@ -1,4 +1,17 @@
 
+.md-body h4, .md-body h5, .md-body h6{ font-size:1em; }
+.md-body ul, .md-body ol{ margin:0 0 .85em; padding-left:1.4em; }
+.md-body li{ margin:.25em 0; }
+.md-body li > ul, .md-body li > ol{ margin:.25em 0 0; }
+.md-body blockquote{
+  margin:0 0 .85em; padding:2px 14px; border-left:3px solid var(--accent);
+  color:var(--text-muted); background:var(--accent-soft); border-radius:0 8px 8px 0;
+}
+.md-body blockquote > *:last-child{ margin-bottom:0; }
+.md-body code{
+  background:var(--bg-card-2); border:1px solid var(--border); border-radius:5px;
+  padding:1px 5px; font-family:var(--font-mono); font-size:.92em; color:var(--accent-light);
+}
 .md-body pre{
   background:var(--bg-card-2); border:1px solid var(--border); border-radius:8px;
   padding:12px 14px; overflow-x:auto; margin:0 0 .85em;
@@ -251,17 +264,3 @@
 
 .top-grid{ display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
 @media (max-width:700px){ .top-grid{ grid-template-columns:1fr; } }
-
-/* =============================================================================
-   Личный кабинет: вкладка "Отпуска" — календарь на месяц + сайдбар
-   "Сегодня" + подача заявки + рассмотрение (см. public/js/sections/vacations.js)
-   ============================================================================= */
-.vac-layout{ display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,320px); gap:20px; align-items:start; }
-@media (max-width:900px){ .vac-layout{ grid-template-columns:1fr; } }
-
-.vac-cal-header{ display:flex; align-items:center; gap:10px; margin-bottom:16px; }
-.vac-cal-title{ font-size:16px; font-weight:800; min-width:150px; text-align:center; }
-.vac-cal-spacer{ flex:1; }
-
-.vac-cal-scroll{ overflow-x:auto; margin:0 -4px; padding:0 4px; }
-.vac-cal-inner{ min-width:640px; }

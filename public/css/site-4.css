@@ -1,5 +1,19 @@
 
 
+/* =============================================================================
+   Личный кабинет: вкладка "Отпуска" — календарь на месяц + сайдбар
+   "Сегодня" + подача заявки + рассмотрение (см. public/js/sections/vacations.js)
+   ============================================================================= */
+.vac-layout{ display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,320px); gap:20px; align-items:start; }
+@media (max-width:900px){ .vac-layout{ grid-template-columns:1fr; } }
+
+.vac-cal-header{ display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+.vac-cal-title{ font-size:16px; font-weight:800; min-width:150px; text-align:center; }
+.vac-cal-spacer{ flex:1; }
+
+.vac-cal-scroll{ overflow-x:auto; margin:0 -4px; padding:0 4px; }
+.vac-cal-inner{ min-width:640px; }
+
 .vac-cal-weekdays{
   display:grid; grid-template-columns:repeat(7,1fr);
   padding:0 0 8px 5px; font-size:10.5px; font-weight:700; letter-spacing:.05em;
@@ -252,24 +266,3 @@ button.linkish{
   border-bottom:2px solid transparent; margin-bottom:-1px;
 }
 .auth-tab.active{ color:var(--text-heading); border-color:var(--accent); }
-
-/* =============================================================================
-   Отзывчивость: сайдбар прячется на узких экранах
-   ============================================================================= */
-.menu-toggle{ display:none; }
-@media (max-width:900px){
-  .sidebar{
-    position:fixed; left:0; top:0; z-index:50; transform:translateX(-105%);
-    transition:transform .18s ease; box-shadow:var(--shadow-pop);
-  }
-  .sidebar.open{ transform:translateX(0); }
-  .menu-toggle{ display:inline-flex; }
-  .topbar{ padding:18px 18px 14px; align-items:center; }
-  .content{ padding:18px 18px 40px; }
-  .sidebar-scrim{
-    display:none; position:fixed; inset:0; background:rgba(6,5,12,.6); z-index:40;
-  }
-  .sidebar-scrim.show{ display:block; }
-}
-
-.sidebar-scrim{ border:0; padding:0; }

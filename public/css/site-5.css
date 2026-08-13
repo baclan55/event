@@ -1,4 +1,25 @@
 
+
+/* =============================================================================
+   Отзывчивость: сайдбар прячется на узких экранах
+   ============================================================================= */
+.menu-toggle{ display:none; }
+@media (max-width:900px){
+  .sidebar{
+    position:fixed; left:0; top:0; z-index:50; transform:translateX(-105%);
+    transition:transform .18s ease; box-shadow:var(--shadow-pop);
+  }
+  .sidebar.open{ transform:translateX(0); }
+  .menu-toggle{ display:inline-flex; }
+  .topbar{ padding:18px 18px 14px; align-items:center; }
+  .content{ padding:18px 18px 40px; }
+  .sidebar-scrim{
+    display:none; position:fixed; inset:0; background:rgba(6,5,12,.6); z-index:40;
+  }
+  .sidebar-scrim.show{ display:block; }
+}
+
+.sidebar-scrim{ border:0; padding:0; }
 .access-card{
   max-width:520px; margin:72px auto; padding:36px;
   background:var(--bg-card); border:1px solid var(--border-soft); border-radius:var(--radius-lg);
@@ -166,8 +187,11 @@
 }
 .gmp-staff-row{
   display:grid; grid-template-columns:auto 1fr minmax(110px,140px); gap:8px; align-items:center;
-  font-size:13px; color:var(--text-body);
+  font-size:13px; color:var(--text-body); cursor:pointer;
+  padding:4px 6px; border-radius:8px;
 }
+.gmp-staff-row:hover{ background:var(--bg-card-2); }
+.gmp-table input[type="checkbox"]{ display:inline-block; vertical-align:middle; }
 .gmp-add-player{ display:flex; gap:8px; margin-bottom:12px; max-width:360px; }
 .gmp-table-wrap{ overflow:auto; }
 .gmp-table{
