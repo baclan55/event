@@ -1,4 +1,29 @@
 
+.vac-mini-day.is-today{ font-weight:800; color:var(--accent-light); }
+.vac-mini-day.in-range{ background:var(--accent-soft); }
+.vac-mini-day.range-start{ background:var(--accent); color:#fff; border-radius:6px 0 0 6px; }
+.vac-mini-day.range-end{ background:var(--accent); color:#fff; border-radius:0 6px 6px 0; }
+.vac-mini-day.range-start.range-end{ border-radius:6px; }
+.vac-mini-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
+
+.vac-slots-list{
+  display:flex; flex-direction:column; gap:4px; max-height:140px; overflow-y:auto;
+  background:var(--bg-input); border:1px solid var(--border); border-radius:10px; padding:8px 10px;
+}
+.vac-slot-row{ display:flex; justify-content:space-between; font-size:12px; color:var(--text-body); font-family:var(--font-mono); }
+.vac-slot-row .is-near, .vac-slot-row .is-full{ color:var(--amber); font-weight:700; }
+
+@media (max-width:560px){
+  .vac-today-date{ font-size:14px; }
+}
+
+/* =============================================================================
+   Модальные окна
+   ============================================================================= */
+.modal-overlay{
+  position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center;
+  background:rgba(6,5,12,.68); padding:20px; backdrop-filter:blur(2px);
+}
 .modal-dialog{
   width:100%; max-width:440px; max-height:92vh; overflow-y:auto;
   background:var(--bg-card); border:1px solid var(--border-soft);
@@ -6,6 +31,15 @@
   position:relative;
 }
 .modal-dialog.wide{ max-width:600px; }
+/* Редактор текстов: +40% к wide (600→840), поле Markdown +20% по высоте */
+.modal-dialog.editor{
+  max-width:840px;
+}
+.modal-dialog.editor .mde-textarea,
+.modal-dialog.editor .mde-preview{
+  min-height:216px;
+  max-height:552px;
+}
 .modal-dialog h2{ font-size:19px; text-align:center; margin-bottom:4px; }
 .modal-sub{ text-align:center; color:var(--text-muted); font-size:12px; margin-bottom:18px; }
 .modal-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:20px; }
@@ -219,23 +253,10 @@
 .dc-guide-done-text{ font-size:13px; color:var(--text-body); line-height:1.5; }
 .dc-guide-done-text b{ color:var(--green); }
 
-/* --- чекбокс согласия на обработку персональных данных (заявка + вход) --- */
-.qform-check-label{
-  display:flex; align-items:flex-start; gap:10px; cursor:pointer;
-  font-size:13px; line-height:1.5; color:var(--text-body); text-align:left;
-}
-.qform-check-label input[type="checkbox"]{
-  width:17px; height:17px; margin-top:2px; flex-shrink:0;
-  accent-color:var(--accent); cursor:pointer;
-}
-.auth-card .qform-check-label{ font-size:12.5px; color:var(--text-muted); margin-bottom:18px; }
-
-@media (max-width:640px){
-  .site-header-inner{ justify-content:center; text-align:center; }
-  .site-nav{ gap:16px; }
-  .site-hero{ padding:52px 18px 40px; }
-  .site-hero h1{ font-size:30px; }
-  .site-section{ padding:30px 18px 10px; }
-  .qform{ padding:18px 16px 48px; }
-  .qform-card{ padding:18px 18px; }
+/* --- чекбокс согласия / флаги в формах --- */
+.qform-check-label,
+.field .qform-check-label{
+  display:flex; align-items:flex-start; gap:12px; cursor:pointer;
+  font-size:13px; line-height:1.5; font-weight:500; letter-spacing:normal;
+  color:var(--text-body); text-align:left; text-transform:none; margin:10px 0 0;
 }

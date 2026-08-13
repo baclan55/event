@@ -106,6 +106,54 @@ const md = new MarkdownIt({
   typographer: false,
 });
 
+// Глубина цитирования в начале строки (`>`, `> >`, `>>` …).
+function blockquoteDepth(line) {
+  let depth = 0;
+  let i = 0;
+  const s = String(line);
+  while (i < s.length) {
+    let spaces = 0;
+    while (spaces < 3 && s[i] === ' ') {
+      i += 1;
+      spaces += 1;
+    }
+    if (s[i] !== '>') break;
+    depth += 1;
+    i += 1;
+    if (s[i] === ' ') i += 1;
+  }
+  return depth;
+}
+
+// CommonMark «лениво» продолжает вложенную цитату: после `> > foo`
+// строка `> bar` остаётся внутри 2-го уровня. Для регламентов это
+// выглядит как баг. Перед рендером при уменьшении глубины вставляем
+// пустую строку цитаты нужного уровня (`>`), чтобы закрыть вложенность.
+function fixNestedBlockquoteLazyContinuation(text) {
+  const lines = String(text).replace(/\r\n/g, '\n').split('\n');
+  const out = [];
+  let prevDepth = 0;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      out.push(line);
+      prevDepth = 0;
+      continue;
+    }
+    const depth = blockquoteDepth(line);
+    if (prevDepth > depth) {
+      if (depth > 0) {
+        out.push(`${'> '.repeat(depth).trimEnd()}`);
+      } else {
+        out.push('');
+      }
+    }
+    out.push(line);
+    prevDepth = depth;
+  }
+  return out.join('\n');
+}
+
 // Теги, которые может породить рендер Markdown, плюс 'span' — то, во что
 // превращается не-discord-ссылка (см. transformDiscordAnchor). Картинки
 // (![]())  сознательно НЕ разрешены: для картинок в разделах уже есть
@@ -145,7 +193,7 @@ const MARKDOWN_SANITIZE_OPTIONS = {
 function renderMarkdown(source) {
   const text = String(source == null ? '' : source);
   if (!text.trim()) return '';
-  const rawHtml = md.render(text);
+  const rawHtml = md.render(fixNestedBlockquoteLazyContinuation(text));
   return sanitizeHtml(rawHtml, MARKDOWN_SANITIZE_OPTIONS);
 }
 

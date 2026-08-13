@@ -295,9 +295,8 @@ textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
 .input::placeholder{ color:var(--text-faint); }
 .field-hint{ font-size:11.5px; color:var(--text-faint); margin-top:6px; }
 
-/* Список ролей чекбоксами — сотруднику можно назначить сразу несколько
-   (см. «Состав» и «Панель владельца»). Оформлен как единое поле в стиле
-   .input, со скроллом при большом числе ролей. */
+/* Список ролей/доступов чекбоксами. .field label (uppercase) не должен
+   перебивать пункты — поэтому селекторы с .field .role-check-item. */
 .role-checklist{
   display:flex; flex-direction:column; gap:2px;
   background:var(--bg-input); border:1px solid var(--border);

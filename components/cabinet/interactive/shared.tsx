@@ -23,15 +23,19 @@ export function Modal({
   children,
   onClose,
   wide = false,
+  editor = false,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  /** Крупная панель под Markdown (FAQ / регламент / правила МП). */
+  editor?: boolean;
 }) {
+  const sizeClass = editor ? ' editor' : wide ? ' wide' : '';
   return (
     <div className="modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className={`modal-dialog${wide ? ' wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
+      <div className={`modal-dialog${sizeClass}`} role="dialog" aria-modal="true" aria-label={title}>
         <button type="button" className="icon-btn modal-close" onClick={onClose}>×</button>
         <h2>{title}</h2>
         {children}
