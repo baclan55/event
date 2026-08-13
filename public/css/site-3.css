@@ -1,4 +1,11 @@
 
+
+/* Клик по сотруднику открывает его профиль (карточка + история выговоров,
+   см. public/js/memberProfile.js) — виден только ролям, которым доступна
+   "Система выговоров" (Auth.ROLE_GROUPS.reprimands). */
+.roster-row .who-clickable{ cursor:pointer; border-radius:var(--radius-sm); margin:-4px -6px; padding:4px 6px; transition:background .15s ease; }
+.roster-row .who-clickable:hover{ background:var(--bg-hover); }
+.roster-row .who-clickable:hover .nickname{ color:var(--accent-light); }
 .roster-row .who-clickable:focus-visible{ outline:2px solid var(--accent-light); outline-offset:2px; }
 .member-profile-trigger{
   appearance:none; border:0; color:inherit; background:transparent;
@@ -241,13 +248,3 @@
 
 .vac-mini-cal{ margin-top:10px; background:var(--bg-card-2); border:1px solid var(--border-soft); border-radius:12px; padding:12px; }
 .vac-mini-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
-.vac-mini-head b{ font-size:12.5px; color:var(--text-heading); }
-.vac-mini-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:2px 0; text-align:center; }
-.vac-mini-wd{ font-size:9.5px; color:var(--text-faint); padding-bottom:4px; }
-.vac-mini-day{
-  appearance:none; min-width:0; border:0; border-radius:6px;
-  background:transparent; box-shadow:none;
-  font-size:12px; padding:6px 0; cursor:pointer; color:var(--text-body);
-}
-.vac-mini-day:hover{ background:var(--bg-hover); }
-.vac-mini-day.is-muted{ color:var(--text-faint); opacity:.4; }

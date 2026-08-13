@@ -85,20 +85,52 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     redirect('/app/dashboard');
   }
 
-  const nav = [
-    ['dashboard', 'Главная', true],
-    ['profile', 'Моя страница', true],
-    ['faq', 'FAQ', true],
-    ['roster', 'Состав', true],
-    ['rules', 'Правила МП', true],
-    ['regulations', 'Регламент', true],
-    ['first-steps', 'Первые шаги', true],
-    ['vacations', 'Отпуска', true],
-    ['reprimands', 'Система выговоров', userHasPermission(roleCtx, 'reprimands')],
-    ['applications', 'Заявки', userHasPermission(roleCtx, 'applications')],
-    ['candidates', 'Кандидаты', userHasPermission(roleCtx, 'candidates')],
-    ['roles', 'Роли и доступы', userHasPermission(roleCtx, 'manage_roles')],
-  ].filter((item) => item[2]) as [string, string, boolean][];
+  const navGroups = [
+    {
+      label: 'Кабинет',
+      items: [
+        ['dashboard', 'Главная', true],
+        ['profile', 'Моя страница', true],
+      ],
+    },
+    {
+      label: 'Материалы',
+      items: [
+        ['faq', 'FAQ', true],
+        ['rules', 'Правила МП', true],
+        ['regulations', 'Регламент', true],
+        ['first-steps', 'Первые шаги', true],
+      ],
+    },
+    {
+      label: 'Команда',
+      items: [
+        ['roster', 'Состав', true],
+        ['vacations', 'Отпуска', true],
+        ['reprimands', 'Система выговоров', userHasPermission(roleCtx, 'reprimands')],
+      ],
+    },
+    {
+      label: 'Набор',
+      items: [
+        ['applications', 'Заявки', userHasPermission(roleCtx, 'applications')],
+        ['candidates', 'Кандидаты', userHasPermission(roleCtx, 'candidates')],
+      ],
+    },
+    {
+      label: 'Управление',
+      items: [
+        ['roles', 'Роли и доступы', userHasPermission(roleCtx, 'manage_roles')],
+      ],
+    },
+  ]
+    .map((group) => ({
+      label: group.label,
+      items: group.items
+        .filter((item) => item[2])
+        .map(([key, label]) => ({ key: key as string, label: label as string })),
+    }))
+    .filter((group) => group.items.length > 0);
 
   const title = TITLES[pathname] || 'Кабинет';
   const appTitle = runtimeEnv('APP_TITLE') || 'Events Denver';
@@ -107,7 +139,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
   return (
     <CabinetShellServer
       user={user}
-      nav={nav.map(([key, label]) => ({ key, label }))}
+      navGroups={navGroups}
       title={title}
       subtitle={subtitle}
       pathname={pathname}

@@ -11,11 +11,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="ru">
       <head>
-        <link rel="stylesheet" href="/css/site-1.css?v=6" />
-        <link rel="stylesheet" href="/css/site-2.css?v=6" />
-        <link rel="stylesheet" href="/css/site-3.css?v=6" />
-        <link rel="stylesheet" href="/css/site-4.css?v=6" />
-        <link rel="stylesheet" href="/css/site-5.css?v=6" />
+        <link rel="stylesheet" href="/css/site-1.css?v=7" />
+        <link rel="stylesheet" href="/css/site-2.css?v=7" />
+        <link rel="stylesheet" href="/css/site-3.css?v=7" />
+        <link rel="stylesheet" href="/css/site-4.css?v=7" />
+        <link rel="stylesheet" href="/css/site-5.css?v=7" />
       </head>
       <body>
         <script

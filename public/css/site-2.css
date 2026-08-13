@@ -1,4 +1,12 @@
 
+
+/* Список ролей/доступов чекбоксами. .field label (uppercase) не должен
+   перебивать пункты — поэтому селекторы с .field .role-check-item. */
+.role-checklist{
+  display:flex; flex-direction:column; gap:2px;
+  background:var(--bg-input); border:1px solid var(--border);
+  border-radius:10px; padding:6px; max-height:220px; overflow-y:auto;
+}
 .role-check-item,
 .field .role-check-item{
   display:flex; align-items:center; gap:12px;
@@ -252,10 +260,3 @@
   padding:5px 11px; border-radius:var(--radius-pill); flex-shrink:0;
 }
 .roster-row .row-actions{ display:flex; gap:4px; flex-shrink:0; }
-
-/* Клик по сотруднику открывает его профиль (карточка + история выговоров,
-   см. public/js/memberProfile.js) — виден только ролям, которым доступна
-   "Система выговоров" (Auth.ROLE_GROUPS.reprimands). */
-.roster-row .who-clickable{ cursor:pointer; border-radius:var(--radius-sm); margin:-4px -6px; padding:4px 6px; transition:background .15s ease; }
-.roster-row .who-clickable:hover{ background:var(--bg-hover); }
-.roster-row .who-clickable:hover .nickname{ color:var(--accent-light); }

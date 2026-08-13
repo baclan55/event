@@ -1,4 +1,14 @@
 
+.vac-mini-head b{ font-size:12.5px; color:var(--text-heading); }
+.vac-mini-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:2px 0; text-align:center; }
+.vac-mini-wd{ font-size:9.5px; color:var(--text-faint); padding-bottom:4px; }
+.vac-mini-day{
+  appearance:none; min-width:0; border:0; border-radius:6px;
+  background:transparent; box-shadow:none;
+  font-size:12px; padding:6px 0; cursor:pointer; color:var(--text-body);
+}
+.vac-mini-day:hover{ background:var(--bg-hover); }
+.vac-mini-day.is-muted{ color:var(--text-faint); opacity:.4; }
 .vac-mini-day.is-today{ font-weight:800; color:var(--accent-light); }
 .vac-mini-day.in-range{ background:var(--accent-soft); }
 .vac-mini-day.range-start{ background:var(--accent); color:#fff; border-radius:6px 0 0 6px; }
@@ -248,15 +258,4 @@
   display:flex; align-items:center; gap:12px; margin-top:16px;
   padding:14px 16px; border-radius:var(--radius-md);
   background:var(--green-soft); border:1px solid rgba(52,211,153,.25);
-}
-.dc-guide-done svg{ flex-shrink:0; color:var(--green); }
-.dc-guide-done-text{ font-size:13px; color:var(--text-body); line-height:1.5; }
-.dc-guide-done-text b{ color:var(--green); }
-
-/* --- чекбокс согласия / флаги в формах --- */
-.qform-check-label,
-.field .qform-check-label{
-  display:flex; align-items:flex-start; gap:12px; cursor:pointer;
-  font-size:13px; line-height:1.5; font-weight:500; letter-spacing:normal;
-  color:var(--text-body); text-align:left; text-transform:none; margin:10px 0 0;
 }

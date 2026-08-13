@@ -5,18 +5,19 @@ import type { PublicUser } from '@/lib/auth';
 import { NavIcon } from '@/components/NavIcons';
 
 type NavItem = { key: string; label: string };
+type NavGroup = { label: string; items: NavItem[] };
 
 /** Чистый HTML-шелл кабинета — без client JS / AuthProvider. */
 export function CabinetShellServer({
   user,
-  nav,
+  navGroups,
   title,
   subtitle,
   pathname,
   children,
 }: {
   user: PublicUser;
-  nav: NavItem[];
+  navGroups: NavGroup[];
   title: string;
   subtitle: string;
   pathname: string;
@@ -59,23 +60,28 @@ export function CabinetShellServer({
             <div className="brand-sub">Department Portal</div>
           </div>
         </div>
-        <a href="/" className="nav-item">
+        <a href="/" className="nav-item nav-item-site">
           <NavIcon name="home" />
           <span>На сайт</span>
         </a>
-        <nav className="nav-group">
-          {nav.map((item) => (
-            <a
-              key={item.key}
-              href={`/app/${item.key}`}
-              className={`nav-item${active(item.key) ? ' active' : ''}`}
-              onClick={() => setSidebarOpen(false)}
-            >
-              <NavIcon name={item.key} />
-              <span>{item.label}</span>
-            </a>
+        <div className="nav-scroll">
+          {navGroups.map((group) => (
+            <nav className="nav-group" key={group.label} aria-label={group.label}>
+              <div className="nav-label">{group.label}</div>
+              {group.items.map((item) => (
+                <a
+                  key={item.key}
+                  href={`/app/${item.key}`}
+                  className={`nav-item${active(item.key) ? ' active' : ''}`}
+                  onClick={() => setSidebarOpen(false)}
+                >
+                  <NavIcon name={item.key} />
+                  <span>{item.label}</span>
+                </a>
+              ))}
+            </nav>
           ))}
-        </nav>
+        </div>
         <div className="sidebar-spacer" />
         <div className="sidebar-user">
           <div className="avatar">

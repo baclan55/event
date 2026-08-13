@@ -1,4 +1,15 @@
 
+.dc-guide-done svg{ flex-shrink:0; color:var(--green); }
+.dc-guide-done-text{ font-size:13px; color:var(--text-body); line-height:1.5; }
+.dc-guide-done-text b{ color:var(--green); }
+
+/* --- чекбокс согласия / флаги в формах --- */
+.qform-check-label,
+.field .qform-check-label{
+  display:flex; align-items:flex-start; gap:12px; cursor:pointer;
+  font-size:13px; line-height:1.5; font-weight:500; letter-spacing:normal;
+  color:var(--text-body); text-align:left; text-transform:none; margin:10px 0 0;
+}
 .qform-check-label input[type="checkbox"],
 .field .qform-check-label input[type="checkbox"]{
   margin-top:2px;
