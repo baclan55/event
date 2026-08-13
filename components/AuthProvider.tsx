@@ -18,6 +18,7 @@ export type PortalUser = {
   rolePriority: number | null;
   roles: string[];
   permissions?: Permission[];
+  editPermissions?: Permission[];
   isBlocked: boolean;
   blockedAt: string | null;
 };

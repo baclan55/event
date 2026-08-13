@@ -61,6 +61,7 @@ export function CabinetShell({
     is_owner: user?.isOwner,
     roleNames: user?.roles,
     permissions: user?.permissions,
+    editPermissions: user?.editPermissions,
   };
   const logout = async () => { await api.post('/api/auth/logout'); setUser(null); router.replace('/'); };
   const visibleGroups = groups

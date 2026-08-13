@@ -78,6 +78,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     is_owner: user.isOwner,
     roleNames: user.roles,
     permissions: user.permissions,
+    editPermissions: user.editPermissions,
   };
   const hasRole = userHasAnyRole(roleCtx);
   if (!user.isBlocked && !hasRole && pathname !== '/app/pending') {

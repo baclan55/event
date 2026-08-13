@@ -58,20 +58,29 @@ export const PERMISSIONS = [
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
+export type PermissionLevel = 'view' | 'edit';
+
+export type PermissionAccess = {
+  view: boolean;
+  edit: boolean;
+};
 
 export const PERMISSION_LABELS: Record<Permission, string> = {
   reprimands: 'Система выговоров',
   applications: 'Заявки на набор',
   candidates: 'Кандидаты / обзвон',
   vacations_review: 'Рассмотрение отпусков',
-  edit_content: 'Редактирование контента и состава',
-  manage_roles: 'Управление ролями и доступами',
+  edit_content: 'Контент и состав',
+  manage_roles: 'Роли и доступы',
   grant_owner: 'Выдача права владельца',
   view_audit: 'Журнал действий',
   manage_blacklist: 'Чёрный список',
   manage_achievements: 'Достижения',
   moderate_profile: 'Модерация игровых данных',
 };
+
+/** У каких функций нет смысла в «редактировании» — только просмотр. */
+export const VIEW_ONLY_PERMISSIONS: ReadonlySet<Permission> = new Set(['view_audit']);
 
 export const PERMISSION_FALLBACK_ROLES: Record<Permission, readonly string[]> = {
   reprimands: REPRIMANDS_ROLES,
@@ -87,7 +96,7 @@ export const PERMISSION_FALLBACK_ROLES: Record<Permission, readonly string[]> = 
   moderate_profile: REPRIMANDS_ROLES,
 };
 
-export type RolePermissions = Partial<Record<Permission, boolean>>;
+export type RolePermissions = Partial<Record<Permission, PermissionAccess | boolean>>;
 
 export type RoleUser = {
   role_id?: number | null;
@@ -95,38 +104,71 @@ export type RoleUser = {
   role_name?: string | null;
   roleNames?: string[];
   permissions?: Permission[];
+  editPermissions?: Permission[];
 };
 
-export function emptyPermissions(): Record<Permission, boolean> {
-  return Object.fromEntries(PERMISSIONS.map((key) => [key, false])) as Record<Permission, boolean>;
+export function emptyPermissionAccess(): PermissionAccess {
+  return { view: false, edit: false };
 }
 
-export function normalizeRolePermissions(raw: unknown): Record<Permission, boolean> {
+export function emptyPermissions(): Record<Permission, PermissionAccess> {
+  return Object.fromEntries(PERMISSIONS.map((key) => [key, emptyPermissionAccess()])) as Record<
+    Permission,
+    PermissionAccess
+  >;
+}
+
+export function normalizePermissionAccess(raw: unknown): PermissionAccess {
+  if (raw === true) return { view: true, edit: true };
+  if (raw && typeof raw === 'object') {
+    const source = raw as Record<string, unknown>;
+    const edit = !!source.edit;
+    const view = !!source.view || edit;
+    return { view, edit };
+  }
+  return emptyPermissionAccess();
+}
+
+export function normalizeRolePermissions(raw: unknown): Record<Permission, PermissionAccess> {
   const base = emptyPermissions();
   if (!raw || typeof raw !== 'object') return base;
   const source = raw as Record<string, unknown>;
   for (const key of PERMISSIONS) {
-    if (typeof source[key] === 'boolean') base[key] = source[key];
+    if (key in source) {
+      base[key] = normalizePermissionAccess(source[key]);
+      if (VIEW_ONLY_PERMISSIONS.has(key)) base[key].edit = false;
+    }
   }
   return base;
 }
 
-export function permissionsFromRole(name: string, rawPermissions: unknown): Permission[] {
-  const normalized = normalizeRolePermissions(rawPermissions);
+function accessFromRole(name: string, rawPermissions: unknown): Record<Permission, PermissionAccess> {
   const hasExplicit = !!rawPermissions && typeof rawPermissions === 'object'
     && Object.keys(rawPermissions as object).length > 0;
-  if (hasExplicit) {
-    return PERMISSIONS.filter((key) => normalized[key]);
-  }
-  return PERMISSIONS.filter((key) => PERMISSION_FALLBACK_ROLES[key].includes(name));
-}
-
-export function defaultPermissionsForRoleName(name: string): Record<Permission, boolean> {
+  if (hasExplicit) return normalizeRolePermissions(rawPermissions);
   const result = emptyPermissions();
   for (const key of PERMISSIONS) {
-    result[key] = PERMISSION_FALLBACK_ROLES[key].includes(name);
+    if (PERMISSION_FALLBACK_ROLES[key].includes(name)) {
+      result[key] = VIEW_ONLY_PERMISSIONS.has(key)
+        ? { view: true, edit: false }
+        : { view: true, edit: true };
+    }
   }
   return result;
+}
+
+export function permissionsFromRole(name: string, rawPermissions: unknown): Permission[] {
+  const access = accessFromRole(name, rawPermissions);
+  return PERMISSIONS.filter((key) => access[key].view || access[key].edit);
+}
+
+export function editPermissionsFromRole(name: string, rawPermissions: unknown): Permission[] {
+  const access = accessFromRole(name, rawPermissions);
+  return PERMISSIONS.filter((key) => access[key].edit);
+}
+
+export function defaultPermissionsForRoleName(name: string): Record<Permission, PermissionAccess> {
+  return accessFromRole(name, null);
 }
 
 export function userHasAnyRole(user: RoleUser | null | undefined): boolean {
@@ -135,7 +177,7 @@ export function userHasAnyRole(user: RoleUser | null | undefined): boolean {
 
 export function userHasRoleIn(
   user: RoleUser | null | undefined,
-  roles: readonly string[]
+  roles: readonly string[],
 ): boolean {
   if (!user) return false;
   if (user.is_owner) return true;
@@ -145,12 +187,40 @@ export function userHasRoleIn(
   return !!(user.role_name && roles.includes(user.role_name));
 }
 
+/** Контекст прав из PublicUser / сессии для userHasPermission. */
+export function roleCtxFromPublic(user: {
+  isOwner?: boolean;
+  roles?: string[];
+  permissions?: Permission[];
+  editPermissions?: Permission[];
+}): RoleUser {
+  return {
+    is_owner: !!user.isOwner,
+    roleNames: user.roles || [],
+    permissions: user.permissions || [],
+    editPermissions: user.editPermissions || [],
+  };
+}
+
 export function userHasPermission(
   user: RoleUser | null | undefined,
-  permission: Permission
+  permission: Permission,
+  level: PermissionLevel = 'view',
 ): boolean {
   if (!user) return false;
   if (user.is_owner) return true;
+  if (level === 'edit') {
+    if (Array.isArray(user.editPermissions) && user.editPermissions.includes(permission)) {
+      return true;
+    }
+    // Старые сессии без editPermissions: полный доступ по permissions.
+    if (!Array.isArray(user.editPermissions) && Array.isArray(user.permissions)
+      && user.permissions.includes(permission)) {
+      return true;
+    }
+    return userHasRoleIn(user, PERMISSION_FALLBACK_ROLES[permission])
+      && !VIEW_ONLY_PERMISSIONS.has(permission);
+  }
   if (Array.isArray(user.permissions) && user.permissions.includes(permission)) {
     return true;
   }

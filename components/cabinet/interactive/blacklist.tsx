@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
-import { ErrorText, request, type Row } from './shared';
+import { askConfirm, ErrorText, request, type Row } from './shared';
 
 export function BlacklistInteractive() {
   const [items, setItems] = useState<Row[]>([]);
@@ -39,7 +39,7 @@ export function BlacklistInteractive() {
   }
 
   async function remove(id: number) {
-    if (!confirm('Убрать из чёрного списка?')) return;
+    if (!(await askConfirm('Убрать из чёрного списка?', { title: 'Чёрный список', confirmLabel: 'Убрать' }))) return;
     try {
       await request(`/api/blacklist/${id}`, { method: 'DELETE' });
       await load();

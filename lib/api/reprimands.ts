@@ -14,6 +14,7 @@ import {
   ADMIN_POINT_LIMIT,
   HELPER_BLOCK_POINTS,
 } from '@/lib/reprimandRules';
+import { userHasPermission } from '@/lib/roleAccess';
 import { ok, parseId, required, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
 import type { DbUser } from '@/lib/auth';
@@ -106,7 +107,7 @@ export const handleReprimands: ApiHandler = async ({ key, params, method, body }
     });
   }
   if (key === 'reprimands-unblock') {
-    const user = await requiredPerm('reprimands');
+    const user = await requiredPerm('reprimands', { level: 'edit' });
     if (user instanceof NextResponse) return user;
     const denied = await assertCanPunishUser(user, parseId(params.userId));
     if (denied) return denied;
@@ -121,7 +122,7 @@ export const handleReprimands: ApiHandler = async ({ key, params, method, body }
     return ok();
   }
   if (key === 'reprimand' && method === 'DELETE') {
-    const user = await requiredPerm('reprimands');
+    const user = await requiredPerm('reprimands', { level: 'edit' });
     if (user instanceof NextResponse) return user;
     const { rows } = await query<{ user_id: number; type: string; reason: string; auto_generated: boolean }>(
       'SELECT user_id, type, reason, auto_generated FROM reprimands WHERE id=$1',
@@ -150,7 +151,7 @@ export const handleReprimands: ApiHandler = async ({ key, params, method, body }
     return ok();
   }
 
-  const user = await requiredPerm('reprimands');
+  const user = await requiredPerm('reprimands', { level: method === 'GET' ? 'view' : 'edit' });
   if (user instanceof NextResponse) return user;
   if (method === 'GET') {
     const result = await query<Record<string, unknown>>(
@@ -175,6 +176,7 @@ export const handleReprimands: ApiHandler = async ({ key, params, method, body }
         tier: tierForPriority(row.role_priority as number),
       })),
       limits: LIMITS_PAYLOAD,
+      canEdit: userHasPermission(user, 'reprimands', 'edit'),
     });
   }
 

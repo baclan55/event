@@ -10,10 +10,12 @@ import {
   listAchievements,
   listUserAchievements,
 } from '@/lib/achievements';
-import { ok, parseId, required, requiredPerm } from './helpers';
+import { userHasPermission } from '@/lib/roleAccess';
+import { saveImage } from '@/lib/images';
+import { ok, parseId, readImage, required, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
 
-export const handlePortalExtra: ApiHandler = async ({ key, params, method, body }) => {
+export const handlePortalExtra: ApiHandler = async ({ key, params, method, body, request }) => {
   // ---- игровой профиль ----
   if (key === 'profile-game') {
     const user = await required(undefined, { allowIncompleteProfile: true });
@@ -60,7 +62,7 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body 
     const hasProfile = !!(user.first_name && user.static_id && (!needLast || user.last_name));
     if (!hasProfile) {
       await query(
-        'UPDATE users SET first_name=$1, last_name=$2, static_id=$3 WHERE id=$4',
+        'UPDATE users SET first_name=$1, last_name=$2, static_id=$3, nickname=$1 WHERE id=$4',
         [validated.firstName, validated.lastName || null, validated.staticId, user.id],
       );
       await writeAudit({
@@ -95,9 +97,9 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body 
   }
 
   if (key === 'profile-moderation') {
-    const user = await requiredPerm('moderate_profile');
-    if (user instanceof NextResponse) return user;
     if (method === 'GET') {
+      const user = await requiredPerm('moderate_profile');
+      if (user instanceof NextResponse) return user;
       const result = await query(
         `SELECT p.*, u.nickname, u.discord_username
          FROM profile_change_requests p
@@ -105,9 +107,14 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body 
          WHERE p.status='pending'
          ORDER BY p.created_at ASC`,
       );
-      return NextResponse.json({ requests: result.rows });
+      return NextResponse.json({
+        requests: result.rows,
+        canEdit: userHasPermission(user, 'moderate_profile', 'edit'),
+      });
     }
     if (method === 'PUT') {
+      const user = await requiredPerm('moderate_profile', { level: 'edit' });
+      if (user instanceof NextResponse) return user;
       const id = parseId(String(body.id || params.id || ''));
       const status = String(body.status || '');
       if (!['approved', 'rejected'].includes(status)) return jsonError('Некорректный статус.', 400);
@@ -119,7 +126,7 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body 
       if (!req || req.status !== 'pending') return jsonError('Заявка не найдена.', 404);
       if (status === 'approved') {
         await query(
-          'UPDATE users SET first_name=$1, last_name=$2, static_id=$3 WHERE id=$4',
+          'UPDATE users SET first_name=$1, last_name=$2, static_id=$3, nickname=$1 WHERE id=$4',
           [req.first_name, req.last_name, req.static_id, req.user_id],
         );
         invalidateUserCache(req.user_id as number);
@@ -152,9 +159,12 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body 
          LEFT JOIN users c ON c.id = b.created_by
          ORDER BY b.created_at DESC`,
       );
-      return NextResponse.json({ items: result.rows });
+      return NextResponse.json({
+        items: result.rows,
+        canEdit: userHasPermission(user, 'manage_blacklist', 'edit'),
+      });
     }
-    const user = await requiredPerm('manage_blacklist');
+    const user = await requiredPerm('manage_blacklist', { level: 'edit' });
     if (user instanceof NextResponse) return user;
     if (key === 'blacklist' && method === 'POST') {
       const discordId = String(body.discordId || '').trim() || null;
@@ -205,6 +215,17 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body 
   }
 
   // ---- achievements ----
+  if (key === 'achievements-icon' && method === 'POST') {
+    const user = await requiredPerm('manage_achievements', { level: 'edit' });
+    if (user instanceof NextResponse) return user;
+    const image = await readImage(request);
+    if (!image || image instanceof Error) {
+      return jsonError(image?.message || 'Файл не получен.', 400);
+    }
+    const imageId = await saveImage(image);
+    return ok({ imageId, url: `/media/${imageId}` });
+  }
+
   if (key === 'achievements' || key === 'achievement' || key === 'achievements-me' || key === 'achievements-user') {
     if (key === 'achievements-me') {
       const user = await required();
@@ -219,13 +240,14 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body 
     }
     if (key === 'achievements' && method === 'GET') {
       const viewer = await getCurrentUser();
-      const manage = viewer && (viewer.is_owner || (viewer.permissions || []).includes('manage_achievements'));
+      const manage = !!(viewer && userHasPermission(viewer, 'manage_achievements'));
       return NextResponse.json({
         achievements: await listAchievements(!manage),
         triggers: ACHIEVEMENT_TRIGGERS,
+        canEdit: !!(viewer && userHasPermission(viewer, 'manage_achievements', 'edit')),
       });
     }
-    const user = await requiredPerm('manage_achievements');
+    const user = await requiredPerm('manage_achievements', { level: 'edit' });
     if (user instanceof NextResponse) return user;
     if (key === 'achievements' && method === 'POST') {
       const name = String(body.name || '').trim();
@@ -234,13 +256,17 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body 
       if (!ACHIEVEMENT_TRIGGERS.includes(triggerType as typeof ACHIEVEMENT_TRIGGERS[number])) {
         return jsonError('Некорректный триггер.', 400);
       }
+      const gradeIcons = Array.isArray(body.gradeIcons)
+        ? body.gradeIcons.map((item: unknown) => String(item || '').trim())
+        : [];
       const inserted = await query<{ id: number }>(
-        `INSERT INTO achievements(name, description, icon, trigger_type, trigger_config, max_grade, active)
-         VALUES($1,$2,$3,$4,$5::jsonb,$6,$7) RETURNING id`,
+        `INSERT INTO achievements(name, description, icon, grade_icons, trigger_type, trigger_config, max_grade, active)
+         VALUES($1,$2,$3,$4::jsonb,$5,$6::jsonb,$7,$8) RETURNING id`,
         [
           name,
           String(body.description || ''),
-          String(body.icon || ''),
+          String(body.icon || gradeIcons[0] || ''),
+          JSON.stringify(gradeIcons),
           triggerType,
           JSON.stringify(body.triggerConfig || {}),
           Math.max(1, Number(body.maxGrade) || 1),
@@ -258,13 +284,17 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body 
     }
     if (key === 'achievement' && method === 'PUT') {
       const id = parseId(params.id);
+      const gradeIcons = Array.isArray(body.gradeIcons)
+        ? body.gradeIcons.map((item: unknown) => String(item || '').trim())
+        : [];
       await query(
-        `UPDATE achievements SET name=$1, description=$2, icon=$3, trigger_type=$4,
-         trigger_config=$5::jsonb, max_grade=$6, active=$7, updated_at=now() WHERE id=$8`,
+        `UPDATE achievements SET name=$1, description=$2, icon=$3, grade_icons=$4::jsonb,
+         trigger_type=$5, trigger_config=$6::jsonb, max_grade=$7, active=$8, updated_at=now() WHERE id=$9`,
         [
           String(body.name || '').trim(),
           String(body.description || ''),
-          String(body.icon || ''),
+          String(body.icon || gradeIcons[0] || ''),
+          JSON.stringify(gradeIcons),
           String(body.triggerType || ''),
           JSON.stringify(body.triggerConfig || {}),
           Math.max(1, Number(body.maxGrade) || 1),

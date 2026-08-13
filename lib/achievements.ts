@@ -12,21 +12,32 @@ export type AchievementRow = {
   name: string;
   description: string;
   icon: string;
+  grade_icons: string[];
   trigger_type: AchievementTrigger;
   trigger_config: Record<string, unknown>;
   max_grade: number;
   active: boolean;
 };
 
+function normalizeGradeIcons(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => String(item || '').trim());
+}
+
 export async function listAchievements(activeOnly = false) {
   try {
     const result = await query<AchievementRow>(
-      `SELECT id, name, description, icon, trigger_type, trigger_config, max_grade, active
+      `SELECT id, name, description, icon,
+              COALESCE(grade_icons, '[]'::jsonb) AS grade_icons,
+              trigger_type, trigger_config, max_grade, active
        FROM achievements
        ${activeOnly ? 'WHERE active = TRUE' : ''}
        ORDER BY id ASC`,
     );
-    return result.rows;
+    return result.rows.map((row) => ({
+      ...row,
+      grade_icons: normalizeGradeIcons(row.grade_icons),
+    }));
   } catch (error) {
     if ((error as { code?: string }).code === '42P01') return [];
     throw error;
@@ -37,14 +48,21 @@ export async function listUserAchievements(userId: number) {
   try {
     const result = await query(
       `SELECT ua.achievement_id, ua.grade, ua.awarded_at,
-              a.name, a.description, a.icon, a.max_grade, a.trigger_type
+              a.name, a.description, a.icon,
+              COALESCE(a.grade_icons, '[]'::jsonb) AS grade_icons,
+              a.max_grade, a.trigger_type
        FROM user_achievements ua
        JOIN achievements a ON a.id = ua.achievement_id
        WHERE ua.user_id = $1
        ORDER BY ua.awarded_at DESC`,
       [userId],
     );
-    return result.rows;
+    return result.rows.map((row) => {
+      const icons = normalizeGradeIcons(row.grade_icons);
+      const grade = Math.max(1, Number(row.grade) || 1);
+      const icon = icons[grade - 1] || String(row.icon || '') || icons[0] || '';
+      return { ...row, grade_icons: icons, icon };
+    });
   } catch (error) {
     if ((error as { code?: string }).code === '42P01') return [];
     throw error;

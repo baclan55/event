@@ -28,7 +28,9 @@ function canSeeContentAudience(
 
 export const handleContent: ApiHandler = async ({ key, request, params, method, body }) => {
   if (key.startsWith('content')) {
-    const user = method === 'GET' ? await required() : await requiredPerm('edit_content');
+    const user = method === 'GET'
+      ? await required(undefined, { allowIncompleteProfile: true })
+      : await requiredPerm('edit_content', { level: 'edit' });
     if (user instanceof NextResponse) return user;
     const canSeeAuthor = user.is_owner
       || user.is_admin
@@ -107,7 +109,9 @@ export const handleContent: ApiHandler = async ({ key, request, params, method, 
   }
 
   if (key.startsWith('rule')) {
-    const user = method === 'GET' ? await required() : await requiredPerm('edit_content');
+    const user = method === 'GET'
+      ? await required()
+      : await requiredPerm('edit_content', { level: 'edit' });
     if (user instanceof NextResponse) return user;
     if (key === 'rules' && method === 'GET') {
       const result = await query<Record<string, unknown>>(

@@ -7,10 +7,13 @@ import {
   requireRoleInUser,
   type DbUser,
 } from '@/lib/auth';
-import type { Permission } from '@/lib/roleAccess';
+import type { Permission, PermissionLevel } from '@/lib/roleAccess';
 import { readUploadedImage } from '@/lib/images';
 
-type ProfileOpts = { allowIncompleteProfile?: boolean };
+type ProfileOpts = {
+  allowIncompleteProfile?: boolean;
+  level?: PermissionLevel;
+};
 
 function assertProfileComplete(user: DbUser, opts?: ProfileOpts) {
   if (opts?.allowIncompleteProfile) return null;
@@ -32,9 +35,12 @@ export const required = async (roles?: readonly string[], opts?: ProfileOpts) =>
 };
 
 export const requiredPerm = async (permission: Permission, opts?: ProfileOpts) => {
-  const user = await requirePermissionUser(permission);
+  const user = await requirePermissionUser(permission, opts?.level || 'view');
   if (user instanceof NextResponse) return user;
-  const blocked = assertProfileComplete(user, opts);
+  // Просмотр журнала/контента не должен блокироваться окном игрового профиля.
+  const skipProfile = opts?.allowIncompleteProfile
+    || permission === 'view_audit';
+  const blocked = assertProfileComplete(user, skipProfile ? { allowIncompleteProfile: true } : opts);
   if (blocked) return blocked;
   return user;
 };

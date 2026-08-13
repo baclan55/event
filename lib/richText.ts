@@ -184,7 +184,7 @@ const MARKDOWN_SANITIZE_OPTIONS = {
     a: ['discord-chip'],
     code: [/^language-[\w-]*$/],
   },
-  allowedSchemes: ['https'],
+  allowedSchemes: ['https', 'http'],
   transformTags: { a: transformDiscordAnchor },
   disallowedTagsMode: 'discard',
 };
@@ -247,10 +247,21 @@ function sanitizeLegacyHtml(html) {
 // Markdown сам по себе почти никогда не содержит "<тег>" — угловые скобки
 // в обычном тексте единичны и полностью экранируются при рендере, так что
 // ложных срабатываний в другую сторону можно не бояться.
-const LOOKS_LIKE_LEGACY_HTML_RE = /<[a-zA-Z/][^<>]*>/;
+// Старый contenteditable: только inline-теги. Структурный HTML (p/ul/h…) —
+// это либо ошибочно сохранённый render, либо Markdown; его нельзя гонять
+// через legacy-sanitize (он выкинет p/ul/h и «съест» оформление).
+const LOOKS_LIKE_LEGACY_INLINE_RE = /<(?:b|strong|i|em|span|br|a)\b/i;
+const LOOKS_LIKE_STRUCTURAL_HTML_RE = /<(?:p|div|ul|ol|li|h[1-6]|blockquote|table|pre|hr)\b/i;
 
 function looksLikeLegacyHtml(body) {
-  return LOOKS_LIKE_LEGACY_HTML_RE.test(String(body == null ? '' : body));
+  const s = String(body == null ? '' : body);
+  if (!s.trim()) return false;
+  if (LOOKS_LIKE_STRUCTURAL_HTML_RE.test(s)) return false;
+  return LOOKS_LIKE_LEGACY_INLINE_RE.test(s);
+}
+
+function looksLikeStructuralHtml(body) {
+  return LOOKS_LIKE_STRUCTURAL_HTML_RE.test(String(body == null ? '' : body));
 }
 
 function decodeHtmlEntities(str) {
@@ -327,7 +338,12 @@ function legacyHtmlToMarkdown(html) {
 function renderBody(rawBody) {
   const body = String(rawBody == null ? '' : rawBody);
   if (!body.trim()) return '';
-  return looksLikeLegacyHtml(body) ? sanitizeLegacyHtml(body) : renderMarkdown(body);
+  // Уже готовый структурный HTML (в т.ч. если в БД попал результат рендера).
+  if (looksLikeStructuralHtml(body)) {
+    return sanitizeHtml(body, MARKDOWN_SANITIZE_OPTIONS);
+  }
+  if (looksLikeLegacyHtml(body)) return sanitizeLegacyHtml(body);
+  return renderMarkdown(body);
 }
 
 // Возвращает body в виде, пригодном для показа в textarea markdown-редактора

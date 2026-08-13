@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
 import { DEFAULT_CLOSED_MESSAGE } from '@/lib/auditShared';
-import { Avatar, ErrorText, request, type Row } from './shared';
+import { askConfirm, Avatar, ErrorText, request, type Row } from './shared';
 
 export function ApplicationsInteractive({
   initialRows,
@@ -41,12 +41,16 @@ export function ApplicationsInteractive({
     catch (err) { setError((err as Error).message); }
   }
   async function call(id: number, passed: boolean) {
-    if (!confirm(passed ? 'Кандидат прошёл обзвон?' : 'Кандидат не прошёл обзвон?')) return;
+    if (!(await askConfirm(passed ? 'Кандидат прошёл обзвон?' : 'Кандидат не прошёл обзвон?', {
+      title: 'Подтверждение',
+      confirmLabel: passed ? 'Да, прошёл' : 'Не прошёл',
+      danger: !passed,
+    }))) return;
     try { await request(`/api/applications/${id}/call`, { method: 'POST', body: JSON.stringify({ passed }) }); await reload(); }
     catch (err) { setError((err as Error).message); }
   }
   async function remove(id: number) {
-    if (!confirm('Удалить заявку?')) return;
+    if (!(await askConfirm('Удалить заявку?', { title: 'Удаление', confirmLabel: 'Удалить' }))) return;
     try { await request(`/api/applications/${id}`, { method: 'DELETE' }); await reload(); }
     catch (err) { setError((err as Error).message); }
   }

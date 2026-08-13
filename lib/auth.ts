@@ -1,11 +1,13 @@
 import { query } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import {
+  editPermissionsFromRole,
   permissionsFromRole,
   userHasAnyRole,
   userHasPermission,
   userHasRoleIn,
   type Permission,
+  type PermissionLevel,
   type RoleUser,
 } from '@/lib/roleAccess';
 import {
@@ -50,6 +52,7 @@ export type DbUser = RoleUser & {
   static_id?: string | null;
   roles: DbRole[];
   permissions: Permission[];
+  editPermissions: Permission[];
   is_event_helper?: boolean;
   is_administrator?: boolean;
   dashboard_blocks?: Record<DashboardBlock, boolean>;
@@ -68,6 +71,16 @@ function aggregatePermissions(roles: DbRole[]): Permission[] {
   const set = new Set<Permission>();
   for (const role of roles) {
     for (const perm of permissionsFromRole(role.name, role.permissions)) {
+      set.add(perm);
+    }
+  }
+  return [...set];
+}
+
+function aggregateEditPermissions(roles: DbRole[]): Permission[] {
+  const set = new Set<Permission>();
+  for (const role of roles) {
+    for (const perm of editPermissionsFromRole(role.name, role.permissions)) {
       set.add(perm);
     }
   }
@@ -111,12 +124,16 @@ function cloneUser(user: DbUser): DbUser {
   const permissions = Array.isArray(user.permissions)
     ? [...user.permissions]
     : aggregatePermissions(roles);
+  const editPermissions = Array.isArray(user.editPermissions)
+    ? [...user.editPermissions]
+    : aggregateEditPermissions(roles);
   const flags = aggregateRoleFlags(roles);
   return {
     ...user,
     roles,
     roleNames: roles.map((r) => r.name),
     permissions,
+    editPermissions,
     is_event_helper: user.is_event_helper ?? flags.isEventHelper,
     is_administrator: user.is_administrator ?? flags.isAdministrator,
     dashboard_blocks: user.dashboard_blocks || flags.dashboardBlocks,
@@ -145,6 +162,7 @@ export type PublicUser = {
   rolePriority: number | null;
   roles: string[];
   permissions: Permission[];
+  editPermissions: Permission[];
   isBlocked: boolean;
   blockedAt: string | null;
   firstName: string | null;
@@ -162,6 +180,9 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
   const permissions = Array.isArray(u.permissions) && u.permissions.length
     ? u.permissions
     : aggregatePermissions(roles);
+  const editPermissions = Array.isArray(u.editPermissions)
+    ? u.editPermissions
+    : aggregateEditPermissions(roles);
   const flags = aggregateRoleFlags(roles);
   const isEventHelper = u.is_event_helper ?? flags.isEventHelper;
   const isAdministrator = u.is_administrator ?? flags.isAdministrator;
@@ -170,7 +191,8 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
   const staticId = u.static_id ?? null;
   return {
     id: u.id,
-    nickname: u.nickname,
+    // Отображаемое имя = игровое «Имя»; nickname в БД синхронизируется с ним.
+    nickname: firstName || u.nickname,
     discordUsername: u.discord_username,
     avatarImageId: u.avatar_image_id,
     avatarUrl: u.avatar_url,
@@ -182,6 +204,7 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
     rolePriority: u.role_priority != null ? u.role_priority : null,
     roles: roles.map((r) => r.name),
     permissions,
+    editPermissions,
     isBlocked: !!u.is_blocked,
     blockedAt: u.blocked_at || null,
     firstName,
@@ -245,6 +268,7 @@ export async function loadUserById(userId: number): Promise<DbUser | null> {
   user.roles = roles;
   user.roleNames = roles.map((r) => r.name);
   user.permissions = aggregatePermissions(roles);
+  user.editPermissions = aggregateEditPermissions(roles);
   const flags = aggregateRoleFlags(roles);
   user.is_event_helper = flags.isEventHelper;
   user.is_administrator = flags.isAdministrator;
@@ -307,12 +331,18 @@ export async function requireRoleInUser(
 }
 
 export async function requirePermissionUser(
-  permission: Permission
+  permission: Permission,
+  level: PermissionLevel = 'view',
 ): Promise<DbUser | NextResponse> {
   const user = await requireUser();
   if (user instanceof NextResponse) return user;
-  if (!userHasPermission(user, permission)) {
-    return jsonError('Недостаточно прав для доступа к этому разделу.', 403);
+  if (!userHasPermission(user, permission, level)) {
+    return jsonError(
+      level === 'edit'
+        ? 'Недостаточно прав для изменения в этом разделе.'
+        : 'Недостаточно прав для доступа к этому разделу.',
+      403,
+    );
   }
   return user;
 }

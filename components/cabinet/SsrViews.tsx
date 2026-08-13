@@ -27,7 +27,7 @@ export function DashboardView({
     .sort((a, b) => (b.weekly_events || 0) - (a.weekly_events || 0))
     .slice(0, 3);
   const rating = (rows: Row[], empty: string) => rows.length ? rows.map((m, i) => (
-    <div className="top-row" key={m.id}>
+    <a className="top-row top-row-link" href={`/app/profile/${m.id}`} key={m.id}>
       <b className="top-rank">{['🥇', '🥈', '🥉'][i]}</b>
       <Avatar row={m} />
       <div style={{ flex: 1 }}>
@@ -35,7 +35,7 @@ export function DashboardView({
         <div className="role-tag">{(m.roles || []).map((r: Row) => r.name).join(' · ') || m.role_name}</div>
       </div>
       <span className={`badge ${m.weekly_events >= target ? 'badge-green' : 'badge-amber'}`}>{m.weekly_events} мп / нед.</span>
-    </div>
+    </a>
   )) : <div className="empty-state"><p>{empty}</p></div>;
   const showStats = blocks.stats !== false;
   const showAdmin = blocks.top_admin !== false;
@@ -68,18 +68,10 @@ export function ProfileView({ user, reprimands }: { user: PublicUser; reprimands
     <div className="top-grid">
       <div className="card card-pad">
         <div className="card-header"><h3>Мой профиль</h3></div>
-        <p>Никнейм: <b>{user.nickname || '—'}</b></p>
+        <p>Имя: <b>{user.nickname || user.firstName || '—'}</b></p>
         <p>Discord: <b>{user.discordUsername || '—'}</b></p>
         <p>Роли: <b>{user.roles.join(' · ') || 'не назначены'}</b></p>
         <p>Мероприятий за неделю: <b>{user.weeklyEvents}</b></p>
-        <hr style={{ border: 0, borderTop: '1px solid var(--border-soft)', margin: '16px 0' }} />
-        <form action="/api/auth/me/nickname" method="post">
-          <div className="field">
-            <label>Изменить никнейм</label>
-            <input className="input" name="nickname" defaultValue={user.nickname || ''} required maxLength={60} />
-          </div>
-          <button className="btn btn-primary" type="submit">Сохранить</button>
-        </form>
       </div>
       <div className="card card-pad">
         <div className="card-header"><h3>Мои выговоры</h3></div>

@@ -395,6 +395,8 @@ CREATE TABLE IF NOT EXISTS achievements (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Иконки по степеням: ["url1","url2",...] — индекс 0 = 1-я степень.
+ALTER TABLE achievements ADD COLUMN IF NOT EXISTS grade_icons JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 CREATE TABLE IF NOT EXISTS user_achievements (
   user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

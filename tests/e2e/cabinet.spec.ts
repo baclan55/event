@@ -69,8 +69,8 @@ test('руководитель выдаёт и удаляет выговор', a
 
   const entry = page.locator('.rp-entry').filter({ hasText: marker });
   await expect(entry).toBeVisible();
-  page.once('dialog', (dialog) => dialog.accept());
   await entry.locator('button').click();
+  await page.getByRole('dialog', { name: 'Удаление' }).getByRole('button', { name: 'Удалить' }).click();
   await expect(entry).toBeHidden();
 });
 

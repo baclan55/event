@@ -33,7 +33,9 @@ async function assertNotBlacklisted(userId: number, roleIds: number[]) {
 export const handleRoster: ApiHandler = async ({ key, params, method, body }) => {
   if (key.startsWith('roster')) {
     const publicRequest = (key === 'roster' && method === 'GET') || key === 'roster-roles';
-    const user = publicRequest ? await required() : await requiredPerm('edit_content');
+    const user = publicRequest
+      ? await required()
+      : await requiredPerm('edit_content', { level: 'edit' });
     if (user instanceof NextResponse) return user;
     if (key === 'roster-roles') {
       const result = await query('SELECT id,name,priority FROM roles ORDER BY priority');
@@ -57,7 +59,8 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
         })),
         target: Number(process.env.WEEKLY_EVENTS_TARGET) || 5,
         roles: allRoles.rows,
-        canGrantOwner: userHasPermission(user, 'grant_owner'),
+        canGrantOwner: userHasPermission(user, 'grant_owner', 'edit'),
+        canEdit: userHasPermission(user, 'edit_content', 'edit'),
         actorRolePriority: user.role_priority,
         actorIsOwner: !!user.is_owner,
       });
@@ -82,15 +85,15 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
       invalidateUserCache(params.id);
       return ok();
     }
-    const nickname = String(body.nickname || '').trim();
-    if (!nickname) return jsonError('Укажите никнейм участника.', 400);
+    const nickname = String(body.nickname || body.firstName || '').trim();
+    if (!nickname) return jsonError('Укажите имя участника.', 400);
     const roleIds = Array.isArray(body.roleIds) ? body.roleIds.map(Number).filter(Number.isFinite) : body.roleId ? [Number(body.roleId)] : [];
 
     if (key === 'roster') {
       const assignError = await assertAssignableRoles(user, roleIds);
       if (assignError) return jsonError(assignError, 403);
       const result = await query<{ id: number }>(
-        'INSERT INTO users(nickname,weekly_events,note) VALUES($1,$2,$3) RETURNING id',
+        'INSERT INTO users(nickname,first_name,weekly_events,note) VALUES($1,$1,$2,$3) RETURNING id',
         [nickname, Number(body.weeklyEvents) || 0, String(body.note || '')],
       );
       if (roleIds.length) {
@@ -130,7 +133,7 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
     }
 
     if (typeof body.isOwner === 'boolean') {
-      if (!userHasPermission(user, 'grant_owner')) {
+      if (!userHasPermission(user, 'grant_owner', 'edit')) {
         return jsonError('Недостаточно прав для выдачи права владельца.', 403);
       }
       if (String(user.id) === String(targetId) && body.isOwner === false) {
@@ -146,7 +149,8 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
     if (bl) return jsonError(bl, 403);
 
     await query(
-      'UPDATE users SET nickname=$1,weekly_events=COALESCE($2::integer,weekly_events),note=$3 WHERE id=$4',
+      `UPDATE users SET nickname=$1, first_name=$1,
+       weekly_events=COALESCE($2::integer,weekly_events), note=$3 WHERE id=$4`,
       [
         nickname,
         Number.isFinite(Number(body.weeklyEvents)) ? Number(body.weeklyEvents) : null,

@@ -2,16 +2,18 @@
 
 import { FormEvent, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
-import { Avatar, ErrorText, Modal, request, type Row } from './shared';
+import { askConfirm, Avatar, ErrorText, Modal, request, type Row } from './shared';
 
 export function VacationsInteractive({
   initialRows,
   currentUserId,
   canReview,
+  canEditReview = false,
 }: {
   initialRows: Row[];
   currentUserId: number;
   canReview: boolean;
+  canEditReview?: boolean;
 }) {
   const [rows, setRows] = useState(initialRows);
   const [adding, setAdding] = useState(false);
@@ -87,7 +89,7 @@ export function VacationsInteractive({
     catch (err) { setError((err as Error).message); }
   }
   async function remove(id: number) {
-    if (!confirm('Удалить заявку на отпуск?')) return;
+    if (!(await askConfirm('Удалить заявку на отпуск?', { title: 'Удаление', confirmLabel: 'Удалить' }))) return;
     try { await request(`/api/vacations/${id}`, { method: 'DELETE' }); await reload(); }
     catch (err) { setError((err as Error).message); }
   }
@@ -107,7 +109,18 @@ export function VacationsInteractive({
       <ErrorText value={error} />
       {canReview && pending.length > 0 && <div className="card card-pad vac-review-card">
         <div className="card-header"><h3>На рассмотрении</h3><span className="badge badge-amber">{pending.length}</span></div>
-        {pending.map((row) => <div className="roster-row" key={row.id}><Avatar row={row} /><div className="who"><div><div className="nickname">{row.nickname}</div><div className="role-tag">{new Date(row.start_date).toLocaleDateString('ru-RU')} — {new Date(row.end_date).toLocaleDateString('ru-RU')}{row.reason ? ` · ${row.reason}` : ''}</div></div></div><button className="btn btn-primary btn-sm" onClick={() => void status(row.id, 'approved')}>Одобрить</button><button className="btn btn-danger btn-sm" onClick={() => void status(row.id, 'rejected')}>Отклонить</button></div>)}
+        {pending.map((row) => (
+          <div className="roster-row" key={row.id}>
+            <Avatar row={row} />
+            <div className="who"><div><div className="nickname">{row.nickname}</div><div className="role-tag">{new Date(row.start_date).toLocaleDateString('ru-RU')} — {new Date(row.end_date).toLocaleDateString('ru-RU')}{row.reason ? ` · ${row.reason}` : ''}</div></div></div>
+            {canEditReview ? (
+              <>
+                <button className="btn btn-primary btn-sm" onClick={() => void status(row.id, 'approved')}>Одобрить</button>
+                <button className="btn btn-danger btn-sm" onClick={() => void status(row.id, 'rejected')}>Отклонить</button>
+              </>
+            ) : null}
+          </div>
+        ))}
       </div>}
 
       <div className="vac-layout">
@@ -149,9 +162,39 @@ export function VacationsInteractive({
         </aside>
       </div>
 
-      {canReview && <div className="card card-pad" style={{ marginTop: 20 }}><div className="card-header"><h3>Все заявки</h3></div>{rows.map((row) => <div className="roster-row" key={row.id}><Avatar row={row} /><div className="who"><div><div className="nickname">{row.nickname}</div><div className="role-tag">{new Date(row.start_date).toLocaleDateString('ru-RU')} — {new Date(row.end_date).toLocaleDateString('ru-RU')}</div></div></div><span className="badge badge-muted">{statusLabel(row.status)}</span><button className="icon-btn danger" onClick={() => void remove(row.id)}><NavIcon name="trash" /></button></div>)}</div>}
+      {canReview && (
+        <div className="card card-pad" style={{ marginTop: 20 }}>
+          <div className="card-header"><h3>Все заявки</h3></div>
+          {rows.map((row) => (
+            <div className="roster-row" key={row.id}>
+              <Avatar row={row} />
+              <div className="who"><div><div className="nickname">{row.nickname}</div><div className="role-tag">{new Date(row.start_date).toLocaleDateString('ru-RU')} — {new Date(row.end_date).toLocaleDateString('ru-RU')}</div></div></div>
+              <span className="badge badge-muted">{statusLabel(row.status)}</span>
+              {canEditReview ? (
+                <button className="icon-btn danger" onClick={() => void remove(row.id)}><NavIcon name="trash" /></button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
 
-      {selectedVacation && <Modal title={selectedVacation.nickname} onClose={() => setSelectedVacation(null)}><div className="modal-sub">{new Date(selectedVacation.start_date).toLocaleDateString('ru-RU')} — {new Date(selectedVacation.end_date).toLocaleDateString('ru-RU')} · {statusLabel(selectedVacation.status)}</div>{selectedVacation.reason && <p className="rule-text" style={{ textAlign: 'center' }}>{selectedVacation.reason}</p>}<div className="modal-actions">{canReview && selectedVacation.status === 'pending' && <><button className="btn btn-danger" onClick={() => { void status(selectedVacation.id, 'rejected'); setSelectedVacation(null); }}>Отклонить</button><button className="btn btn-primary" onClick={() => { void status(selectedVacation.id, 'approved'); setSelectedVacation(null); }}>Одобрить</button></>}{selectedVacation.user_id === currentUserId && selectedVacation.status === 'pending' && <button className="btn btn-ghost" onClick={() => { void status(selectedVacation.id, 'cancelled'); setSelectedVacation(null); }}>Отменить заявку</button>}</div></Modal>}
+      {selectedVacation && (
+        <Modal title={selectedVacation.nickname} onClose={() => setSelectedVacation(null)}>
+          <div className="modal-sub">{new Date(selectedVacation.start_date).toLocaleDateString('ru-RU')} — {new Date(selectedVacation.end_date).toLocaleDateString('ru-RU')} · {statusLabel(selectedVacation.status)}</div>
+          {selectedVacation.reason && <p className="rule-text" style={{ textAlign: 'center' }}>{selectedVacation.reason}</p>}
+          <div className="modal-actions">
+            {canEditReview && selectedVacation.status === 'pending' && (
+              <>
+                <button className="btn btn-danger" onClick={() => { void status(selectedVacation.id, 'rejected'); setSelectedVacation(null); }}>Отклонить</button>
+                <button className="btn btn-primary" onClick={() => { void status(selectedVacation.id, 'approved'); setSelectedVacation(null); }}>Одобрить</button>
+              </>
+            )}
+            {selectedVacation.user_id === currentUserId && selectedVacation.status === 'pending' && (
+              <button className="btn btn-ghost" onClick={() => { void status(selectedVacation.id, 'cancelled'); setSelectedVacation(null); }}>Отменить заявку</button>
+            )}
+          </div>
+        </Modal>
+      )}
 
       {adding && <Modal title="Новый отпуск" onClose={() => setAdding(false)}><form onSubmit={create}><ErrorText value={error} /><div className="field"><label>Период отпуска</label><div className="vac-period-trigger"><span>{rangeStart ? `${new Date(`${rangeStart}T00:00:00`).toLocaleDateString('ru-RU')} — ${new Date(`${rangeEnd || rangeStart}T00:00:00`).toLocaleDateString('ru-RU')}` : 'Выберите даты'}</span></div><div className="vac-mini-cal"><div className="vac-mini-head"><button type="button" className="icon-btn" onClick={() => setPickerMonth(new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() - 1, 1))}>‹</button><b>{monthTitle(pickerMonth)}</b><button type="button" className="icon-btn" onClick={() => setPickerMonth(new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() + 1, 1))}>›</button></div><div className="vac-mini-grid">{['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => <div className="vac-mini-wd" key={day}>{day}</div>)}{calendarDays(pickerMonth).map((day) => { const value = iso(day); const inRange = rangeStart && value >= rangeStart && value <= (rangeEnd || rangeStart); return <button type="button" className={`vac-mini-day${day.getMonth() !== pickerMonth.getMonth() ? ' is-muted' : ''}${value === rangeStart ? ' range-start' : ''}${value === rangeEnd ? ' range-end' : ''}${inRange ? ' in-range' : ''}${value === iso(today) ? ' is-today' : ''}`} key={value} onClick={() => chooseDate(value)}>{day.getDate()}</button>; })}</div><div className="vac-mini-actions"><button type="button" className="btn btn-ghost btn-sm" onClick={() => { setRangeStart(''); setRangeEnd(''); }}>Сбросить</button></div></div></div><div className="field"><label>Причина (необязательно)</label><textarea className="input" value={reason} onChange={(event) => setReason(event.target.value)} /></div><div className="modal-actions"><button className="btn btn-ghost" type="button" onClick={() => setAdding(false)}>Отмена</button><button className="btn btn-primary">Создать</button></div></form></Modal>}
     </>

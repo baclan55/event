@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { PublicUser } from '@/lib/auth';
 import { NavIcon } from '@/components/NavIcons';
 import { ProfileGate } from '@/components/ProfileGate';
+import { ConfirmHost } from '@/components/cabinet/interactive/shared';
 
 type NavItem = { key: string; label: string };
 type NavGroup = { label: string; items: NavItem[] };
@@ -116,6 +117,7 @@ export function CabinetShellServer({
         <div className="content">{children}</div>
       </main>
       {!user.profileComplete ? <ProfileGate user={user} /> : null}
+      <ConfirmHost />
     </div>
   );
 }

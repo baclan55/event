@@ -2,25 +2,38 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
-import { PERMISSION_LABELS, PERMISSIONS, type Permission } from '@/lib/roleAccess';
+import {
+  emptyPermissions,
+  normalizeRolePermissions,
+  PERMISSION_LABELS,
+  PERMISSIONS,
+  VIEW_ONLY_PERMISSIONS,
+  type Permission,
+  type PermissionAccess,
+} from '@/lib/roleAccess';
 import {
   DASHBOARD_BLOCKS,
   DASHBOARD_BLOCK_LABELS,
   defaultDashboardBlocks,
   type DashboardBlock,
 } from '@/lib/roleMeta';
-import { ErrorText, Modal, request } from './shared';
+import { askConfirm, ErrorText, Modal, request } from './shared';
 
 type RoleRow = {
   id: number;
   name: string;
   priority: number;
-  permissions: Record<Permission, boolean>;
+  permissions: Record<Permission, PermissionAccess>;
   isEventHelper: boolean;
   isAdministrator: boolean;
   dashboardBlocks: Record<DashboardBlock, boolean>;
   usersCount: number;
 };
+
+function countAccess(permissions: Record<Permission, PermissionAccess> | undefined) {
+  if (!permissions) return 0;
+  return PERMISSIONS.filter((key) => permissions[key]?.view || permissions[key]?.edit).length;
+}
 
 export function RolesInteractive({
   canGrantOwner,
@@ -28,13 +41,19 @@ export function RolesInteractive({
   canGrantOwner: boolean;
 }) {
   const [roles, setRoles] = useState<RoleRow[]>([]);
+  const [canEdit, setCanEdit] = useState(true);
   const [editing, setEditing] = useState<RoleRow | null | undefined>(undefined);
+  const [draftPerms, setDraftPerms] = useState<Record<Permission, PermissionAccess>>(emptyPermissions());
   const [error, setError] = useState('');
 
   async function load() {
     try {
       const data = await request('/api/roles');
-      setRoles(data.roles || []);
+      setRoles((data.roles || []).map((role: RoleRow) => ({
+        ...role,
+        permissions: normalizeRolePermissions(role.permissions),
+      })));
+      setCanEdit(data.canEdit !== false);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -42,13 +61,31 @@ export function RolesInteractive({
 
   useEffect(() => { void load(); }, []);
 
+  useEffect(() => {
+    if (editing === undefined) return;
+    setDraftPerms(normalizeRolePermissions(editing?.permissions));
+  }, [editing]);
+
+  function setAccess(key: Permission, field: 'view' | 'edit', value: boolean) {
+    setDraftPerms((prev) => {
+      const next = { ...prev, [key]: { ...prev[key] } };
+      if (field === 'edit') {
+        next[key].edit = value && !VIEW_ONLY_PERMISSIONS.has(key);
+        if (value) next[key].view = true;
+      } else {
+        next[key].view = value || next[key].edit;
+        if (!value) next[key].edit = false;
+      }
+      return next;
+    });
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canEdit) return;
     const form = new FormData(event.currentTarget);
-    const permissions = Object.fromEntries(
-      PERMISSIONS.map((key) => [key, form.get(`perm_${key}`) === 'on']),
-    ) as Record<Permission, boolean>;
-    if (!canGrantOwner) delete (permissions as Partial<typeof permissions>).grant_owner;
+    const permissions = { ...draftPerms };
+    if (!canGrantOwner) permissions.grant_owner = { view: false, edit: false };
     const dashboardBlocks = Object.fromEntries(
       DASHBOARD_BLOCKS.map((key) => [key, form.get(`dash_${key}`) === 'on']),
     ) as Record<DashboardBlock, boolean>;
@@ -73,7 +110,8 @@ export function RolesInteractive({
   }
 
   async function remove(id: number) {
-    if (!confirm('Удалить роль?')) return;
+    if (!canEdit) return;
+    if (!(await askConfirm('Удалить роль?', { title: 'Удаление', confirmLabel: 'Удалить' }))) return;
     try {
       await request(`/api/roles/${id}`, { method: 'DELETE' });
       await load();
@@ -83,6 +121,7 @@ export function RolesInteractive({
   }
 
   async function move(id: number, direction: -1 | 1) {
+    if (!canEdit) return;
     const index = roles.findIndex((role) => role.id === id);
     const nextIndex = index + direction;
     if (index < 0 || nextIndex < 0 || nextIndex >= roles.length) return;
@@ -108,9 +147,11 @@ export function RolesInteractive({
     <>
       <div className="toolbar">
         <div className="toolbar-left">Чем выше роль в списке — тем она главнее</div>
-        <button className="btn btn-primary btn-sm" onClick={() => setEditing(null)}>
-          <NavIcon name="plus" /> Создать роль
-        </button>
+        {canEdit ? (
+          <button className="btn btn-primary btn-sm" onClick={() => setEditing(null)}>
+            <NavIcon name="plus" /> Создать роль
+          </button>
+        ) : null}
       </div>
       <ErrorText value={error} />
       {roles.map((role, index) => (
@@ -120,73 +161,113 @@ export function RolesInteractive({
               <div className="nickname">{role.name}</div>
               <div className="role-tag">
                 вес {role.priority} · {role.usersCount} сотр. ·{' '}
-                {PERMISSIONS.filter((key) => role.permissions?.[key]).length} доступов
+                {countAccess(role.permissions)} доступов
                 {role.isEventHelper ? ' · ивент хелпер' : ''}
                 {role.isAdministrator ? ' · администратор' : ''}
               </div>
             </div>
           </div>
           <div className="row-actions">
-            <button className="icon-btn" disabled={index === 0} title="Выше" onClick={() => void move(role.id, -1)}>↑</button>
-            <button className="icon-btn" disabled={index === roles.length - 1} title="Ниже" onClick={() => void move(role.id, 1)}>↓</button>
-            <button className="icon-btn" onClick={() => setEditing(role)}><NavIcon name="edit" /></button>
-            <button className="icon-btn danger" onClick={() => void remove(role.id)}><NavIcon name="trash" /></button>
+            {canEdit ? (
+              <>
+                <button className="icon-btn" disabled={index === 0} title="Выше" onClick={() => void move(role.id, -1)}>↑</button>
+                <button className="icon-btn" disabled={index === roles.length - 1} title="Ниже" onClick={() => void move(role.id, 1)}>↓</button>
+                <button className="icon-btn" onClick={() => setEditing(role)}><NavIcon name="edit" /></button>
+                <button className="icon-btn danger" onClick={() => void remove(role.id)}><NavIcon name="trash" /></button>
+              </>
+            ) : (
+              <button className="icon-btn" onClick={() => setEditing(role)} title="Просмотр"><NavIcon name="edit" /></button>
+            )}
           </div>
         </div>
       ))}
       {!roles.length && <div className="empty-state"><h3>Ролей пока нет</h3></div>}
 
       {editing !== undefined && (
-        <Modal title={editing ? 'Редактирование роли' : 'Новая роль'} onClose={() => setEditing(undefined)} wide>
+        <Modal title={editing ? 'Редактирование роли' : 'Новая роль'} onClose={() => setEditing(undefined)} xl>
           <form onSubmit={save}>
             <ErrorText value={error} />
             <div className="field">
               <label>Название</label>
-              <input className="input" name="name" required maxLength={80} defaultValue={editing?.name || ''} />
+              <input
+                className="input"
+                name="name"
+                required
+                maxLength={80}
+                defaultValue={editing?.name || ''}
+                disabled={!canEdit}
+              />
             </div>
-            <div className="field">
-              <label>Классификация (не доступы)</label>
-              <div className="role-checklist">
-                <label className="role-check-item">
-                  <input type="checkbox" name="isEventHelper" defaultChecked={!!editing?.isEventHelper} />
-                  Ивент хелпер
-                </label>
-                <label className="role-check-item">
-                  <input type="checkbox" name="isAdministrator" defaultChecked={!!editing?.isAdministrator} />
-                  Администратор
-                </label>
-              </div>
-              <div className="field-hint">Нужно для разного содержимого и обязательных полей профиля, не открывает функции сайта.</div>
-            </div>
-            <div className="field">
-              <label>Блоки на главной</label>
-              <div className="role-checklist">
-                {DASHBOARD_BLOCKS.map((key) => (
-                  <label className="role-check-item" key={key}>
-                    <input type="checkbox" name={`dash_${key}`} defaultChecked={!!draftBlocks[key]} />
-                    {DASHBOARD_BLOCK_LABELS[key]}
+            <div className="form-row-2">
+              <div className="field">
+                <label>Классификация (не доступы)</label>
+                <div className="role-checklist role-checklist-compact">
+                  <label className="role-check-item">
+                    <input type="checkbox" name="isEventHelper" defaultChecked={!!editing?.isEventHelper} disabled={!canEdit} />
+                    Ивент хелпер
                   </label>
-                ))}
+                  <label className="role-check-item">
+                    <input type="checkbox" name="isAdministrator" defaultChecked={!!editing?.isAdministrator} disabled={!canEdit} />
+                    Администратор
+                  </label>
+                </div>
+                <div className="field-hint">Нужно для разного содержимого и обязательных полей профиля.</div>
+              </div>
+              <div className="field">
+                <label>Блоки на главной</label>
+                <div className="role-checklist role-checklist-compact">
+                  {DASHBOARD_BLOCKS.map((key) => (
+                    <label className="role-check-item" key={key}>
+                      <input type="checkbox" name={`dash_${key}`} defaultChecked={!!draftBlocks[key]} disabled={!canEdit} />
+                      {DASHBOARD_BLOCK_LABELS[key]}
+                    </label>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="field">
               <label>Доступы</label>
-              <div className="role-checklist">
-                {visiblePermissions.map((key) => (
-                  <label className="role-check-item" key={key}>
-                    <input
-                      type="checkbox"
-                      name={`perm_${key}`}
-                      defaultChecked={!!editing?.permissions?.[key]}
-                    />
-                    {PERMISSION_LABELS[key]}
-                  </label>
-                ))}
+              <div className="perm-grid">
+                {visiblePermissions.map((key) => {
+                  const access = draftPerms[key] || { view: false, edit: false };
+                  const viewOnly = VIEW_ONLY_PERMISSIONS.has(key);
+                  return (
+                    <div className="perm-card" key={key}>
+                      <div className="perm-card-title">{PERMISSION_LABELS[key]}</div>
+                      <div className="perm-card-flags">
+                        <label className="perm-flag">
+                          <input
+                            type="checkbox"
+                            checked={!!access.view}
+                            disabled={!canEdit}
+                            onChange={(e) => setAccess(key, 'view', e.target.checked)}
+                          />
+                          Просмотр
+                        </label>
+                        {!viewOnly ? (
+                          <label className="perm-flag">
+                            <input
+                              type="checkbox"
+                              checked={!!access.edit}
+                              disabled={!canEdit}
+                              onChange={(e) => setAccess(key, 'edit', e.target.checked)}
+                            />
+                            Редактирование
+                          </label>
+                        ) : (
+                          <span className="perm-flag muted">только просмотр</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <div className="modal-actions">
-              <button type="button" className="btn btn-ghost" onClick={() => setEditing(undefined)}>Отмена</button>
-              <button className="btn btn-primary">Сохранить</button>
+              <button type="button" className="btn btn-ghost" onClick={() => setEditing(undefined)}>
+                {canEdit ? 'Отмена' : 'Закрыть'}
+              </button>
+              {canEdit ? <button className="btn btn-primary">Сохранить</button> : null}
             </div>
           </form>
         </Modal>

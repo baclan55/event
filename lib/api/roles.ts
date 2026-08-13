@@ -76,14 +76,17 @@ function readMeta(body: Record<string, unknown>, name: string) {
 
 export const handleRoles: ApiHandler = async ({ key, request, params, method, body }) => {
   if (key === 'audit') {
-    const user = await requiredPerm('view_audit');
+    const user = await requiredPerm('view_audit', { allowIncompleteProfile: true });
     if (user instanceof NextResponse) return user;
     const sp = request.nextUrl.searchParams;
+    const userIdRaw = sp.get('userId');
+    const userId = userIdRaw && /^\d+$/.test(userIdRaw) ? Number(userIdRaw) : null;
     const [audit, actions] = await Promise.all([
       listAudit({
         limit: 150,
         action: sp.get('action'),
         actor: sp.get('actor'),
+        userId,
         from: sp.get('from'),
         to: sp.get('to'),
       }),
@@ -94,16 +97,19 @@ export const handleRoles: ApiHandler = async ({ key, request, params, method, bo
 
   if (key !== 'roles' && key !== 'role' && key !== 'roles-reorder') return undefined;
 
-  const user = await requiredPerm('manage_roles');
-  if (user instanceof NextResponse) return user;
-
   if (key === 'roles' && method === 'GET') {
+    const user = await requiredPerm('manage_roles');
+    if (user instanceof NextResponse) return user;
     return NextResponse.json({
       roles: await listRoles(),
       permissionKeys: PERMISSIONS,
       dashboardBlocks: DASHBOARD_BLOCKS,
+      canEdit: userHasPermission(user, 'manage_roles', 'edit'),
     });
   }
+
+  const user = await requiredPerm('manage_roles', { level: 'edit' });
+  if (user instanceof NextResponse) return user;
 
   if (key === 'roles-reorder' && method === 'PUT') {
     const order = Array.isArray(body.order) ? body.order.map(Number).filter(Number.isFinite) : [];
@@ -129,7 +135,9 @@ export const handleRoles: ApiHandler = async ({ key, request, params, method, bo
       return jsonError(!name ? 'Укажите название роли.' : 'Название слишком длинное.', 400);
     }
     const permissions = normalizeRolePermissions(body.permissions);
-    if (!userHasPermission(user, 'grant_owner')) permissions.grant_owner = false;
+    if (!userHasPermission(user, 'grant_owner', 'edit')) {
+      permissions.grant_owner = { view: false, edit: false };
+    }
     const meta = readMeta(body, name);
     const max = await query<{ m: number | null }>('SELECT MAX(priority) AS m FROM roles');
     const priority = (max.rows[0]?.m || 0) + 1;
@@ -164,12 +172,12 @@ export const handleRoles: ApiHandler = async ({ key, request, params, method, bo
       return jsonError(!name ? 'Укажите название роли.' : 'Название слишком длинное.', 400);
     }
     const permissions = normalizeRolePermissions(body.permissions);
-    if (!userHasPermission(user, 'grant_owner')) {
-      const prev = await query<{ permissions: Record<string, boolean> }>(
+    if (!userHasPermission(user, 'grant_owner', 'edit')) {
+      const prev = await query<{ permissions: unknown }>(
         "SELECT COALESCE(permissions, '{}'::jsonb) AS permissions FROM roles WHERE id=$1",
         [id],
       );
-      permissions.grant_owner = !!prev.rows[0]?.permissions?.grant_owner;
+      permissions.grant_owner = normalizeRolePermissions(prev.rows[0]?.permissions).grant_owner;
     }
     const unsafe = await assertRolePermissionChangeSafe(user, id, permissions);
     if (unsafe) return jsonError(unsafe, 400);

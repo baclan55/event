@@ -168,15 +168,7 @@ export const handleSystem: ApiHandler = async ({ key, request, params, method, b
     return NextResponse.redirect(domain ? `https://${domain}${path}` : new URL(path, request.url));
   }
   if (key === 'nickname') {
-    const user = await required();
-    if (user instanceof NextResponse) return user;
-    const nickname = String(body.nickname || '').trim();
-    if (!nickname || nickname.length > 60) {
-      return jsonError(!nickname ? 'Введите никнейм.' : 'Никнейм слишком длинный (максимум 60 символов).', 400);
-    }
-    await query('UPDATE users SET nickname=$1 WHERE id=$2', [nickname, user.id]);
-    invalidateUserCache(user.id);
-    return NextResponse.json({ user: publicUser(await loadUserById(user.id)) });
+    return jsonError('Ник на сайте задаётся полем «Имя» в игровых данных.', 410);
   }
   if (key === 'my-avatar' || key === 'roster-avatar') {
     return jsonError('Аватар автоматически синхронизируется с Discord.', 410);
@@ -196,7 +188,7 @@ export const handleSystem: ApiHandler = async ({ key, request, params, method, b
       : new NextResponse(null, { status: 404 });
   }
   if (key === 'markdown') {
-    const user = await requiredPerm('edit_content');
+    const user = await requiredPerm('edit_content', { level: 'view' });
     if (user instanceof NextResponse) return user;
     return NextResponse.json({ html: renderMarkdown(String(body.body || '')) });
   }

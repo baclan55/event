@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
-import { Avatar, ErrorText, MarkdownFormField, Modal, request, type Row } from './shared';
+import { askConfirm, Avatar, ErrorText, MarkdownFormField, Modal, request, type Row } from './shared';
 
 const AUDIT_LABELS: Record<string, string> = {
   'user.create': 'Создан пользователь',
@@ -58,7 +58,7 @@ export function OwnerInteractive({ canManageOwners }: { canManageOwners: boolean
   }
 
   async function remove(id: number) {
-    if (!confirm('Удалить пользователя безвозвратно?')) return;
+    if (!(await askConfirm('Удалить пользователя безвозвратно?', { title: 'Удаление', confirmLabel: 'Удалить' }))) return;
     try { await request(`/api/owner/users/${id}`, { method: 'DELETE' }); await load(); }
     catch (err) { setError((err as Error).message); }
   }
@@ -183,7 +183,7 @@ export function RulesInteractive({ initialRules, canEdit }: { initialRules: Row[
   }
 
   async function remove(id: number) {
-    if (!confirm('Удалить правило?')) return;
+    if (!(await askConfirm('Удалить правило?', { title: 'Удаление', confirmLabel: 'Удалить' }))) return;
     try { await request(`/api/rules/${id}`, { method: 'DELETE' }); await reload(); }
     catch (err) { setError((err as Error).message); }
   }

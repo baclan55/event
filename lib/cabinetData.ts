@@ -5,7 +5,7 @@ import { runtimeEnv } from '@/lib/runtimeEnv';
 import { rawBodyForEdit, renderBody } from '@/lib/richText';
 import { getRolesForUsers } from '@/lib/roles';
 import { tierForPriority } from '@/lib/tier';
-import { userHasPermission } from '@/lib/roleAccess';
+import { roleCtxFromPublic, userHasPermission } from '@/lib/roleAccess';
 import { ADMIN_POINT_DECAY_DAYS, adminPointActive } from '@/lib/reprimandRules';
 import { DEFAULT_CLOSED_MESSAGE } from '@/lib/audit';
 
@@ -72,10 +72,7 @@ export async function loadContent(section: string, viewer?: PublicUser) {
     viewer.isOwner
     || viewer.isAdmin
     || viewer.isAdministrator
-    || userHasPermission(
-      { is_owner: viewer.isOwner, roleNames: viewer.roles, permissions: viewer.permissions },
-      'edit_content',
-    )
+    || userHasPermission(roleCtxFromPublic(viewer), 'edit_content')
   );
   const r = await query<Record<string, unknown>>(
     `SELECT c.audience, c.body, c.image_id, c.updated_at, u.nickname AS updated_by_name
@@ -143,10 +140,7 @@ export async function loadVacations(viewer?: PublicUser) {
      JOIN users u ON u.id = v.user_id
      ORDER BY v.start_date`
   );
-  const canReview = viewer && userHasPermission(
-    { is_owner: viewer.isOwner, roleNames: viewer.roles, permissions: viewer.permissions },
-    'vacations_review',
-  );
+  const canReview = viewer && userHasPermission(roleCtxFromPublic(viewer), 'vacations_review');
   return r.rows.map((row) => ({
     ...row,
     reason: !viewer || viewer.isOwner || canReview || row.user_id === viewer.id ? row.reason : '',

@@ -5,6 +5,7 @@ import { requirePortalUser } from '@/lib/cabinetData';
 import { ProfileInteractive } from '@/components/cabinet/InteractiveCore';
 import { runtimeEnv } from '@/lib/runtimeEnv';
 import { userHasPermission } from '@/lib/roleAccess';
+import { listAudit } from '@/lib/audit';
 import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -25,10 +26,14 @@ export default async function UserProfilePage({
 
   await evaluateAchievementsForUser(id).catch(() => undefined);
   const achievements = await listUserAchievements(id);
-  const canSeeReprimands = userHasPermission(
-    { is_owner: viewer.isOwner, roleNames: viewer.roles, permissions: viewer.permissions },
-    'reprimands',
-  );
+  const roleCtx = {
+    is_owner: viewer.isOwner,
+    roleNames: viewer.roles,
+    permissions: viewer.permissions,
+    editPermissions: viewer.editPermissions,
+  };
+  const canSeeReprimands = userHasPermission(roleCtx, 'reprimands');
+  const canViewAudit = userHasPermission(roleCtx, 'view_audit');
   let reprimands: Record<string, unknown>[] = [];
   if (canSeeReprimands) {
     const result = await query<Record<string, unknown>>(
@@ -40,6 +45,7 @@ export default async function UserProfilePage({
     );
     reprimands = result.rows;
   }
+  const audit = canViewAudit ? await listAudit({ limit: 150, userId: id }) : [];
 
   const target = Number.parseInt(runtimeEnv('WEEKLY_EVENTS_TARGET') || '5', 10) || 5;
   return (
@@ -47,7 +53,8 @@ export default async function UserProfilePage({
       initialUser={user}
       reprimands={reprimands}
       target={target}
-      canViewAudit={false}
+      canViewAudit={canViewAudit}
+      initialAudit={audit}
       isSelf={false}
       initialAchievements={achievements}
     />

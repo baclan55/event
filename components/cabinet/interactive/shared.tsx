@@ -1,6 +1,14 @@
 'use client';
 
-import { ReactNode, useState } from 'react';
+import {
+  ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from 'react';
 import { MarkdownEditor } from '@/components/MarkdownEditor';
 
 export type Row = Record<string, any>;
@@ -23,22 +31,218 @@ export function Modal({
   children,
   onClose,
   wide = false,
+  xl = false,
   editor = false,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  /** Ещё шире — сетка доступов ролей. */
+  xl?: boolean;
   /** Крупная панель под Markdown (FAQ / регламент / правила МП). */
   editor?: boolean;
 }) {
-  const sizeClass = editor ? ' editor' : wide ? ' wide' : '';
+  const sizeClass = editor ? ' editor' : xl ? ' xl' : wide ? ' wide' : '';
   return (
     <div className="modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className={`modal-dialog${sizeClass}`} role="dialog" aria-modal="true" aria-label={title}>
         <button type="button" className="icon-btn modal-close" onClick={onClose}>×</button>
         <h2>{title}</h2>
         {children}
+      </div>
+    </div>
+  );
+}
+
+type SelectOption = { value: string; label: string; disabled?: boolean };
+
+/** Кастомный выпадающий список в стиле сайта (нативный option-list не красится). */
+export function Select({
+  name,
+  value,
+  defaultValue,
+  options,
+  onChange,
+  required,
+  placeholder = 'Выберите',
+  disabled,
+}: {
+  name?: string;
+  value?: string;
+  defaultValue?: string;
+  options: SelectOption[];
+  onChange?: (value: string) => void;
+  required?: boolean;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [internal, setInternal] = useState(defaultValue || '');
+  const current = value !== undefined ? value : internal;
+  const selected = options.find((opt) => opt.value === current);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  function pick(next: string) {
+    if (value === undefined) setInternal(next);
+    onChange?.(next);
+    setOpen(false);
+  }
+
+  return (
+    <div className={`ui-select${open ? ' is-open' : ''}${disabled ? ' is-disabled' : ''}`} ref={rootRef}>
+      <select
+        id={id}
+        className="ui-select-native"
+        name={name}
+        required={required}
+        disabled={disabled}
+        value={current}
+        onChange={(event: ChangeEvent<HTMLSelectElement>) => pick(event.target.value)}
+        tabIndex={-1}
+        aria-hidden
+      >
+        {!current ? <option value="">{placeholder}</option> : null}
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value} disabled={opt.disabled}>{opt.label}</option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className="ui-select-trigger"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className={selected ? '' : 'is-placeholder'}>{selected?.label || placeholder}</span>
+        <span className="ui-select-chevron" aria-hidden>▾</span>
+      </button>
+      {open ? (
+        <ul className="ui-select-menu" role="listbox">
+          {options.map((opt) => (
+            <li key={opt.value}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={opt.value === current}
+                className={`ui-select-option${opt.value === current ? ' is-active' : ''}`}
+                disabled={opt.disabled}
+                onClick={() => pick(opt.value)}
+              >
+                {opt.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+type ConfirmState = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  danger: boolean;
+  resolve: (ok: boolean) => void;
+};
+
+let confirmSetter: ((state: ConfirmState | null) => void) | null = null;
+
+/** Стилизованная замена window.confirm. */
+export function askConfirm(
+  message: string,
+  opts?: {
+    title?: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    danger?: boolean;
+  },
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (!confirmSetter) {
+      resolve(window.confirm(message));
+      return;
+    }
+    confirmSetter({
+      title: opts?.title || 'Подтверждение',
+      message,
+      confirmLabel: opts?.confirmLabel || 'Подтвердить',
+      cancelLabel: opts?.cancelLabel || 'Отмена',
+      danger: opts?.danger !== false,
+      resolve,
+    });
+  });
+}
+
+export function ConfirmHost() {
+  const [state, setState] = useState<ConfirmState | null>(null);
+
+  useEffect(() => {
+    confirmSetter = setState;
+    return () => {
+      confirmSetter = null;
+    };
+  }, []);
+
+  const close = useCallback((ok: boolean) => {
+    setState((current) => {
+      current?.resolve(ok);
+      return null;
+    });
+  }, []);
+
+  if (!state) return null;
+  return (
+    <div className="modal-overlay confirm-overlay" onMouseDown={(event) => event.target === event.currentTarget && close(false)}>
+      <div className="modal-dialog confirm-modal" role="dialog" aria-modal="true" aria-label={state.title}>
+        <div className={`confirm-icon${state.danger ? '' : ' confirm-icon-neutral'}`}>
+          {state.danger ? (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M12 3 2.5 19.5A1 1 0 0 0 3.4 21h17.2a1 1 0 0 0 .9-1.5L12 3Z" />
+              <line x1="12" y1="9.5" x2="12" y2="13.5" />
+              <line x1="12" y1="16.5" x2="12" y2="16.5" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 8v5" />
+              <path d="M12 16h.01" />
+            </svg>
+          )}
+        </div>
+        <h2>{state.title}</h2>
+        <p className="modal-sub">{state.message}</p>
+        <div className="modal-actions" style={{ justifyContent: 'center' }}>
+          <button type="button" className="btn btn-ghost" onClick={() => close(false)}>{state.cancelLabel}</button>
+          <button
+            type="button"
+            className={state.danger ? 'btn btn-danger' : 'btn btn-primary'}
+            onClick={() => close(true)}
+            autoFocus
+          >
+            {state.confirmLabel}
+          </button>
+        </div>
       </div>
     </div>
   );

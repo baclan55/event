@@ -5,6 +5,7 @@ import { addUserRole } from '@/lib/roles';
 import { DEFAULT_CLOSED_MESSAGE, writeAudit } from '@/lib/audit';
 import { findBlacklistMatch, isValidStaticId } from '@/lib/blacklist';
 import { evaluateAchievementsForUser } from '@/lib/achievements';
+import { userHasPermission } from '@/lib/roleAccess';
 import { ok, parseId, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
 
@@ -52,7 +53,8 @@ async function applyGameProfileFromApplication(
     `UPDATE users SET
        first_name = COALESCE(NULLIF(first_name, ''), $1),
        last_name = COALESCE(NULLIF(last_name, ''), NULLIF($2, '')),
-       static_id = COALESCE(NULLIF(static_id, ''), $3)
+       static_id = COALESCE(NULLIF(static_id, ''), $3),
+       nickname = COALESCE(NULLIF(first_name, ''), $1)
      WHERE id=$4`,
     [firstName, lastName, staticId, userId],
   );
@@ -73,7 +75,7 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
       });
     }
     if (method === 'PUT') {
-      const user = await requiredPerm('applications');
+      const user = await requiredPerm('applications', { level: 'edit' });
       if (user instanceof NextResponse) return user;
       const current = await query<{ is_open: boolean; closed_message: string | null }>(
         'SELECT is_open, closed_message FROM applications_settings WHERE id=1',
@@ -136,7 +138,7 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     return NextResponse.json({ candidates: result.rows });
   }
   if (key === 'application-call') {
-    const user = await requiredPerm('candidates');
+    const user = await requiredPerm('candidates', { level: 'edit' });
     if (user instanceof NextResponse) return user;
     const passed = body.passed === true || body.passed === 'true';
     const { rows } = await query<Record<string, unknown>>('SELECT * FROM applications WHERE id=$1', [
@@ -184,7 +186,7 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     return ok({ passed });
   }
   if (key === 'application' && method === 'DELETE') {
-    const user = await requiredPerm('applications');
+    const user = await requiredPerm('applications', { level: 'edit' });
     if (user instanceof NextResponse) return user;
     const { rows } = await query<{ status: string; candidate_user_id: number | null }>(
       'SELECT status, candidate_user_id FROM applications WHERE id=$1',
@@ -203,7 +205,7 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     return ok();
   }
   if (key === 'application' && method === 'PUT') {
-    const user = await requiredPerm('applications');
+    const user = await requiredPerm('applications', { level: 'edit' });
     if (user instanceof NextResponse) return user;
     const status = String(body.status || '');
     if (!['pending', 'approved', 'rejected'].includes(status)) {
@@ -294,6 +296,7 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
       applications: result.rows,
       isOpen: settings.rows[0]?.is_open ?? true,
       closedMessage: settings.rows[0]?.closed_message || DEFAULT_CLOSED_MESSAGE,
+      canEdit: userHasPermission(user, 'applications', 'edit'),
     });
   }
 

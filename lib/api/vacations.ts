@@ -56,7 +56,7 @@ export const handleVacations: ApiHandler = async ({ key, params, method, body })
     return ok({ id: result.rows[0].id });
   }
   if (method === 'DELETE') {
-    const reviewer = await requiredPerm('vacations_review');
+    const reviewer = await requiredPerm('vacations_review', { level: 'edit' });
     if (reviewer instanceof NextResponse) return reviewer;
     const target = await query<{ user_id: number; status: string }>(
       'SELECT user_id,status FROM vacations WHERE id=$1',
@@ -81,7 +81,7 @@ export const handleVacations: ApiHandler = async ({ key, params, method, body })
   if (!['approved', 'rejected', 'cancelled'].includes(status)) {
     return jsonError('Некорректный статус заявки.', 400);
   }
-  const reviewer = userHasPermission(user, 'vacations_review');
+  const reviewer = userHasPermission(user, 'vacations_review', 'edit');
   const ownPendingCancellation =
     status === 'cancelled' && vacation.rows[0].user_id === user.id && vacation.rows[0].status === 'pending';
   if (!reviewer && !ownPendingCancellation) {

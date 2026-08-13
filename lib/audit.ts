@@ -15,6 +15,8 @@ export type AuditFilters = {
   limit?: number;
   action?: string | null;
   actor?: string | null;
+  /** Фильтр по участнику: как актёр или как цель записи. */
+  userId?: number | null;
   from?: string | null;
   to?: string | null;
 };
@@ -58,6 +60,16 @@ export async function listAudit(filters: AuditFilters | number = 100) {
   if (opts.actor) {
     values.push(`%${opts.actor.trim()}%`);
     where.push(`actor.nickname ILIKE $${values.length}`);
+  }
+  if (opts.userId != null && Number.isFinite(Number(opts.userId))) {
+    values.push(Number(opts.userId));
+    const i = values.length;
+    where.push(`(
+      al.actor_id = $${i}
+      OR (al.entity_type = 'user' AND al.entity_id = $${i}::text)
+      OR (al.details->>'userId') = $${i}::text
+      OR (al.details->>'candidateUserId') = $${i}::text
+    )`);
   }
   if (opts.from && /^\d{4}-\d{2}-\d{2}$/.test(opts.from)) {
     values.push(opts.from);
