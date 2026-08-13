@@ -13,10 +13,16 @@ function Avatar({ row }: { row: Row }) {
 export function DashboardView({
   members,
   blocks = { stats: true, top_admin: true, top_helper: true },
+  todayMpCount = 0,
+  weekMpCount = 0,
+  todayMp = [],
 }: {
   members: Row[];
   target?: number | null;
   blocks?: { stats?: boolean; top_admin?: boolean; top_helper?: boolean };
+  todayMpCount?: number;
+  weekMpCount?: number;
+  todayMp?: Array<{ title: string; count: number }>;
 }) {
   const withRole = members.filter((m) => m.role_id);
   const candidates = members.filter((m) => m.status === 'candidate');
@@ -50,12 +56,38 @@ export function DashboardView({
   return (
     <>
       {showStats ? (
-        <div className="stat-grid stat-grid-4">
-          <div className="card card-pad stat-card"><div className="stat-value">{members.length}</div><div className="stat-label">Всего людей в составе</div></div>
-          <div className="card card-pad stat-card"><div className="stat-value">{withRole.length}</div><div className="stat-label">Людей с ролями</div></div>
-          <div className="card card-pad stat-card"><div className="stat-value">{withoutRole}</div><div className="stat-label">Без роли</div></div>
-          <div className="card card-pad stat-card"><div className="stat-value">{candidates.length}</div><div className="stat-label">Кандидатов</div></div>
-        </div>
+        <>
+          <div className="stat-grid dash-mp-stats">
+            <div className="card card-pad stat-card">
+              <div className="stat-value">{todayMpCount}</div>
+              <div className="stat-label">МП за сегодня</div>
+            </div>
+            <div className="card card-pad stat-card">
+              <div className="stat-value">{weekMpCount}</div>
+              <div className="stat-label">МП за неделю (пн–вс)</div>
+            </div>
+          </div>
+          <div className="card card-pad dash-today-mp" style={{ marginTop: 14 }}>
+            <div className="card-header">
+              <h3>Мероприятия сегодня</h3>
+              <span className="badge badge-muted">{todayMpCount}</span>
+            </div>
+            {todayMp.length ? todayMp.map((item) => (
+              <div className="dash-mp-row" key={item.title}>
+                <div className="dash-mp-title">{item.title}</div>
+                <span className="badge badge-purple">{item.count}×</span>
+              </div>
+            )) : (
+              <div className="empty-state"><p>За сегодня проведённых МП пока нет.</p></div>
+            )}
+          </div>
+          <div className="stat-grid stat-grid-4" style={{ marginTop: 20 }}>
+            <div className="card card-pad stat-card"><div className="stat-value">{members.length}</div><div className="stat-label">Всего людей в составе</div></div>
+            <div className="card card-pad stat-card"><div className="stat-value">{withRole.length}</div><div className="stat-label">Людей с ролями</div></div>
+            <div className="card card-pad stat-card"><div className="stat-value">{withoutRole}</div><div className="stat-label">Без роли</div></div>
+            <div className="card card-pad stat-card"><div className="stat-value">{candidates.length}</div><div className="stat-label">Кандидатов</div></div>
+          </div>
+        </>
       ) : null}
       {(showAdmin || showHelper) ? (
         <div className="top-grid" style={{ marginTop: showStats ? 20 : 0 }}>

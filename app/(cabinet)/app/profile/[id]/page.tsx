@@ -3,7 +3,7 @@ import { invalidateUserCache, loadUserById, publicUser } from '@/lib/auth';
 import { evaluateAchievementsForUser, listProfileAchievementCatalog } from '@/lib/achievements';
 import { loadProfileWeekly, requirePortalUser } from '@/lib/cabinetData';
 import { ProfileInteractive } from '@/components/cabinet/InteractiveCore';
-import { roleCtxFromPublic, userHasPermission } from '@/lib/roleAccess';
+import { roleCtxFromPublic, userHasProfileViewCap } from '@/lib/roleAccess';
 import { listAudit } from '@/lib/audit';
 import { query } from '@/lib/db';
 
@@ -23,17 +23,25 @@ export default async function UserProfilePage({
   const user = publicUser(dbUser);
   if (!user) notFound();
 
+  const roleCtx = roleCtxFromPublic(viewer);
+  const profileTabs = {
+    reprimands: userHasProfileViewCap(roleCtx, 'reprimands'),
+    achievements: userHasProfileViewCap(roleCtx, 'achievements'),
+    events: userHasProfileViewCap(roleCtx, 'events'),
+    gmp: userHasProfileViewCap(roleCtx, 'gmp'),
+    audit: userHasProfileViewCap(roleCtx, 'audit'),
+  };
+
   await evaluateAchievementsForUser(id).catch(() => undefined);
   const [{ weeklyEvents, weeklyTarget }, achievementCatalog] = await Promise.all([
     loadProfileWeekly(id),
-    listProfileAchievementCatalog(id, viewer.id),
+    profileTabs.achievements
+      ? listProfileAchievementCatalog(id, viewer.id)
+      : Promise.resolve(undefined),
   ]);
   invalidateUserCache(id);
-  const roleCtx = roleCtxFromPublic(viewer);
-  const canSeeReprimands = userHasPermission(roleCtx, 'reprimands');
-  const canViewAudit = userHasPermission(roleCtx, 'view_audit');
   let reprimands: Record<string, unknown>[] = [];
-  if (canSeeReprimands) {
+  if (profileTabs.reprimands) {
     const result = await query<Record<string, unknown>>(
       `SELECT rp.id, rp.reason, rp.type, rp.created_at, rp.converted, rp.auto_generated,
         ib.nickname AS issued_by_nickname
@@ -43,17 +51,18 @@ export default async function UserProfilePage({
     );
     reprimands = result.rows;
   }
-  const audit = canViewAudit ? await listAudit({ limit: 150, userId: id }) : [];
+  const audit = profileTabs.audit ? await listAudit({ limit: 150, userId: id }) : [];
 
   return (
     <ProfileInteractive
       initialUser={{ ...user, weeklyEvents }}
       reprimands={reprimands}
       target={weeklyTarget}
-      canViewAudit={canViewAudit}
+      canViewAudit={profileTabs.audit}
       initialAudit={audit}
       isSelf={false}
       initialAchievementCatalog={achievementCatalog}
+      profileTabs={profileTabs}
     />
   );
 }

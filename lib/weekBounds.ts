@@ -19,6 +19,11 @@ export function sqlInCurrentWeek(expr: string, tzParam: number): string {
   );
 }
 
+/** Условие SQL: момент `expr` попадает в текущий календарный день в TZ. */
+export function sqlInCurrentDay(expr: string, tzParam: number): string {
+  return `(${expr} AT TIME ZONE $${tzParam})::date = (now() AT TIME ZONE $${tzParam})::date`;
+}
+
 /** Подзапрос COUNT уникальных completed-МП по discord_id за текущую неделю. */
 export function sqlCountWeeklyMpSubquery(discordIdExpr: string, tzParam: number): string {
   const week = sqlInCurrentWeek('e.message_created_at', tzParam);

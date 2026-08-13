@@ -32,6 +32,7 @@ export function DiscordEventsInteractive() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [canResync, setCanResync] = useState(false);
   const [caps, setCaps] = useState<Caps>({
@@ -41,6 +42,7 @@ export function DiscordEventsInteractive() {
   });
   const [resyncJob, setResyncJob] = useState<Row | null>(null);
   const [busyResync, setBusyResync] = useState(false);
+  const [busyDedupe, setBusyDedupe] = useState(false);
   const [busyId, setBusyId] = useState('');
 
   async function load(nextStatus = status, nextPage = page) {
@@ -94,6 +96,32 @@ export function DiscordEventsInteractive() {
       setError((err as Error).message);
     } finally {
       setBusyResync(false);
+    }
+  }
+
+  async function requestDedupe() {
+    if (!(await askConfirm(
+      'Удалит дубликаты по Discord message id и проведённые МП с одинаковым названием в один день (останется самое раннее сообщение). Продолжить?',
+      { title: 'Удалить дубликаты', confirmLabel: 'Удалить', danger: true },
+    ))) return;
+    setBusyDedupe(true);
+    setError('');
+    setNotice('');
+    try {
+      const data = await request('/api/discord-events', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'dedupe' }),
+      });
+      const removed = Number(data.removed) || 0;
+      setNotice(removed
+        ? `Удалено дубликатов: ${removed}`
+          + (data.orphans ? ` · сиротских записей: ${data.orphans}` : '')
+        : 'Дубликатов не найдено.');
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusyDedupe(false);
     }
   }
 
@@ -203,6 +231,16 @@ export function DiscordEventsInteractive() {
               ]}
             />
           </div>
+          {caps.delete ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={busyDedupe}
+              onClick={() => void requestDedupe()}
+            >
+              {busyDedupe ? 'Очистка…' : 'Удалить дубликаты'}
+            </button>
+          ) : null}
           {canResync ? (
             <button
               type="button"
@@ -237,6 +275,7 @@ export function DiscordEventsInteractive() {
       ) : null}
 
       <ErrorText value={error} />
+      {notice ? <div className="field-hint" style={{ marginBottom: 12 }}>{notice}</div> : null}
       {events.map((item) => {
         const id = String(item.message_id);
         const open = expanded === id;

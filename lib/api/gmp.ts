@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { jsonError, type DbUser } from '@/lib/auth';
 import { writeAudit } from '@/lib/audit';
-import { userHasGmpCap, userHasPermission, type GmpCap } from '@/lib/roleAccess';
+import { userHasGmpCap, userHasPermission, userHasProfileViewCap, type GmpCap } from '@/lib/roleAccess';
 import { renderBody } from '@/lib/richText';
 import { evaluateAchievementsForUser } from '@/lib/achievements';
 import { sqlInCurrentWeek, weekTimeZone } from '@/lib/weekBounds';
@@ -488,6 +488,9 @@ export const handleGmp: ApiHandler = async ({ key, params, method, body, request
     if (viewer instanceof NextResponse) return viewer;
     const userId = parseId(params.userId);
     if (!userId) return jsonError('Некорректный пользователь.', 400);
+    if (viewer.id !== userId && !userHasProfileViewCap(viewer, 'gmp')) {
+      return jsonError('Недостаточно прав для просмотра ГМП профиля.', 403);
+    }
     const tz = weekTimeZone();
     const weekPred = sqlInCurrentWeek('e.starts_at', 2);
     const [result, week] = await Promise.all([

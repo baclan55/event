@@ -10,9 +10,12 @@ import {
   GMP_CAPS,
   normalizeEventsAccess,
   normalizeGmpAccess,
+  normalizeProfileViewAccess,
   normalizeRolePermissions,
   PERMISSION_LABELS,
   PERMISSIONS,
+  PROFILE_VIEW_CAP_LABELS,
+  PROFILE_VIEW_CAPS,
   VIEW_ONLY_PERMISSIONS,
   type EventCap,
   type EventsPermissionAccess,
@@ -20,6 +23,8 @@ import {
   type GmpPermissionAccess,
   type Permission,
   type PermissionAccess,
+  type ProfileViewAccess,
+  type ProfileViewCap,
 } from '@/lib/roleAccess';
 import {
   DASHBOARD_BLOCKS,
@@ -128,6 +133,24 @@ export function RolesInteractive({
         next.view = next.view || EVENT_CAPS.some((key) => next[key]);
       }
       return { ...prev, manage_events: next };
+    });
+  }
+
+  function setProfileViewCap(cap: ProfileViewCap | 'view', value: boolean) {
+    setDraftPerms((prev) => {
+      const current = normalizeProfileViewAccess(prev.view_profile);
+      const next: ProfileViewAccess = { ...current, edit: false };
+      if (cap === 'view') {
+        next.view = value;
+        if (!value) {
+          for (const key of PROFILE_VIEW_CAPS) next[key] = false;
+        }
+      } else {
+        next[cap] = value;
+        if (value) next.view = true;
+        next.view = next.view || PROFILE_VIEW_CAPS.some((key) => next[key]);
+      }
+      return { ...prev, view_profile: next };
     });
   }
 
@@ -357,6 +380,39 @@ export function RolesInteractive({
                               {EVENT_CAP_LABELS[cap]}
                             </label>
                           ))}
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (key === 'view_profile') {
+                    const profile = normalizeProfileViewAccess(draftPerms.view_profile);
+                    return (
+                      <div className="perm-card perm-card-gmp" key={key}>
+                        <div className="perm-card-title">{PERMISSION_LABELS[key]}</div>
+                        <div className="perm-card-flags">
+                          <label className="perm-flag">
+                            <input
+                              type="checkbox"
+                              checked={!!profile.view}
+                              disabled={!canEdit}
+                              onChange={(e) => setProfileViewCap('view', e.target.checked)}
+                            />
+                            Просмотр чужого профиля
+                          </label>
+                          {PROFILE_VIEW_CAPS.map((cap) => (
+                            <label className="perm-flag" key={cap}>
+                              <input
+                                type="checkbox"
+                                checked={!!profile[cap]}
+                                disabled={!canEdit}
+                                onChange={(e) => setProfileViewCap(cap, e.target.checked)}
+                              />
+                              {PROFILE_VIEW_CAP_LABELS[cap]}
+                            </label>
+                          ))}
+                        </div>
+                        <div className="field-hint" style={{ marginTop: 8 }}>
+                          Отдельные вкладки в профиле другого сотрудника. Свой профиль всегда доступен полностью.
                         </div>
                       </div>
                     );

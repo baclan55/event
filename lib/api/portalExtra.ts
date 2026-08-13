@@ -11,9 +11,10 @@ import {
   listProfileAchievementCatalog,
   listUserAchievements,
 } from '@/lib/achievements';
-import { userHasEventCap, userHasPermission } from '@/lib/roleAccess';
+import { userHasEventCap, userHasPermission, userHasProfileViewCap } from '@/lib/roleAccess';
 import { sqlInCurrentWeek, weekTimeZone } from '@/lib/weekBounds';
 import { abandonStaleOpenGathers } from '@/lib/discordGatherCleanup';
+import { dedupeDiscordGathers } from '@/lib/discordGatherDedupe';
 import { saveImage } from '@/lib/images';
 import { ok, parseId, readImage, required, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
@@ -424,6 +425,9 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
       const user = await required();
       if (user instanceof NextResponse) return user;
       const targetId = parseId(params.userId || params.id);
+      if (user.id !== targetId && !userHasProfileViewCap(user, 'achievements')) {
+        return jsonError('Недостаточно прав для просмотра достижений профиля.', 403);
+      }
       await evaluateAchievementsForUser(targetId).catch(() => undefined);
       const catalog = await listProfileAchievementCatalog(targetId, user.id);
       return NextResponse.json({
@@ -523,6 +527,9 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
     if (viewer instanceof NextResponse) return viewer;
     const userId = parseId(params.userId);
     if (!userId) return jsonError('Некорректный пользователь.', 400);
+    if (viewer.id !== userId && !userHasProfileViewCap(viewer, 'events')) {
+      return jsonError('Недостаточно прав для просмотра мероприятий профиля.', 403);
+    }
     await abandonStaleOpenGathers();
     const tz = weekTimeZone();
     const pageSizeRaw = Number.parseInt(String(request.nextUrl.searchParams.get('pageSize') || '10'), 10);
@@ -566,14 +573,18 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
       status: string;
       completed_at: string | null;
     }>(
-      `SELECT e.message_id, e.event_key, e.title, e.message_created_at, e.status, e.completed_at
-       FROM discord_gather_participants p
-       JOIN discord_gather_events e ON e.message_id = p.message_id
-       JOIN users u ON u.discord_id = p.discord_id
-       WHERE u.id = $1
-         AND u.discord_id IS NOT NULL
-         AND e.status = 'completed'
-       ORDER BY e.message_created_at DESC
+      `SELECT * FROM (
+         SELECT DISTINCT ON (e.message_id)
+                e.message_id, e.event_key, e.title, e.message_created_at, e.status, e.completed_at
+         FROM discord_gather_participants p
+         JOIN discord_gather_events e ON e.message_id = p.message_id
+         JOIN users u ON u.discord_id = p.discord_id
+         WHERE u.id = $1
+           AND u.discord_id IS NOT NULL
+           AND e.status = 'completed'
+         ORDER BY e.message_id, e.message_created_at DESC
+       ) x
+       ORDER BY x.message_created_at DESC
        LIMIT $2 OFFSET $3`,
       [userId, pageSize, offset],
     );
@@ -586,6 +597,25 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
       page: safePage,
       pageSize,
       totalPages,
+    });
+  }
+
+  if (key === 'discord-events' && method === 'POST') {
+    const user = await required();
+    if (user instanceof NextResponse) return user;
+    if (!userHasEventCap(user, 'delete')) return jsonError('Недостаточно прав.', 403);
+    const action = String(body.action || '').trim();
+    if (action !== 'dedupe') return jsonError('Неизвестное действие.', 400);
+    const stats = await dedupeDiscordGathers();
+    await writeAudit({
+      actorId: user.id,
+      action: 'discord_event.dedupe',
+      entityType: 'discord_gather_event',
+      details: stats,
+    });
+    return ok({
+      removed: stats.byMessageId + stats.byTitleDay,
+      ...stats,
     });
   }
 

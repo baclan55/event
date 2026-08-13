@@ -9,7 +9,13 @@ import { roleCtxFromPublic, userHasPermission } from '@/lib/roleAccess';
 import { ADMIN_POINT_DECAY_DAYS, adminPointActive } from '@/lib/reprimandRules';
 import { DEFAULT_CLOSED_MESSAGE } from '@/lib/audit';
 import { abandonStaleOpenGathers } from '@/lib/discordGatherCleanup';
-import { sqlCountWeeklyMpSubquery, syncWeeklyEventsForUser, weekTimeZone } from '@/lib/weekBounds';
+import {
+  sqlCountWeeklyMpSubquery,
+  sqlInCurrentDay,
+  sqlInCurrentWeek,
+  syncWeeklyEventsForUser,
+  weekTimeZone,
+} from '@/lib/weekBounds';
 import { weeklyTargetForUser, weeklyTargetsByRoleId } from '@/lib/weeklyTarget';
 
 export { fmtDate } from '@/lib/formatDate';
@@ -20,7 +26,13 @@ export async function requirePortalUser(): Promise<PublicUser> {
   return user;
 }
 
+export type DashboardTodayMp = {
+  title: string;
+  count: number;
+};
+
 export async function loadDashboard() {
+  await abandonStaleOpenGathers();
   const tz = weekTimeZone();
   const weekCountSql = sqlCountWeeklyMpSubquery('u.discord_id', 1);
   const r = await query<Record<string, unknown>>(
@@ -40,7 +52,45 @@ export async function loadDashboard() {
     roles: roles.get(x.id as number) || [],
     weekly_target: x.role_id != null ? targets.get(x.role_id as number) ?? null : null,
   }));
-  return { members, target: null as number | null };
+
+  const daySql = sqlInCurrentDay('e.message_created_at', 1);
+  const weekSql = sqlInCurrentWeek('e.message_created_at', 1);
+  const [todayTotal, weekTotal, todayTitles] = await Promise.all([
+    query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM discord_gather_events e
+       WHERE e.status = 'completed' AND ${daySql}`,
+      [tz],
+    ).catch(() => ({ rows: [{ count: '0' }] })),
+    query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM discord_gather_events e
+       WHERE e.status = 'completed' AND ${weekSql}`,
+      [tz],
+    ).catch(() => ({ rows: [{ count: '0' }] })),
+    query<{ title: string; count: string }>(
+      `SELECT COALESCE(NULLIF(TRIM(e.title), ''), 'Без названия') AS title,
+              COUNT(*)::text AS count
+       FROM discord_gather_events e
+       WHERE e.status = 'completed' AND ${daySql}
+       GROUP BY 1
+       ORDER BY COUNT(*) DESC, title ASC`,
+      [tz],
+    ).catch(() => ({ rows: [] as { title: string; count: string }[] })),
+  ]);
+
+  const todayMp: DashboardTodayMp[] = todayTitles.rows.map((row) => ({
+    title: String(row.title || 'Без названия'),
+    count: Number(row.count) || 0,
+  }));
+
+  return {
+    members,
+    target: null as number | null,
+    todayMpCount: Number(todayTotal.rows[0]?.count || 0),
+    weekMpCount: Number(weekTotal.rows[0]?.count || 0),
+    todayMp,
+  };
 }
 
 export async function loadProfileWeekly(userId: number): Promise<{

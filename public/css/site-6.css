@@ -1,4 +1,28 @@
 
+.perm-card-gmp .perm-card-flags,
+.perm-card-gmp .perm-card-flags-col{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:6px 14px;
+  align-items:start;
+}
+.perm-card-gmp .perm-flag,
+.field .perm-card-gmp .perm-flag{
+  align-items:flex-start;
+  line-height:1.35;
+}
+@media (min-width:720px){
+  .perm-card-gmp .perm-card-flags,
+  .perm-card-gmp .perm-card-flags-col{
+    grid-template-columns:repeat(3, minmax(0,1fr));
+  }
+}
+
+/* --- ГМП --- */
+.gmp-staff-pick{
+  max-height:260px; overflow:auto; border:1px solid var(--border);
+  border-radius:var(--radius-md); padding:8px; display:flex; flex-direction:column; gap:4px;
+}
 /* .field label (uppercase/display:block) не должен ломать строки staff */
 .gmp-staff-row,
 .field .gmp-staff-row{

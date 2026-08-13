@@ -7,6 +7,10 @@ export async function GET(request: NextRequest, context: Context) {
   return handle('discord-events', request, context);
 }
 
+export async function POST(request: NextRequest, context: Context) {
+  return handle('discord-events', request, context);
+}
+
 export async function PATCH(request: NextRequest, context: Context) {
   return handle('discord-events', request, context);
 }

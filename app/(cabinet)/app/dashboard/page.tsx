@@ -10,6 +10,9 @@ export default async function DashboardPage() {
     <DashboardView
       members={data.members}
       blocks={user.dashboardBlocks}
+      todayMpCount={data.todayMpCount}
+      weekMpCount={data.weekMpCount}
+      todayMp={data.todayMp}
     />
   );
 }
