@@ -1,9 +1,8 @@
 import { notFound, redirect } from 'next/navigation';
-import { loadUserById, publicUser } from '@/lib/auth';
+import { invalidateUserCache, loadUserById, publicUser } from '@/lib/auth';
 import { evaluateAchievementsForUser, listProfileAchievementCatalog } from '@/lib/achievements';
-import { requirePortalUser } from '@/lib/cabinetData';
+import { loadProfileWeekly, requirePortalUser } from '@/lib/cabinetData';
 import { ProfileInteractive } from '@/components/cabinet/InteractiveCore';
-import { runtimeEnv } from '@/lib/runtimeEnv';
 import { roleCtxFromPublic, userHasPermission } from '@/lib/roleAccess';
 import { listAudit } from '@/lib/audit';
 import { query } from '@/lib/db';
@@ -25,7 +24,11 @@ export default async function UserProfilePage({
   if (!user) notFound();
 
   await evaluateAchievementsForUser(id).catch(() => undefined);
-  const achievementCatalog = await listProfileAchievementCatalog(id, viewer.id);
+  const [{ weeklyEvents, weeklyTarget }, achievementCatalog] = await Promise.all([
+    loadProfileWeekly(id),
+    listProfileAchievementCatalog(id, viewer.id),
+  ]);
+  invalidateUserCache(id);
   const roleCtx = roleCtxFromPublic(viewer);
   const canSeeReprimands = userHasPermission(roleCtx, 'reprimands');
   const canViewAudit = userHasPermission(roleCtx, 'view_audit');
@@ -42,12 +45,11 @@ export default async function UserProfilePage({
   }
   const audit = canViewAudit ? await listAudit({ limit: 150, userId: id }) : [];
 
-  const target = Number.parseInt(runtimeEnv('WEEKLY_EVENTS_TARGET') || '5', 10) || 5;
   return (
     <ProfileInteractive
-      initialUser={user}
+      initialUser={{ ...user, weeklyEvents }}
       reprimands={reprimands}
-      target={target}
+      target={weeklyTarget}
       canViewAudit={canViewAudit}
       initialAudit={audit}
       isSelf={false}

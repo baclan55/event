@@ -9,7 +9,6 @@ export default async function DashboardPage() {
   return (
     <DashboardView
       members={data.members}
-      target={data.target}
       blocks={user.dashboardBlocks}
     />
   );

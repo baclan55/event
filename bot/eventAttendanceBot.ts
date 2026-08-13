@@ -14,6 +14,14 @@ import { getRestAgent, resolveProxyUrl } from './outboundProxy';
 const DEFAULT_CHANNEL_ID = '1446581838100430878';
 const DEFAULT_SOURCE_BOT_ID = '1468289401795903690';
 const ABANDON_AFTER_MS = 24 * 60 * 60 * 1000;
+/** Статусы open-МП и опрос новых/изменённых сообщений — не чаще 1 раза в минуту. */
+const MIN_POLL_MS = 60_000;
+
+function resolvePollMs() {
+  const raw = parseInt(process.env.EVENT_BOT_POLL_MS, 10);
+  if (!Number.isFinite(raw)) return MIN_POLL_MS;
+  return Math.max(MIN_POLL_MS, raw);
+}
 
 function collectStrings(node, out) {
   if (node == null) return;
@@ -115,6 +123,37 @@ function extractParticipantIds(text) {
   return [...new Set(ids)];
 }
 
+/** ID участников + username из mentions (если есть в сообщении). */
+function extractParticipants(text, message) {
+  const ids = extractParticipantIds(text);
+  const namesById = new Map();
+  const mentions = message?.mentions?.users;
+  if (mentions) {
+    const list = typeof mentions.values === 'function'
+      ? [...mentions.values()]
+      : (Array.isArray(mentions) ? mentions : Object.values(mentions));
+    for (const user of list) {
+      if (!user?.id) continue;
+      const name = user.username || user.globalName || user.global_name || null;
+      if (name) namesById.set(String(user.id), String(name));
+    }
+  }
+  const usernames = ids.map((id) => namesById.get(id) || null);
+  return { ids, usernames };
+}
+
+async function replaceParticipants(client, messageId, participantIds, usernames = []) {
+  await client.query('DELETE FROM discord_gather_participants WHERE message_id=$1', [messageId]);
+  if (!participantIds.length) return;
+  const names = participantIds.map((_, i) => usernames[i] || '');
+  await client.query(
+    `INSERT INTO discord_gather_participants(message_id, discord_id, discord_username)
+     SELECT $1, x.id, NULLIF(x.username, '')
+     FROM UNNEST($2::text[], $3::text[]) AS x(id, username)`,
+    [messageId, participantIds, names],
+  );
+}
+
 function messageCreatedAt(message) {
   if (message.createdAt instanceof Date) return message.createdAt;
   if (message.createdTimestamp) return new Date(message.createdTimestamp);
@@ -142,6 +181,7 @@ async function upsertGather(pool, {
   createdAt,
   hasButtons,
   participantIds,
+  participantUsernames = [],
   force = false,
 }) {
   const client = await pool.connect();
@@ -205,15 +245,7 @@ async function upsertGather(pool, {
     )).rows[0]?.status;
 
     if (statusNow === 'open') {
-      await client.query('DELETE FROM discord_gather_participants WHERE message_id=$1', [messageId]);
-      if (participantIds.length) {
-        await client.query(
-          `INSERT INTO discord_gather_participants(message_id, discord_id)
-           SELECT $1, x FROM UNNEST($2::text[]) AS x
-           ON CONFLICT DO NOTHING`,
-          [messageId, participantIds],
-        );
-      }
+      await replaceParticipants(client, messageId, participantIds, participantUsernames);
     }
 
     await client.query('COMMIT');
@@ -226,7 +258,7 @@ async function upsertGather(pool, {
   }
 }
 
-async function completeGather(pool, { messageId, eventLabel, discordIds }) {
+async function completeGather(pool, { messageId, eventLabel, discordIds, usernames = [] }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -241,6 +273,9 @@ async function completeGather(pool, { messageId, eventLabel, discordIds }) {
       await client.query('COMMIT');
       return { credited: [], skipped: true };
     }
+
+    // Финальный состав (в т.ч. для тех, кто ещё не на сайте).
+    await replaceParticipants(client, messageId, discordIds, usernames);
 
     let newIds = [];
     if (discordIds.length > 0) {
@@ -266,7 +301,9 @@ async function completeGather(pool, { messageId, eventLabel, discordIds }) {
       const creditedIds = new Set(rows.map((r) => r.discord_id));
       const missing = newIds.filter((id) => !creditedIds.has(id));
       if (missing.length) {
-        console.log(`[event-bot] Не найдены в составе (пропущены): ${missing.join(', ')}`);
+        console.log(
+          `[event-bot] Пока нет на сайте (кредит в леджере, начислят при входе/привязке Discord): ${missing.join(', ')}`,
+        );
       }
     }
 
@@ -344,7 +381,7 @@ async function handleMessage(pool, rawMessage, { channelId, sourceBotId, force =
     if (!isGatherMessage(text)) return;
 
     const title = extractTitle(text);
-    const participantIds = extractParticipantIds(text);
+    const { ids: participantIds, usernames: participantUsernames } = extractParticipants(text, message);
     const eventKey = extractEventLabel(text);
     const eventLabel = eventKey || message.id;
     const hasButtons = hasInteractiveButtons(message);
@@ -359,6 +396,7 @@ async function handleMessage(pool, rawMessage, { channelId, sourceBotId, force =
       createdAt,
       hasButtons,
       participantIds,
+      participantUsernames,
       force,
     });
 
@@ -379,6 +417,7 @@ async function handleMessage(pool, rawMessage, { channelId, sourceBotId, force =
       messageId: message.id,
       eventLabel,
       discordIds: participantIds,
+      usernames: participantUsernames,
     });
     if (result.skipped) return;
     console.log(
@@ -523,9 +562,10 @@ function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }
     return null;
   }
 
-  const pollMs = Math.max(10_000, parseInt(process.env.EVENT_BOT_POLL_MS, 10) || 30_000);
+  const pollMs = resolvePollMs();
   let stopped = false;
   let timer = null;
+  let tickRunning = false;
   const seen = new Map();
 
   async function discordGet(path, { allow404 = false } = {}) {
@@ -556,61 +596,77 @@ function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }
   }
 
   async function pollOnce(label) {
-    await processResyncJobs(pool, {
-      channelId,
-      sourceBotId,
-      fetchPage: async (before) => {
-        const q = before
-          ? `/channels/${channelId}/messages?limit=100&before=${before}`
-          : `/channels/${channelId}/messages?limit=100`;
-        return discordGet(q);
-      },
-    });
+    if (tickRunning) {
+      console.log(`[event-bot] ${label}: пропуск — предыдущий опрос ещё идёт.`);
+      return;
+    }
+    tickRunning = true;
+    try {
+      await processResyncJobs(pool, {
+        channelId,
+        sourceBotId,
+        fetchPage: async (before) => {
+          const q = before
+            ? `/channels/${channelId}/messages?limit=100&before=${before}`
+            : `/channels/${channelId}/messages?limit=100`;
+          return discordGet(q);
+        },
+      });
 
-    await abandonStaleOpens(pool);
+      await abandonStaleOpens(pool);
 
-    const list = await discordGet(
-      `/channels/${channelId}/messages?limit=${catchupLimit}`,
-    );
-    const fromSource = (Array.isArray(list) ? list : [])
-      .filter((m) => m.author && m.author.id === sourceBotId)
-      .reverse();
-    const presentIds = new Set(fromSource.map((m) => m.id));
+      const list = await discordGet(
+        `/channels/${channelId}/messages?limit=${catchupLimit}`,
+      );
+      const fromSource = (Array.isArray(list) ? list : [])
+        .filter((m) => m.author && m.author.id === sourceBotId)
+        .reverse();
+      const presentIds = new Set(fromSource.map((m) => m.id));
 
-    // Открытые сборы, которых уже нет в окне истории — проверяем точечно.
-    const openRows = await pool.query(
-      `SELECT message_id FROM discord_gather_events
-       WHERE channel_id=$1 AND status='open'`,
-      [channelId],
-    );
-    for (const row of openRows.rows) {
-      if (presentIds.has(row.message_id)) continue;
-      const remote = await discordGet(`/channels/${channelId}/messages/${row.message_id}`, { allow404: true });
-      if (remote == null) {
-        await abandonGather(pool, row.message_id, 'сообщение удалено');
+      // Open-МП вне окна истории — точечная проверка раз в минуту (вместе с poll).
+      const openRows = await pool.query(
+        `SELECT message_id FROM discord_gather_events
+         WHERE channel_id=$1 AND status='open'`,
+        [channelId],
+      );
+      for (const row of openRows.rows) {
+        if (presentIds.has(row.message_id)) continue;
+        const remote = await discordGet(`/channels/${channelId}/messages/${row.message_id}`, { allow404: true });
+        if (remote == null) {
+          await abandonGather(pool, row.message_id, 'сообщение удалено');
+        } else {
+          await handleMessage(pool, normalizeRestMessage(remote, channelId), { channelId, sourceBotId });
+        }
+        await new Promise((r) => setTimeout(r, 80));
       }
-    }
 
-    let processed = 0;
-    for (const raw of fromSource) {
-      const key = contentKey(raw);
-      if (seen.get(raw.id) === key) continue;
-      seen.set(raw.id, key);
-      await handleMessage(pool, normalizeRestMessage(raw, channelId), { channelId, sourceBotId });
-      processed += 1;
-      await new Promise((r) => setTimeout(r, 40));
-    }
-    if (seen.size > catchupLimit * 4) {
-      const keep = new Set(fromSource.map((m) => m.id));
-      for (const id of seen.keys()) {
-        if (!keep.has(id)) seen.delete(id);
+      let processed = 0;
+      for (const raw of fromSource) {
+        const key = contentKey(raw);
+        if (seen.get(raw.id) === key) continue;
+        seen.set(raw.id, key);
+        await handleMessage(pool, normalizeRestMessage(raw, channelId), { channelId, sourceBotId });
+        processed += 1;
+        await new Promise((r) => setTimeout(r, 40));
       }
+      if (seen.size > catchupLimit * 4) {
+        const keep = new Set(fromSource.map((m) => m.id));
+        for (const id of seen.keys()) {
+          if (!keep.has(id)) seen.delete(id);
+        }
+      }
+      console.log(
+        `[event-bot] ${label}: источника ${fromSource.length}, новых/изменённых ${processed}, ` +
+        `open вне окна ${openRows.rows.filter((r) => !presentIds.has(r.message_id)).length}.`,
+      );
+    } finally {
+      tickRunning = false;
     }
-    console.log(`[event-bot] ${label}: сообщений источника ${fromSource.length}, новых/изменённых ${processed}.`);
   }
 
   console.log(
-    `[event-bot] Режим Cloudflare relay: ${relayUrl}, канал ${channelId}, опрос каждые ${pollMs / 1000}с.`,
+    `[event-bot] Режим Cloudflare relay: ${relayUrl}, канал ${channelId}, ` +
+    `опрос статусов/обновлений раз в ${Math.round(pollMs / 1000)}с (мин. 60с).`,
   );
 
   (async () => {
@@ -672,7 +728,11 @@ function startEventAttendanceBot(pool) {
   }
 
   const client = new Client(clientOptions);
+  const pollMs = resolvePollMs();
   let staleTimer = null;
+  let minuteTickRunning = false;
+  /** Очередь сообщений с gateway: обрабатываем пачкой раз в минуту, без спама fetch. */
+  const pendingById = new Map();
 
   async function gatewayResyncFetch(before) {
     const channel = await client.channels.fetch(channelId);
@@ -691,29 +751,85 @@ function startEventAttendanceBot(pool) {
     }));
   }
 
+  async function refreshOpenGathers() {
+    const openRows = await pool.query(
+      `SELECT message_id FROM discord_gather_events
+       WHERE channel_id=$1 AND status='open'`,
+      [channelId],
+    );
+    if (!openRows.rows.length) return;
+    const channel = await client.channels.fetch(channelId);
+    if (!channel || !channel.isTextBased()) return;
+    for (const row of openRows.rows) {
+      try {
+        const msg = await channel.messages.fetch(row.message_id);
+        await handleMessage(pool, msg, { channelId, sourceBotId });
+      } catch (err) {
+        if (err?.code === 10008 || /Unknown Message/i.test(String(err.message || ''))) {
+          await abandonGather(pool, row.message_id, 'сообщение удалено');
+        } else {
+          console.error(`[event-bot] Проверка open ${row.message_id}:`, err.message);
+        }
+      }
+      await new Promise((r) => setTimeout(r, 80));
+    }
+  }
+
+  async function flushPendingGateway() {
+    const batch = [...pendingById.values()];
+    pendingById.clear();
+    for (const message of batch) {
+      try {
+        let msg = message;
+        if (msg.partial && typeof msg.fetch === 'function') {
+          msg = await msg.fetch();
+        }
+        await handleMessage(pool, msg, { channelId, sourceBotId });
+      } catch (err) {
+        console.error('[event-bot] Очередь gateway:', err.message);
+      }
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    return batch.length;
+  }
+
+  async function minuteTick(label) {
+    if (minuteTickRunning) {
+      console.log(`[event-bot] ${label}: пропуск — тик ещё выполняется.`);
+      return;
+    }
+    minuteTickRunning = true;
+    try {
+      await processResyncJobs(pool, {
+        channelId,
+        sourceBotId,
+        fetchPage: gatewayResyncFetch,
+      }).catch((err) => console.error('[event-bot] Resync:', err.message));
+      await abandonStaleOpens(pool).catch((err) => {
+        console.error('[event-bot] Проверка просроченных сборов:', err.message);
+      });
+      await refreshOpenGathers().catch((err) => {
+        console.error('[event-bot] Проверка open-МП:', err.message);
+      });
+      const flushed = await flushPendingGateway();
+      if (flushed) {
+        console.log(`[event-bot] ${label}: обработано отложенных обновлений ${flushed}.`);
+      }
+    } finally {
+      minuteTickRunning = false;
+    }
+  }
+
   client.once(Events.ClientReady, async (c) => {
-    console.log(`[event-bot] Подключен как ${c.user.tag}. Слежу за каналом ${channelId}.`);
-    await abandonStaleOpens(pool).catch((err) => {
-      console.error('[event-bot] Проверка просроченных сборов:', err.message);
-    });
-    await processResyncJobs(pool, {
-      channelId,
-      sourceBotId,
-      fetchPage: gatewayResyncFetch,
-    }).catch((err) => console.error('[event-bot] Resync:', err.message));
+    console.log(
+      `[event-bot] Подключен как ${c.user.tag}. Канал ${channelId}. ` +
+      `Статусы open-МП и пакет обновлений — раз в ${Math.round(pollMs / 1000)}с.`,
+    );
+    await minuteTick('старт');
 
     staleTimer = setInterval(() => {
-      void (async () => {
-        await processResyncJobs(pool, {
-          channelId,
-          sourceBotId,
-          fetchPage: gatewayResyncFetch,
-        }).catch((err) => console.error('[event-bot] Resync:', err.message));
-        await abandonStaleOpens(pool).catch((err) => {
-          console.error('[event-bot] Проверка просроченных сборов:', err.message);
-        });
-      })();
-    }, Math.min(60_000, Math.max(15_000, parseInt(process.env.EVENT_BOT_POLL_MS, 10) || 30_000)));
+      void minuteTick('опрос');
+    }, pollMs);
 
     const catchupDelayMs = Math.max(0, parseInt(process.env.EVENT_BOT_CATCHUP_DELAY_MS, 10) || 15_000);
     setTimeout(async () => {
@@ -725,9 +841,9 @@ function startEventAttendanceBot(pool) {
           .filter((m) => m.author?.id === sourceBotId)
           .reverse();
         for (const m of fromSource) {
-          await handleMessage(pool, m, { channelId, sourceBotId });
-          await new Promise((r) => setTimeout(r, 50));
+          pendingById.set(m.id, m);
         }
+        await flushPendingGateway();
         console.log(`[event-bot] Проверено сообщений при старте: ${fromSource.length}.`);
       } catch (err) {
         console.error('[event-bot] Не удалось проверить историю канала при старте:', err.message);
@@ -735,10 +851,17 @@ function startEventAttendanceBot(pool) {
     }, catchupDelayMs);
   });
 
-  client.on(Events.MessageCreate, (message) => handleMessage(pool, message, { channelId, sourceBotId }));
-  client.on(Events.MessageUpdate, (_oldMessage, newMessage) =>
-    handleMessage(pool, newMessage, { channelId, sourceBotId }),
-  );
+  client.on(Events.MessageCreate, (message) => {
+    if ((message.channelId || message.channel_id) !== channelId) return;
+    if (message.author?.id !== sourceBotId) return;
+    pendingById.set(message.id, message);
+  });
+  client.on(Events.MessageUpdate, (_oldMessage, newMessage) => {
+    if ((newMessage.channelId || newMessage.channel_id) !== channelId) return;
+    const authorId = newMessage.author?.id;
+    if (authorId && authorId !== sourceBotId) return;
+    pendingById.set(newMessage.id, newMessage);
+  });
   client.on(Events.MessageDelete, (message) => handleMessageDelete(pool, message, { channelId }));
   client.on(Events.Error, (err) => console.error('[event-bot] Ошибка клиента Discord:', err));
 

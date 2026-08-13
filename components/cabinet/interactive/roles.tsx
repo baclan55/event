@@ -4,13 +4,18 @@ import { FormEvent, useEffect, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
 import {
   emptyPermissions,
+  EVENT_CAP_LABELS,
+  EVENT_CAPS,
   GMP_CAP_LABELS,
   GMP_CAPS,
+  normalizeEventsAccess,
   normalizeGmpAccess,
   normalizeRolePermissions,
   PERMISSION_LABELS,
   PERMISSIONS,
   VIEW_ONLY_PERMISSIONS,
+  type EventCap,
+  type EventsPermissionAccess,
   type GmpCap,
   type GmpPermissionAccess,
   type Permission,
@@ -32,6 +37,7 @@ type RoleRow = {
   isEventHelper: boolean;
   isAdministrator: boolean;
   dashboardBlocks: Record<DashboardBlock, boolean>;
+  weeklyEventsTarget: number | null;
   usersCount: number;
 };
 
@@ -105,6 +111,26 @@ export function RolesInteractive({
     });
   }
 
+  function setEventsCap(cap: EventCap | 'view', value: boolean) {
+    setDraftPerms((prev) => {
+      const current = normalizeEventsAccess(prev.manage_events);
+      const next: EventsPermissionAccess = { ...current };
+      if (cap === 'view') {
+        next.view = value;
+        if (!value) {
+          for (const key of EVENT_CAPS) next[key] = false;
+          next.edit = false;
+        }
+      } else {
+        next[cap] = value;
+        if (value) next.view = true;
+        next.edit = EVENT_CAPS.some((key) => next[key]);
+        next.view = next.view || EVENT_CAPS.some((key) => next[key]);
+      }
+      return { ...prev, manage_events: next };
+    });
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canEdit) return;
@@ -114,12 +140,15 @@ export function RolesInteractive({
     const dashboardBlocks = Object.fromEntries(
       DASHBOARD_BLOCKS.map((key) => [key, form.get(`dash_${key}`) === 'on']),
     ) as Record<DashboardBlock, boolean>;
+    const targetRaw = String(form.get('weeklyEventsTarget') || '').trim();
+    const weeklyEventsTarget = targetRaw === '' ? null : Number.parseInt(targetRaw, 10);
     const payload = {
       name: String(form.get('name') || '').trim(),
       permissions,
       isEventHelper: form.get('isEventHelper') === 'on',
       isAdministrator: form.get('isAdministrator') === 'on',
       dashboardBlocks,
+      weeklyEventsTarget: Number.isFinite(weeklyEventsTarget as number) ? weeklyEventsTarget : null,
     };
     try {
       if (editing?.id) {
@@ -187,6 +216,7 @@ export function RolesInteractive({
               <div className="role-tag">
                 вес {role.priority} · {role.usersCount} сотр. ·{' '}
                 {countAccess(role.permissions)} доступов
+                {role.weeklyEventsTarget != null ? ` · норма ${role.weeklyEventsTarget} МП/нед.` : ' · без нормы МП'}
                 {role.isEventHelper ? ' · ивент хелпер' : ''}
                 {role.isAdministrator ? ' · администратор' : ''}
               </div>
@@ -222,6 +252,23 @@ export function RolesInteractive({
                 defaultValue={editing?.name || ''}
                 disabled={!canEdit}
               />
+            </div>
+            <div className="field">
+              <label>Норма МП за неделю</label>
+              <input
+                className="input"
+                name="weeklyEventsTarget"
+                type="number"
+                min={0}
+                max={999}
+                placeholder="пусто = нормы нет"
+                defaultValue={editing?.weeklyEventsTarget ?? ''}
+                disabled={!canEdit}
+              />
+              <div className="field-hint">
+                Календарная неделя: с понедельника 00:00 по воскресенье 23:59 (часовой пояс сервера WEEKLY_RESET_TZ).
+                Оставьте пустым, если для роли норма не нужна.
+              </div>
             </div>
             <div className="form-row-2">
               <div className="field">
@@ -278,6 +325,36 @@ export function RolesInteractive({
                                 onChange={(e) => setGmpCap(cap, e.target.checked)}
                               />
                               {GMP_CAP_LABELS[cap]}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (key === 'manage_events') {
+                    const events = normalizeEventsAccess(draftPerms.manage_events);
+                    return (
+                      <div className="perm-card perm-card-gmp" key={key}>
+                        <div className="perm-card-title">{PERMISSION_LABELS[key]}</div>
+                        <div className="perm-card-flags">
+                          <label className="perm-flag">
+                            <input
+                              type="checkbox"
+                              checked={!!events.view}
+                              disabled={!canEdit}
+                              onChange={(e) => setEventsCap('view', e.target.checked)}
+                            />
+                            Просмотр мероприятий
+                          </label>
+                          {EVENT_CAPS.map((cap) => (
+                            <label className="perm-flag" key={cap}>
+                              <input
+                                type="checkbox"
+                                checked={!!events[cap]}
+                                disabled={!canEdit}
+                                onChange={(e) => setEventsCap(cap, e.target.checked)}
+                              />
+                              {EVENT_CAP_LABELS[cap]}
                             </label>
                           ))}
                         </div>

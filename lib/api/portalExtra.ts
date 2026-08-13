@@ -11,7 +11,8 @@ import {
   listProfileAchievementCatalog,
   listUserAchievements,
 } from '@/lib/achievements';
-import { userHasPermission } from '@/lib/roleAccess';
+import { userHasEventCap, userHasPermission } from '@/lib/roleAccess';
+import { sqlInCurrentWeek, weekTimeZone } from '@/lib/weekBounds';
 import { saveImage } from '@/lib/images';
 import { ok, parseId, readImage, required, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
@@ -336,12 +337,72 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
     }
   }
 
+  if (key === 'discord-events-user' && method === 'GET') {
+    const viewer = await required();
+    if (viewer instanceof NextResponse) return viewer;
+    const userId = parseId(params.userId);
+    if (!userId) return jsonError('Некорректный пользователь.', 400);
+    const tz = weekTimeZone();
+    const [result, week] = await Promise.all([
+      query<{
+        message_id: string;
+        event_key: string | null;
+        title: string;
+        message_created_at: string;
+        status: string;
+        completed_at: string | null;
+      }>(
+        `SELECT e.message_id, e.event_key, e.title, e.message_created_at, e.status, e.completed_at
+         FROM discord_gather_participants p
+         JOIN discord_gather_events e ON e.message_id = p.message_id
+         JOIN users u ON u.discord_id = p.discord_id
+         WHERE u.id = $1
+         ORDER BY e.message_created_at DESC
+         LIMIT 150`,
+        [userId],
+      ),
+      query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+         FROM event_bot_credits c
+         JOIN discord_gather_events e ON e.message_id = c.message_id
+         JOIN users u ON u.discord_id = c.discord_id
+         WHERE u.id = $1
+           AND e.status = 'completed'
+           AND ${sqlInCurrentWeek('COALESCE(e.completed_at, e.message_created_at)', 2)}`,
+        [userId, tz],
+      ).catch(() => ({ rows: [{ count: '0' }] })),
+    ]);
+    return NextResponse.json({
+      ok: true,
+      items: result.rows,
+      weekCount: Number(week.rows[0]?.count || 0),
+      totalCount: result.rows.length,
+    });
+  }
+
   if (key === 'discord-events' && method === 'GET') {
     const user = await required();
     if (user instanceof NextResponse) return user;
+    if (!userHasPermission(user, 'manage_events')) {
+      return jsonError('Недостаточно прав.', 403);
+    }
     const status = String(request.nextUrl.searchParams.get('status') || 'completed').trim();
     const allowed = new Set(['completed', 'open', 'abandoned', 'all']);
     const filter = allowed.has(status) ? status : 'completed';
+    const pageSizeRaw = Number.parseInt(String(request.nextUrl.searchParams.get('pageSize') || '20'), 10);
+    const pageSize = Number.isFinite(pageSizeRaw) ? Math.min(Math.max(pageSizeRaw, 5), 50) : 20;
+    const pageRaw = Number.parseInt(String(request.nextUrl.searchParams.get('page') || '1'), 10);
+    const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+    const totalRow = await query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM discord_gather_events e
+       WHERE ($1::text = 'all' OR e.status = $1)`,
+      [filter],
+    );
+    const total = Number(totalRow.rows[0]?.count || 0);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const offset = (safePage - 1) * pageSize;
     const events = await query<{
       message_id: string;
       event_key: string | null;
@@ -358,27 +419,39 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
        FROM discord_gather_events e
        WHERE ($1::text = 'all' OR e.status = $1)
        ORDER BY e.message_created_at DESC
-       LIMIT 100`,
-      [filter],
+       LIMIT $2 OFFSET $3`,
+      [filter, pageSize, offset],
     );
     const ids = events.rows.map((e) => e.message_id);
+    type ParticipantRow = {
+      message_id: string;
+      discord_id: string;
+      nickname: string | null;
+      user_id: number | null;
+      avatar_image_id: number | null;
+      avatar_url: string | null;
+      discord_username: string | null;
+      role_name: string | null;
+      on_site: boolean;
+    };
     const participants = ids.length
-      ? await query<{
-        message_id: string;
-        discord_id: string;
-        nickname: string | null;
-        user_id: number | null;
-      }>(
-        `SELECT p.message_id, p.discord_id, u.nickname, u.id AS user_id
+      ? await query<ParticipantRow>(
+        `SELECT p.message_id, p.discord_id,
+                COALESCE(NULLIF(TRIM(u.first_name), ''), u.nickname, p.discord_username) AS nickname,
+                u.id AS user_id, u.avatar_image_id, u.avatar_url,
+                COALESCE(u.discord_username, p.discord_username) AS discord_username,
+                r.name AS role_name,
+                (u.id IS NOT NULL) AS on_site
          FROM discord_gather_participants p
          LEFT JOIN users u ON u.discord_id = p.discord_id
+         LEFT JOIN roles r ON r.id = u.role_id
          WHERE p.message_id = ANY($1::text[])
-         ORDER BY u.nickname NULLS LAST, p.discord_id`,
+         ORDER BY (u.id IS NULL), u.nickname NULLS LAST, p.discord_id`,
         [ids],
       )
-      : { rows: [] as Array<{ message_id: string; discord_id: string; nickname: string | null; user_id: number | null }> };
+      : { rows: [] as ParticipantRow[] };
 
-    const byMessage = new Map<string, typeof participants.rows>();
+    const byMessage = new Map<string, ParticipantRow[]>();
     for (const row of participants.rows) {
       const list = byMessage.get(row.message_id) || [];
       list.push(row);
@@ -413,12 +486,117 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
     return NextResponse.json({
       ok: true,
       canResync,
+      caps: {
+        editParticipants: userHasEventCap(user, 'edit_participants'),
+        editStatus: userHasEventCap(user, 'edit_status'),
+        delete: userHasEventCap(user, 'delete'),
+      },
+      page: safePage,
+      pageSize,
+      total,
+      totalPages,
       resyncJob: job.rows[0] || null,
       events: events.rows.map((e) => ({
         ...e,
         participants: byMessage.get(e.message_id) || [],
       })),
     });
+  }
+
+  if (key === 'discord-events' && method === 'PATCH') {
+    const user = await required();
+    if (user instanceof NextResponse) return user;
+    if (!userHasPermission(user, 'manage_events')) {
+      return jsonError('Недостаточно прав.', 403);
+    }
+    const messageId = String(body.messageId || '').trim();
+    if (!messageId) return jsonError('Не указано мероприятие.', 400);
+    const action = String(body.action || '').trim();
+
+    if (action === 'setStatus') {
+      if (!userHasEventCap(user, 'edit_status')) return jsonError('Недостаточно прав.', 403);
+      const nextStatus = String(body.status || '').trim();
+      if (!['open', 'completed', 'abandoned'].includes(nextStatus)) {
+        return jsonError('Некорректный статус.', 400);
+      }
+      const updated = await query(
+        `UPDATE discord_gather_events SET
+           status=$2,
+           completed_at=CASE WHEN $2='completed' THEN COALESCE(completed_at, now()) ELSE completed_at END,
+           abandoned_at=CASE WHEN $2='abandoned' THEN COALESCE(abandoned_at, now()) ELSE abandoned_at END,
+           has_buttons=CASE WHEN $2='open' THEN TRUE ELSE FALSE END,
+           updated_at=now()
+         WHERE message_id=$1
+         RETURNING message_id, status`,
+        [messageId, nextStatus],
+      );
+      if (!updated.rows[0]) return jsonError('Мероприятие не найдено.', 404);
+      await writeAudit({
+        actorId: user.id,
+        action: 'discord_event.status',
+        entityType: 'discord_gather_event',
+        entityId: messageId,
+        details: { status: nextStatus },
+      });
+      return ok({ event: updated.rows[0] });
+    }
+
+    if (action === 'addParticipant' || action === 'removeParticipant') {
+      if (!userHasEventCap(user, 'edit_participants')) return jsonError('Недостаточно прав.', 403);
+      const discordId = String(body.discordId || '').replace(/\D/g, '');
+      if (!discordId) return jsonError('Укажите Discord ID.', 400);
+      const exists = await query('SELECT message_id FROM discord_gather_events WHERE message_id=$1', [messageId]);
+      if (!exists.rows[0]) return jsonError('Мероприятие не найдено.', 404);
+      if (action === 'addParticipant') {
+        const known = await query<{ discord_username: string | null }>(
+          'SELECT discord_username FROM users WHERE discord_id=$1',
+          [discordId],
+        );
+        await query(
+          `INSERT INTO discord_gather_participants(message_id, discord_id, discord_username)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (message_id, discord_id) DO UPDATE SET
+             discord_username = COALESCE(EXCLUDED.discord_username, discord_gather_participants.discord_username)`,
+          [messageId, discordId, known.rows[0]?.discord_username || null],
+        );
+      } else {
+        await query(
+          'DELETE FROM discord_gather_participants WHERE message_id=$1 AND discord_id=$2',
+          [messageId, discordId],
+        );
+      }
+      await writeAudit({
+        actorId: user.id,
+        action: action === 'addParticipant' ? 'discord_event.participant_add' : 'discord_event.participant_remove',
+        entityType: 'discord_gather_event',
+        entityId: messageId,
+        details: { discordId },
+      });
+      return ok();
+    }
+
+    return jsonError('Неизвестное действие.', 400);
+  }
+
+  if (key === 'discord-events' && method === 'DELETE') {
+    const user = await required();
+    if (user instanceof NextResponse) return user;
+    if (!userHasEventCap(user, 'delete')) return jsonError('Недостаточно прав.', 403);
+    const messageId = String(body.messageId || request.nextUrl.searchParams.get('messageId') || '').trim();
+    if (!messageId) return jsonError('Не указано мероприятие.', 400);
+    const deleted = await query(
+      'DELETE FROM discord_gather_events WHERE message_id=$1 RETURNING message_id, title',
+      [messageId],
+    );
+    if (!deleted.rows[0]) return jsonError('Мероприятие не найдено.', 404);
+    await writeAudit({
+      actorId: user.id,
+      action: 'discord_event.delete',
+      entityType: 'discord_gather_event',
+      entityId: messageId,
+      details: { title: deleted.rows[0].title },
+    });
+    return ok();
   }
 
   if (key === 'discord-events-resync' && method === 'POST') {

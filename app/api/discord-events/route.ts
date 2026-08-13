@@ -6,3 +6,11 @@ type Context = { params: Promise<Record<string, string>> };
 export async function GET(request: NextRequest, context: Context) {
   return handle('discord-events', request, context);
 }
+
+export async function PATCH(request: NextRequest, context: Context) {
+  return handle('discord-events', request, context);
+}
+
+export async function DELETE(request: NextRequest, context: Context) {
+  return handle('discord-events', request, context);
+}

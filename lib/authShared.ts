@@ -1,4 +1,4 @@
-import type { GmpCap, Permission } from '@/lib/roleAccess';
+import type { EventCap, GmpCap, Permission } from '@/lib/roleAccess';
 import type { DashboardBlock } from '@/lib/roleMeta';
 
 /** Клиент-безопасный тип пользователя сессии (без server-only / db). */
@@ -18,6 +18,7 @@ export type PublicUser = {
   permissions: Permission[];
   editPermissions: Permission[];
   gmpCaps: GmpCap[];
+  eventCaps: EventCap[];
   isBlocked: boolean;
   blockedAt: string | null;
   firstName: string | null;

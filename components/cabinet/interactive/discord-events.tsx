@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { askConfirm, ErrorText, request, Select, type Row } from './shared';
+import { FormEvent, useEffect, useState } from 'react';
+import { NavIcon } from '@/components/NavIcons';
+import { askConfirm, Avatar, ErrorText, request, Select, type Row } from './shared';
 
 const STATUS_LABEL: Record<string, string> = {
   completed: 'Проведено',
@@ -16,20 +17,50 @@ const JOB_LABEL: Record<string, string> = {
   failed: 'Ошибка пересборки',
 };
 
+type Caps = {
+  editParticipants: boolean;
+  editStatus: boolean;
+  delete: boolean;
+};
+
+const PAGE_SIZE = 20;
+
 export function DiscordEventsInteractive() {
   const [events, setEvents] = useState<Row[]>([]);
   const [status, setStatus] = useState('completed');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [canResync, setCanResync] = useState(false);
+  const [caps, setCaps] = useState<Caps>({
+    editParticipants: false,
+    editStatus: false,
+    delete: false,
+  });
   const [resyncJob, setResyncJob] = useState<Row | null>(null);
   const [busyResync, setBusyResync] = useState(false);
+  const [busyId, setBusyId] = useState('');
 
-  async function load(nextStatus = status) {
-    const data = await request(`/api/discord-events?status=${encodeURIComponent(nextStatus)}`);
+  async function load(nextStatus = status, nextPage = page) {
+    const params = new URLSearchParams({
+      status: nextStatus,
+      page: String(nextPage),
+      pageSize: String(PAGE_SIZE),
+    });
+    const data = await request(`/api/discord-events?${params}`);
     setEvents(data.events || []);
     setCanResync(!!data.canResync);
+    setCaps({
+      editParticipants: !!data.caps?.editParticipants,
+      editStatus: !!data.caps?.editStatus,
+      delete: !!data.caps?.delete,
+    });
     setResyncJob(data.resyncJob || null);
+    setTotal(Number(data.total) || 0);
+    setTotalPages(Math.max(1, Number(data.totalPages) || 1));
+    setPage(Number(data.page) || nextPage);
   }
 
   useEffect(() => {
@@ -43,7 +74,7 @@ export function DiscordEventsInteractive() {
       void load().catch(() => undefined);
     }, 5000);
     return () => clearInterval(timer);
-  }, [resyncJob?.status, status]);
+  }, [resyncJob?.status, status, page]);
 
   async function requestResync() {
     if (!(await askConfirm(
@@ -66,20 +97,103 @@ export function DiscordEventsInteractive() {
     }
   }
 
+  async function setEventStatus(messageId: string, nextStatus: string) {
+    setBusyId(messageId);
+    setError('');
+    try {
+      await request('/api/discord-events', {
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'setStatus', messageId, status: nextStatus }),
+      });
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusyId('');
+    }
+  }
+
+  async function removeEvent(messageId: string, title: string) {
+    if (!(await askConfirm(
+      `Удалить мероприятие «${title || 'без названия'}» и весь список участников?`,
+      { title: 'Удаление мероприятия', confirmLabel: 'Удалить', danger: true },
+    ))) return;
+    setBusyId(messageId);
+    setError('');
+    try {
+      await request('/api/discord-events', {
+        method: 'DELETE',
+        body: JSON.stringify({ messageId }),
+      });
+      if (expanded === messageId) setExpanded(null);
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusyId('');
+    }
+  }
+
+  async function removeParticipant(messageId: string, discordId: string, label: string) {
+    if (!(await askConfirm(
+      `Убрать участника ${label} из состава мероприятия?`,
+      { title: 'Участник', confirmLabel: 'Убрать', danger: true },
+    ))) return;
+    setBusyId(`${messageId}:${discordId}`);
+    setError('');
+    try {
+      await request('/api/discord-events', {
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'removeParticipant', messageId, discordId }),
+      });
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusyId('');
+    }
+  }
+
+  async function addParticipant(event: FormEvent<HTMLFormElement>, messageId: string) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const discordId = String(form.get('discordId') || '').replace(/\D/g, '');
+    if (!discordId) return;
+    setBusyId(`${messageId}:add`);
+    setError('');
+    try {
+      await request('/api/discord-events', {
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'addParticipant', messageId, discordId }),
+      });
+      event.currentTarget.reset();
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusyId('');
+    }
+  }
+
   const jobStatus = String(resyncJob?.status || '');
   const jobBusy = jobStatus === 'pending' || jobStatus === 'running';
 
   return (
     <>
       <div className="toolbar">
-        <div className="toolbar-left">Сборы МП из Discord-канала</div>
+        <div className="toolbar-left">
+          Сборы МП из Discord-канала
+          {total ? ` · ${total} всего` : ''}
+        </div>
         <div className="row-actions" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 200 }}>
             <Select
               value={status}
               onChange={(v) => {
                 setStatus(v);
-                void load(v).catch((err) => setError((err as Error).message));
+                setPage(1);
+                setExpanded(null);
+                void load(v, 1).catch((err) => setError((err as Error).message));
               }}
               options={[
                 { value: 'completed', label: 'Проведённые' },
@@ -127,10 +241,12 @@ export function DiscordEventsInteractive() {
         const id = String(item.message_id);
         const open = expanded === id;
         const participants = (item.participants as Row[]) || [];
+        const title = String(item.title || 'Без названия');
+        const busy = busyId === id || busyId.startsWith(`${id}:`);
         return (
           <div className="card card-pad" key={id} style={{ marginBottom: 12 }}>
             <div className="card-header">
-              <h3>{String(item.title || 'Без названия')}</h3>
+              <h3>{title}</h3>
               <span className={`badge ${
                 item.status === 'completed' ? 'badge-green'
                   : item.status === 'open' ? 'badge-amber'
@@ -146,7 +262,7 @@ export function DiscordEventsInteractive() {
               {' · '}
               участников: {Number(item.participant_count) || participants.length}
             </div>
-            <div style={{ marginTop: 10 }}>
+            <div className="row-actions" style={{ marginTop: 10, flexWrap: 'wrap', gap: 8 }}>
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
@@ -154,17 +270,107 @@ export function DiscordEventsInteractive() {
               >
                 {open ? 'Скрыть состав' : 'Показать состав'}
               </button>
+              {caps.editStatus ? (
+                <div style={{ minWidth: 180 }}>
+                  <Select
+                    value={String(item.status)}
+                    disabled={busy}
+                    onChange={(v) => void setEventStatus(id, v)}
+                    options={[
+                      { value: 'completed', label: 'Проведено' },
+                      { value: 'open', label: 'Идёт' },
+                      { value: 'abandoned', label: 'Не проведено' },
+                    ]}
+                  />
+                </div>
+              ) : null}
+              {caps.delete ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  disabled={busy}
+                  onClick={() => void removeEvent(id, title)}
+                >
+                  <NavIcon name="trash" /> Удалить
+                </button>
+              ) : null}
             </div>
             {open ? (
-              <div style={{ marginTop: 10 }}>
-                {participants.map((p) => (
-                  <div className="role-tag" key={`${id}:${p.discord_id}`}>
-                    {p.nickname ? String(p.nickname) : 'не в составе'}
-                    {' · '}
-                    Discord {String(p.discord_id)}
-                  </div>
-                ))}
+              <div style={{ marginTop: 12 }}>
+                {participants.map((p) => {
+                  const discordId = String(p.discord_id);
+                  const onSite = !!p.on_site || !!p.user_id;
+                  const nickname = p.nickname
+                    ? String(p.nickname)
+                    : (p.discord_username ? String(p.discord_username) : `Discord ${discordId}`);
+                  const subtitle = [
+                    onSite
+                      ? (p.role_name ? String(p.role_name) : 'В составе')
+                      : 'Ещё не на сайте',
+                    p.discord_username && String(p.discord_username) !== nickname
+                      ? String(p.discord_username)
+                      : null,
+                    `Discord ${discordId}`,
+                  ].filter(Boolean).join(' · ');
+                  const profileHref = p.user_id ? `/app/profile/${p.user_id}` : null;
+                  const who = (
+                    <>
+                      <Avatar
+                        row={{
+                          nickname,
+                          avatar_url: p.avatar_url,
+                          avatar_image_id: p.avatar_image_id,
+                        }}
+                        size={36}
+                      />
+                      <span className="member-copy">
+                        <span className="nickname">{nickname}</span>
+                        <span className="role-tag">{subtitle}</span>
+                      </span>
+                    </>
+                  );
+                  return (
+                    <div className="roster-row" key={`${id}:${discordId}`}>
+                      {profileHref ? (
+                        <a className="who member-profile-trigger who-clickable" href={profileHref}>
+                          {who}
+                        </a>
+                      ) : (
+                        <div className="who">{who}</div>
+                      )}
+                      {!onSite ? <span className="badge badge-muted">не на сайте</span> : null}
+                      {caps.editParticipants ? (
+                        <div className="row-actions">
+                          <button
+                            type="button"
+                            className="icon-btn danger"
+                            title="Убрать из состава"
+                            disabled={busy}
+                            onClick={() => void removeParticipant(id, discordId, nickname)}
+                          >
+                            <NavIcon name="trash" />
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
                 {!participants.length && <div className="field-hint">Участников нет</div>}
+                {caps.editParticipants ? (
+                  <form
+                    className="inline-form"
+                    style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' }}
+                    onSubmit={(e) => void addParticipant(e, id)}
+                  >
+                    <div className="field" style={{ margin: 0, minWidth: 220, flex: 1 }}>
+                      <label>Добавить Discord ID</label>
+                      <input className="input" name="discordId" inputMode="numeric" required placeholder="123456789012345678" />
+                    </div>
+                    <button className="btn btn-primary btn-sm" type="submit" disabled={busy}>
+                      <NavIcon name="plus" /> Добавить
+                    </button>
+                  </form>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -176,6 +382,42 @@ export function DiscordEventsInteractive() {
           <p>Бот ещё не зафиксировал сборы с выбранным статусом. Можно запустить «Пересобрать МП».</p>
         </div>
       )}
+
+      {total > 0 ? (
+        <div className="toolbar" style={{ marginTop: 8, marginBottom: 0 }}>
+          <div className="toolbar-left">
+            Страница {page} из {totalPages}
+          </div>
+          <div className="row-actions" style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={page <= 1}
+              onClick={() => {
+                const next = page - 1;
+                setPage(next);
+                setExpanded(null);
+                void load(status, next).catch((err) => setError((err as Error).message));
+              }}
+            >
+              Назад
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={page >= totalPages}
+              onClick={() => {
+                const next = page + 1;
+                setPage(next);
+                setExpanded(null);
+                void load(status, next).catch((err) => setError((err as Error).message));
+              }}
+            >
+              Вперёд
+            </button>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

@@ -10,6 +10,7 @@ import {
 } from '@/lib/auth';
 import { getSession } from '@/lib/session';
 import { runtimeEnv } from '@/lib/runtimeEnv';
+import { reconcileWeeklyEventCredits } from '@/lib/eventCredits';
 import { renderMarkdown } from '@/lib/richText';
 import { ok, parseId, plain, required, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
@@ -55,6 +56,16 @@ async function login(
     userId = inserted.rows[0].id;
   }
   if (owner) await query('UPDATE users SET is_owner=TRUE,is_admin=TRUE WHERE id=$1', [userId]);
+  // Старые Discord-сборы текущей недели — доначислить МП после первого входа.
+  try {
+    await reconcileWeeklyEventCredits(
+      query,
+      discordUser.id,
+      runtimeEnv('WEEKLY_RESET_TZ') || 'Europe/Moscow',
+    );
+  } catch (err) {
+    console.warn('[oauth] reconcileWeeklyEventCredits:', (err as Error).message);
+  }
   invalidateUserCache(userId);
   session.userId = userId;
   const returnTo = session.discordOAuthReturnTo;

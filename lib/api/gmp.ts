@@ -6,7 +6,7 @@ import { writeAudit } from '@/lib/audit';
 import { userHasGmpCap, userHasPermission, type GmpCap } from '@/lib/roleAccess';
 import { renderBody } from '@/lib/richText';
 import { evaluateAchievementsForUser } from '@/lib/achievements';
-import { runtimeEnv } from '@/lib/runtimeEnv';
+import { sqlInCurrentWeek, weekTimeZone } from '@/lib/weekBounds';
 import { ok, parseId, required } from './helpers';
 import type { ApiHandler } from './types';
 
@@ -488,13 +488,12 @@ export const handleGmp: ApiHandler = async ({ key, params, method, body, request
     if (viewer instanceof NextResponse) return viewer;
     const userId = parseId(params.userId);
     if (!userId) return jsonError('Некорректный пользователь.', 400);
-    const tz = runtimeEnv('WEEKLY_RESET_TZ') || 'Europe/Moscow';
+    const tz = weekTimeZone();
+    const weekPred = sqlInCurrentWeek('e.starts_at', 2);
     const [result, week] = await Promise.all([
       query<Row>(
         `SELECT e.id, e.title, e.starts_at, e.status, s.role,
-                (
-                  (e.starts_at AT TIME ZONE $2) >= date_trunc('week', now() AT TIME ZONE $2)
-                ) AS this_week
+                (${weekPred}) AS this_week
          FROM gmp_staff s
          JOIN gmp_events e ON e.id=s.event_id
          WHERE s.user_id=$1
@@ -506,7 +505,7 @@ export const handleGmp: ApiHandler = async ({ key, params, method, body, request
          FROM gmp_staff s
          JOIN gmp_events e ON e.id=s.event_id
          WHERE s.user_id=$1
-           AND (e.starts_at AT TIME ZONE $2) >= date_trunc('week', now() AT TIME ZONE $2)`,
+           AND ${weekPred}`,
         [userId, tz],
       ),
     ]);

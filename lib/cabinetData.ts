@@ -2,13 +2,14 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser, publicUser } from '@/lib/auth';
 import type { PublicUser } from '@/lib/authShared';
 import { query } from '@/lib/db';
-import { runtimeEnv } from '@/lib/runtimeEnv';
 import { rawBodyForEdit, renderBody } from '@/lib/richText';
 import { getRolesForUsers } from '@/lib/roles';
 import { tierForPriority } from '@/lib/tier';
 import { roleCtxFromPublic, userHasPermission } from '@/lib/roleAccess';
 import { ADMIN_POINT_DECAY_DAYS, adminPointActive } from '@/lib/reprimandRules';
 import { DEFAULT_CLOSED_MESSAGE } from '@/lib/audit';
+import { sqlInCurrentWeek, syncWeeklyEventsForUser, weekTimeZone } from '@/lib/weekBounds';
+import { weeklyTargetForUser, weeklyTargetsByRoleId } from '@/lib/weeklyTarget';
 
 export { fmtDate } from '@/lib/formatDate';
 
@@ -19,20 +20,41 @@ export async function requirePortalUser(): Promise<PublicUser> {
 }
 
 export async function loadDashboard() {
+  const tz = weekTimeZone();
   const r = await query<Record<string, unknown>>(
-    `SELECT u.id, u.nickname, u.avatar_image_id, u.avatar_url, u.weekly_events,
-            u.role_id, u.status, r.name AS role_name, r.priority AS role_priority
+    `SELECT u.id, u.nickname, u.avatar_image_id, u.avatar_url,
+            COALESCE((
+              SELECT COUNT(*)::int
+              FROM event_bot_credits c
+              JOIN discord_gather_events e ON e.message_id = c.message_id
+              WHERE c.discord_id = u.discord_id
+                AND e.status = 'completed'
+                AND ${sqlInCurrentWeek('COALESCE(e.completed_at, e.message_created_at)', 1)}
+            ), u.weekly_events) AS weekly_events,
+            u.role_id, u.status, r.name AS role_name, r.priority AS role_priority,
+            r.weekly_events_target
      FROM users u LEFT JOIN roles r ON r.id = u.role_id
-     ORDER BY COALESCE(r.priority, 999), u.nickname`
+     ORDER BY COALESCE(r.priority, 999), u.nickname`,
+    [tz],
   );
   const roles = await getRolesForUsers(r.rows.map((x) => x.id as number));
+  const targets = await weeklyTargetsByRoleId();
   const members = r.rows.map((x) => ({
     ...x,
     tier: tierForPriority(x.role_priority as number),
     roles: roles.get(x.id as number) || [],
+    weekly_target: x.role_id != null ? targets.get(x.role_id as number) ?? null : null,
   }));
-  const target = Number.parseInt(runtimeEnv('WEEKLY_EVENTS_TARGET') || '5', 10) || 5;
-  return { members, target };
+  return { members, target: null as number | null };
+}
+
+export async function loadProfileWeekly(userId: number): Promise<{
+  weeklyEvents: number;
+  weeklyTarget: number | null;
+}> {
+  const weeklyEvents = await syncWeeklyEventsForUser(query, userId, weekTimeZone());
+  const weeklyTarget = await weeklyTargetForUser(userId);
+  return { weeklyEvents, weeklyTarget };
 }
 
 export async function loadReprimandsMe(userId: number) {
@@ -112,16 +134,27 @@ export async function loadRules() {
 }
 
 export async function loadRoster() {
+  const tz = weekTimeZone();
+  const targets = await weeklyTargetsByRoleId();
   const r = await query<Record<string, unknown>>(
     `SELECT u.id, u.nickname, u.discord_username, u.avatar_image_id, u.avatar_url,
-            u.weekly_events, u.note, u.status, u.is_blocked, u.blocked_at,
+            COALESCE((
+              SELECT COUNT(*)::int
+              FROM event_bot_credits c
+              JOIN discord_gather_events e ON e.message_id = c.message_id
+              WHERE c.discord_id = u.discord_id
+                AND e.status = 'completed'
+                AND ${sqlInCurrentWeek('COALESCE(e.completed_at, e.message_created_at)', 1)}
+            ), u.weekly_events) AS weekly_events,
+            u.note, u.status, u.is_blocked, u.blocked_at,
             u.is_owner, u.is_admin, u.role_id, r.name AS role_name, r.priority AS role_priority
      FROM users u LEFT JOIN roles r ON r.id = u.role_id
-     ORDER BY COALESCE(r.priority, 999), u.nickname`
+     ORDER BY COALESCE(r.priority, 999), u.nickname`,
+    [tz],
   );
   const rolesMap = await getRolesForUsers(r.rows.map((x) => x.id as number));
   const allRoles = await query(
-    `SELECT id, name, priority, COALESCE(permissions, '{}'::jsonb) AS permissions
+    `SELECT id, name, priority, COALESCE(permissions, '{}'::jsonb) AS permissions, weekly_events_target
      FROM roles ORDER BY priority`,
   );
   return {
@@ -129,9 +162,10 @@ export async function loadRoster() {
       ...x,
       tier: tierForPriority(x.role_priority as number),
       roles: rolesMap.get(x.id as number) || [],
+      weekly_target: x.role_id != null ? targets.get(x.role_id as number) ?? null : null,
     })),
     roles: allRoles.rows,
-    target: Number.parseInt(runtimeEnv('WEEKLY_EVENTS_TARGET') || '5', 10) || 5,
+    target: null as number | null,
   };
 }
 

@@ -346,6 +346,7 @@ CREATE TABLE IF NOT EXISTS discord_gather_participants (
   discord_id TEXT NOT NULL,
   PRIMARY KEY (message_id, discord_id)
 );
+ALTER TABLE discord_gather_participants ADD COLUMN IF NOT EXISTS discord_username TEXT;
 CREATE INDEX IF NOT EXISTS idx_discord_gather_participants_discord
   ON discord_gather_participants(discord_id);
 
@@ -372,6 +373,8 @@ CREATE INDEX IF NOT EXISTS idx_event_bot_jobs_pending
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_event_helper BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_administrator BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS dashboard_blocks JSONB NOT NULL DEFAULT '{"stats":true,"top_admin":true,"top_helper":true}'::jsonb;
+-- Норма МП за календарную неделю (пн–вс). NULL = нормы нет.
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS weekly_events_target INTEGER;
 
 -- Стартовая классификация по известным именам (только если ещё не размечали вручную).
 UPDATE roles SET is_administrator = TRUE

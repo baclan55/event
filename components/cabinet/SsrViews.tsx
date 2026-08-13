@@ -12,11 +12,10 @@ function Avatar({ row }: { row: Row }) {
 
 export function DashboardView({
   members,
-  target,
   blocks = { stats: true, top_admin: true, top_helper: true },
 }: {
   members: Row[];
-  target: number;
+  target?: number | null;
   blocks?: { stats?: boolean; top_admin?: boolean; top_helper?: boolean };
 }) {
   const withRole = members.filter((m) => m.role_id);
@@ -26,7 +25,14 @@ export function DashboardView({
     .filter((m) => m.tier === tier && (m.weekly_events || 0) > 0)
     .sort((a, b) => (b.weekly_events || 0) - (a.weekly_events || 0))
     .slice(0, 3);
-  const rating = (rows: Row[], empty: string) => rows.length ? rows.map((m, i) => (
+  const rating = (rows: Row[], empty: string) => rows.length ? rows.map((m, i) => {
+    const norm = m.weekly_target != null ? Number(m.weekly_target) : null;
+    const count = Number(m.weekly_events) || 0;
+    const badge = norm == null
+      ? 'badge-muted'
+      : (count >= norm ? 'badge-green' : 'badge-amber');
+    const label = norm == null ? `${count} мп / нед.` : `${count}/${norm} мп`;
+    return (
     <a className="top-row top-row-link" href={`/app/profile/${m.id}`} key={m.id}>
       <b className="top-rank">{['🥇', '🥈', '🥉'][i]}</b>
       <Avatar row={m} />
@@ -34,9 +40,10 @@ export function DashboardView({
         <b>{m.nickname}</b>
         <div className="role-tag">{(m.roles || []).map((r: Row) => r.name).join(' · ') || m.role_name}</div>
       </div>
-      <span className={`badge ${m.weekly_events >= target ? 'badge-green' : 'badge-amber'}`}>{m.weekly_events} мп / нед.</span>
+      <span className={`badge ${badge}`}>{label}</span>
     </a>
-  )) : <div className="empty-state"><p>{empty}</p></div>;
+    );
+  }) : <div className="empty-state"><p>{empty}</p></div>;
   const showStats = blocks.stats !== false;
   const showAdmin = blocks.top_admin !== false;
   const showHelper = blocks.top_helper !== false;

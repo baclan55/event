@@ -89,6 +89,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     permissions: user.permissions,
     editPermissions: user.editPermissions,
     gmpCaps: user.gmpCaps,
+    eventCaps: user.eventCaps,
   };
   const hasRole = userHasAnyRole(roleCtx);
   if (!user.isBlocked && !hasRole && pathname !== '/app/pending') {
@@ -119,6 +120,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     ['/app/reprimands', 'reprimands'],
     ['/app/applications', 'applications'],
     ['/app/candidates', 'candidates'],
+    ['/app/events', 'manage_events'],
     ['/app/roles', 'manage_roles'],
     ['/app/blacklist', 'manage_blacklist'],
     ['/app/achievements', 'manage_achievements'],
@@ -156,7 +158,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
       items: [
         ['roster', 'Состав', true],
         ['vacations', 'Отпуска', true],
-        ['events', 'Мероприятия', true],
+        ['events', 'Мероприятия', userHasPermission(roleCtx, 'manage_events')],
         ['gmp', userHasPermission(roleCtx, 'manage_gmp') ? 'ГМП' : 'Мои ГМП', canSeeGmpNav],
         ['reprimands', 'Система выговоров', userHasPermission(roleCtx, 'reprimands')],
       ],

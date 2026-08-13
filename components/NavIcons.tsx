@@ -91,6 +91,14 @@ export function NavIcon({ name }: { name: string }) {
           <line x1="13.5" y1="13" x2="13.5" y2="15" />
         </svg>
       );
+    case 'events':
+      return (
+        <svg {...svgProps}>
+          <rect x="3" y="5" width="18" height="16" rx="2" />
+          <path d="M8 3v4M16 3v4M3 11h18" />
+          <path d="M8 15h.01M12 15h.01M16 15h.01" />
+        </svg>
+      );
     case 'reprimands':
       return (
         <svg {...svgProps}>

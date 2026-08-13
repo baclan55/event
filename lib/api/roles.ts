@@ -13,6 +13,7 @@ import {
   normalizeDashboardBlocks,
   parseRoleMeta,
 } from '@/lib/roleMeta';
+import { parseWeeklyTarget } from '@/lib/weeklyTarget';
 import { AUDIT_LABELS, listAudit, listAuditActions, writeAudit } from '@/lib/audit';
 import {
   assertReorderSafe,
@@ -30,6 +31,7 @@ async function listRoles() {
     is_event_helper: boolean;
     is_administrator: boolean;
     dashboard_blocks: unknown;
+    weekly_events_target: number | null;
     users_count: number;
   }>(
     `SELECT r.id, r.name, r.priority,
@@ -37,6 +39,7 @@ async function listRoles() {
             COALESCE(r.is_event_helper, FALSE) AS is_event_helper,
             COALESCE(r.is_administrator, FALSE) AS is_administrator,
             COALESCE(r.dashboard_blocks, '{"stats":true,"top_admin":true,"top_helper":true}'::jsonb) AS dashboard_blocks,
+            r.weekly_events_target,
             COUNT(ur.user_id)::int AS users_count
      FROM roles r
      LEFT JOIN user_roles ur ON ur.role_id = r.id
@@ -60,6 +63,7 @@ async function listRoles() {
       isEventHelper: explicitMeta ? meta.isEventHelper : defaults.isEventHelper,
       isAdministrator: explicitMeta ? meta.isAdministrator : defaults.isAdministrator,
       dashboardBlocks: explicitMeta ? meta.dashboardBlocks : defaults.dashboardBlocks,
+      weeklyEventsTarget: parseWeeklyTarget(row.weekly_events_target),
       usersCount: row.users_count,
     };
   });
@@ -139,20 +143,29 @@ export const handleRoles: ApiHandler = async ({ key, request, params, method, bo
       permissions.grant_owner = { view: false, edit: false };
     }
     const meta = readMeta(body, name);
+    const weeklyEventsTarget = parseWeeklyTarget(body.weeklyEventsTarget);
     const max = await query<{ m: number | null }>('SELECT MAX(priority) AS m FROM roles');
     const priority = (max.rows[0]?.m || 0) + 1;
     try {
       const inserted = await query<{ id: number }>(
-        `INSERT INTO roles(name, priority, permissions, is_event_helper, is_administrator, dashboard_blocks)
-         VALUES($1,$2,$3::jsonb,$4,$5,$6::jsonb) RETURNING id`,
-        [name, priority, JSON.stringify(permissions), meta.isEventHelper, meta.isAdministrator, JSON.stringify(meta.dashboardBlocks)],
+        `INSERT INTO roles(name, priority, permissions, is_event_helper, is_administrator, dashboard_blocks, weekly_events_target)
+         VALUES($1,$2,$3::jsonb,$4,$5,$6::jsonb,$7) RETURNING id`,
+        [
+          name,
+          priority,
+          JSON.stringify(permissions),
+          meta.isEventHelper,
+          meta.isAdministrator,
+          JSON.stringify(meta.dashboardBlocks),
+          weeklyEventsTarget,
+        ],
       );
       await writeAudit({
         actorId: user.id,
         action: 'role.create',
         entityType: 'role',
         entityId: inserted.rows[0].id,
-        details: { name, permissions, ...meta },
+        details: { name, permissions, weeklyEventsTarget, ...meta },
       });
       return ok({ id: inserted.rows[0].id, roles: await listRoles() });
     } catch (error) {
@@ -182,18 +195,28 @@ export const handleRoles: ApiHandler = async ({ key, request, params, method, bo
     const unsafe = await assertRolePermissionChangeSafe(user, id, permissions);
     if (unsafe) return jsonError(unsafe, 400);
     const meta = readMeta(body, name);
+    const weeklyEventsTarget = parseWeeklyTarget(body.weeklyEventsTarget);
     try {
       await query(
         `UPDATE roles SET name=$1, permissions=$2::jsonb,
-         is_event_helper=$3, is_administrator=$4, dashboard_blocks=$5::jsonb WHERE id=$6`,
-        [name, JSON.stringify(permissions), meta.isEventHelper, meta.isAdministrator, JSON.stringify(meta.dashboardBlocks), id],
+         is_event_helper=$3, is_administrator=$4, dashboard_blocks=$5::jsonb,
+         weekly_events_target=$6 WHERE id=$7`,
+        [
+          name,
+          JSON.stringify(permissions),
+          meta.isEventHelper,
+          meta.isAdministrator,
+          JSON.stringify(meta.dashboardBlocks),
+          weeklyEventsTarget,
+          id,
+        ],
       );
       await writeAudit({
         actorId: user.id,
         action: 'role.update',
         entityType: 'role',
         entityId: id,
-        details: { name, permissions, ...meta },
+        details: { name, permissions, weeklyEventsTarget, ...meta },
       });
       invalidateUserCache();
       return ok({ roles: await listRoles() });
