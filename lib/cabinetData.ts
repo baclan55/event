@@ -8,7 +8,8 @@ import { tierForPriority } from '@/lib/tier';
 import { roleCtxFromPublic, userHasPermission } from '@/lib/roleAccess';
 import { ADMIN_POINT_DECAY_DAYS, adminPointActive } from '@/lib/reprimandRules';
 import { DEFAULT_CLOSED_MESSAGE } from '@/lib/audit';
-import { sqlInCurrentWeek, syncWeeklyEventsForUser, weekTimeZone } from '@/lib/weekBounds';
+import { abandonStaleOpenGathers } from '@/lib/discordGatherCleanup';
+import { sqlCountWeeklyMpSubquery, syncWeeklyEventsForUser, weekTimeZone } from '@/lib/weekBounds';
 import { weeklyTargetForUser, weeklyTargetsByRoleId } from '@/lib/weeklyTarget';
 
 export { fmtDate } from '@/lib/formatDate';
@@ -21,16 +22,10 @@ export async function requirePortalUser(): Promise<PublicUser> {
 
 export async function loadDashboard() {
   const tz = weekTimeZone();
+  const weekCountSql = sqlCountWeeklyMpSubquery('u.discord_id', 1);
   const r = await query<Record<string, unknown>>(
     `SELECT u.id, u.nickname, u.avatar_image_id, u.avatar_url,
-            COALESCE((
-              SELECT COUNT(*)::int
-              FROM event_bot_credits c
-              JOIN discord_gather_events e ON e.message_id = c.message_id
-              WHERE c.discord_id = u.discord_id
-                AND e.status = 'completed'
-                AND ${sqlInCurrentWeek('COALESCE(e.completed_at, e.message_created_at)', 1)}
-            ), u.weekly_events) AS weekly_events,
+            CASE WHEN u.discord_id IS NULL THEN 0 ELSE COALESCE(${weekCountSql}, 0) END AS weekly_events,
             u.role_id, u.status, r.name AS role_name, r.priority AS role_priority,
             r.weekly_events_target
      FROM users u LEFT JOIN roles r ON r.id = u.role_id
@@ -52,6 +47,7 @@ export async function loadProfileWeekly(userId: number): Promise<{
   weeklyEvents: number;
   weeklyTarget: number | null;
 }> {
+  await abandonStaleOpenGathers();
   const weeklyEvents = await syncWeeklyEventsForUser(query, userId, weekTimeZone());
   const weeklyTarget = await weeklyTargetForUser(userId);
   return { weeklyEvents, weeklyTarget };
@@ -136,16 +132,10 @@ export async function loadRules() {
 export async function loadRoster() {
   const tz = weekTimeZone();
   const targets = await weeklyTargetsByRoleId();
+  const weekCountSql = sqlCountWeeklyMpSubquery('u.discord_id', 1);
   const r = await query<Record<string, unknown>>(
     `SELECT u.id, u.nickname, u.discord_username, u.avatar_image_id, u.avatar_url,
-            COALESCE((
-              SELECT COUNT(*)::int
-              FROM event_bot_credits c
-              JOIN discord_gather_events e ON e.message_id = c.message_id
-              WHERE c.discord_id = u.discord_id
-                AND e.status = 'completed'
-                AND ${sqlInCurrentWeek('COALESCE(e.completed_at, e.message_created_at)', 1)}
-            ), u.weekly_events) AS weekly_events,
+            CASE WHEN u.discord_id IS NULL THEN 0 ELSE COALESCE(${weekCountSql}, 0) END AS weekly_events,
             u.note, u.status, u.is_blocked, u.blocked_at,
             u.is_owner, u.is_admin, u.role_id, r.name AS role_name, r.priority AS role_priority
      FROM users u LEFT JOIN roles r ON r.id = u.role_id

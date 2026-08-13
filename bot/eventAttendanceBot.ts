@@ -193,6 +193,10 @@ async function upsertGather(pool, {
     );
     const prevStatus = existing.rows[0]?.status || null;
 
+    const createdIso = createdAt instanceof Date && !Number.isNaN(createdAt.getTime())
+      ? createdAt.toISOString()
+      : null;
+
     // При полном ресинке: abandoned без кнопок снова открываем → затем complete.
     if (force && prevStatus === 'abandoned' && !hasButtons) {
       await client.query(
@@ -200,23 +204,24 @@ async function upsertGather(pool, {
            status='open', abandoned_at=NULL, has_buttons=FALSE,
            event_key=COALESCE(NULLIF($2,''), event_key),
            title=CASE WHEN $3<>'' THEN $3 ELSE title END,
+           message_created_at=COALESCE($4::timestamptz, message_created_at),
            last_seen_at=now(), updated_at=now()
          WHERE message_id=$1`,
-        [messageId, eventKey || '', title || ''],
+        [messageId, eventKey || '', title || '', createdIso],
       );
     } else if (!prevStatus) {
       await client.query(
         `INSERT INTO discord_gather_events(
            message_id, channel_id, source_bot_id, event_key, title,
            message_created_at, status, has_buttons, last_seen_at, updated_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,'open',$7,now(),now())`,
+         ) VALUES ($1,$2,$3,$4,$5,COALESCE($6::timestamptz, now()),'open',$7,now(),now())`,
         [
           messageId,
           channelId,
           sourceBotId,
           eventKey,
           title || 'Без названия',
-          createdAt.toISOString(),
+          createdIso,
           hasButtons,
         ],
       );
@@ -226,16 +231,21 @@ async function upsertGather(pool, {
            event_key=COALESCE(NULLIF($2,''), event_key),
            title=CASE WHEN $3<>'' THEN $3 ELSE title END,
            has_buttons=$4,
+           message_created_at=COALESCE($5::timestamptz, message_created_at),
            last_seen_at=now(),
            updated_at=now()
          WHERE message_id=$1 AND status='open'`,
-        [messageId, eventKey || '', title || '', hasButtons],
+        [messageId, eventKey || '', title || '', hasButtons, createdIso],
       );
     } else {
+      // completed/abandoned: дату сообщения всё равно синхронизируем из Discord
+      // (нужно для недельного учёта; completed_at при этом не трогаем).
       await client.query(
-        `UPDATE discord_gather_events SET last_seen_at=now(), updated_at=now()
+        `UPDATE discord_gather_events SET
+           message_created_at=COALESCE($2::timestamptz, message_created_at),
+           last_seen_at=now(), updated_at=now()
          WHERE message_id=$1`,
-        [messageId],
+        [messageId, createdIso],
       );
     }
 
@@ -266,7 +276,7 @@ async function completeGather(pool, { messageId, eventLabel, discordIds, usernam
       `UPDATE discord_gather_events
        SET status='completed', has_buttons=FALSE, completed_at=now(), updated_at=now()
        WHERE message_id=$1 AND status='open'
-       RETURNING message_id, title`,
+       RETURNING message_id, title, message_created_at`,
       [messageId],
     );
     if (!locked.rows[0]) {
@@ -289,8 +299,21 @@ async function completeGather(pool, { messageId, eventLabel, discordIds, usernam
       newIds = linked.rows.map((r) => r.discord_id);
     }
 
+    // +1 к weekly_events только если сбор относится к текущей календарной неделе
+    // (по дате сообщения). Иначе пересборка старых МП раздувает счётчик.
+    const tz = process.env.WEEKLY_RESET_TZ || 'Europe/Moscow';
+    const inWeek = await client.query(
+      `SELECT (
+         (message_created_at AT TIME ZONE $2) >= date_trunc('week', now() AT TIME ZONE $2)
+         AND (message_created_at AT TIME ZONE $2) < date_trunc('week', now() AT TIME ZONE $2) + interval '7 days'
+       ) AS ok
+       FROM discord_gather_events WHERE message_id=$1`,
+      [messageId, tz],
+    );
+    const countsTowardWeek = !!inWeek.rows[0]?.ok;
+
     let creditedRows = [];
-    if (newIds.length > 0) {
+    if (newIds.length > 0 && countsTowardWeek) {
       const { rows } = await client.query(
         `UPDATE users SET weekly_events = weekly_events + 1
          WHERE discord_id = ANY($1::text[])
@@ -305,6 +328,10 @@ async function completeGather(pool, { messageId, eventLabel, discordIds, usernam
           `[event-bot] Пока нет на сайте (кредит в леджере, начислят при входе/привязке Discord): ${missing.join(', ')}`,
         );
       }
+    } else if (newIds.length > 0 && !countsTowardWeek) {
+      console.log(
+        `[event-bot] Сбор ${messageId} вне текущей недели — в леджер записано, weekly_events не трогаем.`,
+      );
     }
 
     await client.query(
@@ -342,7 +369,7 @@ async function abandonGather(pool, messageId, reason) {
   );
   if (result.rows[0]) {
     console.log(
-      `[event-bot] Сбор "${result.rows[0].title}" (${messageId}) → не проведён (${reason}).`,
+      `[event-bot] Сбор "${result.rows[0].title}" (${messageId}) → отменено (${reason}).`,
     );
   }
   return result.rowCount > 0;
@@ -359,7 +386,7 @@ async function abandonStaleOpens(pool) {
   );
   for (const row of result.rows) {
     console.log(
-      `[event-bot] Сбор "${row.title}" (${row.message_id}) → не проведён (прошло 24ч с кнопками).`,
+      `[event-bot] Сбор "${row.title}" (${row.message_id}) → отменено (прошло 24ч с отправки).`,
     );
   }
   return result.rowCount;
@@ -399,6 +426,13 @@ async function handleMessage(pool, rawMessage, { channelId, sourceBotId, force =
       participantUsernames,
       force,
     });
+
+    // Open дольше 24ч с даты сообщения → отменено (сразу, не ждём следующего тика).
+    const ageMs = Date.now() - createdAt.getTime();
+    if (status === 'open' && ageMs >= ABANDON_AFTER_MS) {
+      await abandonGather(pool, message.id, 'прошло 24ч с отправки сообщения');
+      return;
+    }
 
     if (status !== 'open') return;
 

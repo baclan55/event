@@ -14,7 +14,7 @@ import { findBlacklistMatch } from '@/lib/blacklist';
 import { evaluateAchievementsForUser } from '@/lib/achievements';
 import { reconcileWeeklyEventCredits } from '@/lib/eventCredits';
 import { runtimeEnv } from '@/lib/runtimeEnv';
-import { sqlInCurrentWeek, weekTimeZone } from '@/lib/weekBounds';
+import { sqlCountWeeklyMpSubquery, weekTimeZone } from '@/lib/weekBounds';
 import { weeklyTargetsByRoleId } from '@/lib/weeklyTarget';
 import { ok, parseId, required, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
@@ -47,16 +47,10 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
     }
     if (key === 'roster' && method === 'GET') {
       const tz = weekTimeZone();
+      const weekCountSql = sqlCountWeeklyMpSubquery('u.discord_id', 1);
       const result = await query<Record<string, unknown>>(
         `SELECT u.id,u.nickname,u.discord_id,u.discord_username,u.avatar_image_id,u.avatar_url,
-          COALESCE((
-            SELECT COUNT(*)::int
-            FROM event_bot_credits c
-            JOIN discord_gather_events e ON e.message_id = c.message_id
-            WHERE c.discord_id = u.discord_id
-              AND e.status = 'completed'
-              AND ${sqlInCurrentWeek('COALESCE(e.completed_at, e.message_created_at)', 1)}
-          ), u.weekly_events) AS weekly_events,
+          CASE WHEN u.discord_id IS NULL THEN 0 ELSE COALESCE(${weekCountSql}, 0) END AS weekly_events,
           u.note,u.role_id,u.status,u.is_blocked,u.blocked_at,u.is_owner,u.is_admin,
           r.name role_name,r.priority role_priority, r.weekly_events_target
          FROM users u LEFT JOIN roles r ON r.id=u.role_id

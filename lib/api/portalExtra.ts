@@ -13,6 +13,7 @@ import {
 } from '@/lib/achievements';
 import { userHasEventCap, userHasPermission } from '@/lib/roleAccess';
 import { sqlInCurrentWeek, weekTimeZone } from '@/lib/weekBounds';
+import { abandonStaleOpenGathers } from '@/lib/discordGatherCleanup';
 import { saveImage } from '@/lib/images';
 import { ok, parseId, readImage, required, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
@@ -342,41 +343,69 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
     if (viewer instanceof NextResponse) return viewer;
     const userId = parseId(params.userId);
     if (!userId) return jsonError('Некорректный пользователь.', 400);
+    await abandonStaleOpenGathers();
     const tz = weekTimeZone();
-    const [result, week] = await Promise.all([
-      query<{
-        message_id: string;
-        event_key: string | null;
-        title: string;
-        message_created_at: string;
-        status: string;
-        completed_at: string | null;
-      }>(
-        `SELECT e.message_id, e.event_key, e.title, e.message_created_at, e.status, e.completed_at
+    const pageSizeRaw = Number.parseInt(String(request.nextUrl.searchParams.get('pageSize') || '10'), 10);
+    const pageSize = Number.isFinite(pageSizeRaw) ? Math.min(Math.max(pageSizeRaw, 5), 50) : 10;
+    const pageRaw = Number.parseInt(String(request.nextUrl.searchParams.get('page') || '1'), 10);
+    const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+
+    const [totalRow, week] = await Promise.all([
+      query<{ count: string }>(
+        `SELECT COUNT(DISTINCT e.message_id)::text AS count
          FROM discord_gather_participants p
          JOIN discord_gather_events e ON e.message_id = p.message_id
          JOIN users u ON u.discord_id = p.discord_id
          WHERE u.id = $1
-         ORDER BY e.message_created_at DESC
-         LIMIT 150`,
+           AND u.discord_id IS NOT NULL
+           AND e.status = 'completed'`,
         [userId],
       ),
       query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count
-         FROM event_bot_credits c
-         JOIN discord_gather_events e ON e.message_id = c.message_id
-         JOIN users u ON u.discord_id = c.discord_id
+        `SELECT COUNT(DISTINCT e.message_id)::text AS count
+         FROM discord_gather_participants p
+         JOIN discord_gather_events e ON e.message_id = p.message_id
+         JOIN users u ON u.discord_id = p.discord_id
          WHERE u.id = $1
+           AND u.discord_id IS NOT NULL
            AND e.status = 'completed'
-           AND ${sqlInCurrentWeek('COALESCE(e.completed_at, e.message_created_at)', 2)}`,
+           AND ${sqlInCurrentWeek('e.message_created_at', 2)}`,
         [userId, tz],
       ).catch(() => ({ rows: [{ count: '0' }] })),
     ]);
+    const total = Number(totalRow.rows[0]?.count || 0);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
+    const safePage = Math.min(page, totalPages);
+    const offset = (safePage - 1) * pageSize;
+
+    const result = await query<{
+      message_id: string;
+      event_key: string | null;
+      title: string;
+      message_created_at: string;
+      status: string;
+      completed_at: string | null;
+    }>(
+      `SELECT e.message_id, e.event_key, e.title, e.message_created_at, e.status, e.completed_at
+       FROM discord_gather_participants p
+       JOIN discord_gather_events e ON e.message_id = p.message_id
+       JOIN users u ON u.discord_id = p.discord_id
+       WHERE u.id = $1
+         AND u.discord_id IS NOT NULL
+         AND e.status = 'completed'
+       ORDER BY e.message_created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [userId, pageSize, offset],
+    );
+
     return NextResponse.json({
       ok: true,
       items: result.rows,
       weekCount: Number(week.rows[0]?.count || 0),
-      totalCount: result.rows.length,
+      totalCount: total,
+      page: safePage,
+      pageSize,
+      totalPages,
     });
   }
 
@@ -386,6 +415,7 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
     if (!userHasPermission(user, 'manage_events')) {
       return jsonError('Недостаточно прав.', 403);
     }
+    await abandonStaleOpenGathers();
     const status = String(request.nextUrl.searchParams.get('status') || 'completed').trim();
     const allowed = new Set(['completed', 'open', 'abandoned', 'all']);
     const filter = allowed.has(status) ? status : 'completed';

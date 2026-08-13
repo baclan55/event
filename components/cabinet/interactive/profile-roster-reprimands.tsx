@@ -60,6 +60,9 @@ export function ProfileInteractive({
   const [gmpWeekCount, setGmpWeekCount] = useState(0);
   const [eventItems, setEventItems] = useState<Row[]>([]);
   const [eventWeekCount, setEventWeekCount] = useState(0);
+  const [eventPage, setEventPage] = useState(1);
+  const [eventTotal, setEventTotal] = useState(0);
+  const [eventTotalPages, setEventTotalPages] = useState(1);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const needLast = !(user.isAdministrator && !user.isEventHelper);
@@ -120,10 +123,13 @@ export function ProfileInteractive({
         setGmpWeekCount(Number(data.weekCount) || 0);
       })
       .catch(() => undefined);
-    request('/api/discord-events/user/' + initialUser.id)
+    request('/api/discord-events/user/' + initialUser.id + '?page=1&pageSize=10')
       .then((data) => {
         setEventItems(data.items || []);
         setEventWeekCount(Number(data.weekCount) || 0);
+        setEventTotal(Number(data.totalCount) || 0);
+        setEventTotalPages(Math.max(1, Number(data.totalPages) || 1));
+        setEventPage(Number(data.page) || 1);
       })
       .catch(() => undefined);
   }, [reprimands, isSelf]);
@@ -139,10 +145,13 @@ export function ProfileInteractive({
         setGmpWeekCount(Number(data.weekCount) || 0);
       })
       .catch(() => undefined);
-    request(`/api/discord-events/user/${initialUser.id}`)
+    request(`/api/discord-events/user/${initialUser.id}?page=1&pageSize=10`)
       .then((data) => {
         setEventItems(data.items || []);
         setEventWeekCount(Number(data.weekCount) || 0);
+        setEventTotal(Number(data.totalCount) || 0);
+        setEventTotalPages(Math.max(1, Number(data.totalPages) || 1));
+        setEventPage(Number(data.page) || 1);
       })
       .catch(() => undefined);
   }, [isSelf, initialUser.id]);
@@ -154,6 +163,17 @@ export function ProfileInteractive({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canViewAudit, isSelf, initialUser.isOwner, initialUser.id]);
 
+
+  async function loadEvents(nextPage = eventPage) {
+    const data = await request(
+      `/api/discord-events/user/${initialUser.id}?page=${nextPage}&pageSize=10`,
+    );
+    setEventItems(data.items || []);
+    setEventWeekCount(Number(data.weekCount) || 0);
+    setEventTotal(Number(data.totalCount) || 0);
+    setEventTotalPages(Math.max(1, Number(data.totalPages) || 1));
+    setEventPage(Number(data.page) || nextPage);
+  }
 
   async function saveGame(event: FormEvent) {
     event.preventDefault();
@@ -238,7 +258,7 @@ export function ProfileInteractive({
         <div className="segmented roster-tabs" style={{ marginBottom: 16 }}>
           <button className={tab === 'reprimands' ? 'active' : ''} onClick={() => setTab('reprimands')}>Выговоры · {rpData.reprimands.length}</button>
           <button className={tab === 'achievements' ? 'active' : ''} onClick={() => setTab('achievements')}>Достижения · {achievementCatalog.earned.length}</button>
-          <button className={tab === 'events' ? 'active' : ''} onClick={() => setTab('events')}>Мероприятия · {eventWeekCount}/{eventItems.length}</button>
+          <button className={tab === 'events' ? 'active' : ''} onClick={() => setTab('events')}>Мероприятия · {eventWeekCount}/{eventTotal}</button>
           <button className={tab === 'gmp' ? 'active' : ''} onClick={() => setTab('gmp')}>ГМП · {gmpWeekCount}/{gmpItems.length}</button>
           {(canViewAudit || initialUser.isOwner) ? (
             <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>Журнал · {audit.length}</button>
@@ -268,25 +288,42 @@ export function ProfileInteractive({
           <ProfileAchievementsPanel catalog={achievementCatalog} />
         ) : tab === 'events' ? (
           <>
-            <div className="card-header"><h3>{isSelf ? 'Мои мероприятия' : 'Мероприятия'}</h3><span className="badge badge-muted">{eventItems.length}</span></div>
+            <div className="card-header"><h3>{isSelf ? 'Мои мероприятия' : 'Мероприятия'}</h3><span className="badge badge-muted">{eventTotal}</span></div>
+            <div className="field-hint" style={{ marginBottom: 10 }}>Только проведённые · за неделю {eventWeekCount}</div>
             {eventItems.length ? eventItems.map((item) => (
               <div className="roster-row" key={String(item.message_id)}>
                 <div className="who">
                   <div>
                     <div className="nickname">{String(item.title || 'Без названия')}</div>
-                    <div className="role-tag">{new Date(String(item.message_created_at)).toLocaleString('ru-RU')} · {({ completed: 'Проведено', open: 'Идёт', abandoned: 'Не проведено' } as Record<string, string>)[String(item.status)] || String(item.status)}{item.event_key ? ` · ID ${item.event_key}` : ''}</div>
+                    <div className="role-tag">{new Date(String(item.message_created_at)).toLocaleString('ru-RU')}{item.event_key ? ` · ${item.event_key}` : ''}</div>
                   </div>
                 </div>
-                <span className={`badge ${
-                  item.status === 'completed' ? 'badge-green'
-                    : item.status === 'open' ? 'badge-amber'
-                      : 'badge-muted'
-                }`}
-                >
-                  {({ completed: 'Проведено', open: 'Идёт', abandoned: 'Не проведено' } as Record<string, string>)[String(item.status)] || String(item.status)}
-                </span>
+                <span className="badge badge-green">Проведено</span>
               </div>
-            )) : <div className="empty-state"><h3>Мероприятий нет</h3><p>Пользователь ещё не участвовал в сборах МП из Discord.</p></div>}
+            )) : <div className="empty-state"><h3>Мероприятий нет</h3><p>Проведённых сборов МП пока нет.</p></div>}
+            {eventTotal > 0 ? (
+              <div className="toolbar" style={{ marginTop: 12, marginBottom: 0 }}>
+                <div className="toolbar-left">Страница {eventPage} из {eventTotalPages}</div>
+                <div className="row-actions" style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    disabled={eventPage <= 1}
+                    onClick={() => void loadEvents(eventPage - 1).catch((err) => setError((err as Error).message))}
+                  >
+                    Назад
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    disabled={eventPage >= eventTotalPages}
+                    onClick={() => void loadEvents(eventPage + 1).catch((err) => setError((err as Error).message))}
+                  >
+                    Вперёд
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </>
         ) : tab === 'gmp' ? (
           <>

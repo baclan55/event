@@ -7,7 +7,7 @@ import { askConfirm, Avatar, ErrorText, request, Select, type Row } from './shar
 const STATUS_LABEL: Record<string, string> = {
   completed: 'Проведено',
   open: 'Идёт',
-  abandoned: 'Не проведено',
+  abandoned: 'Отменено',
 };
 
 const JOB_LABEL: Record<string, string> = {
@@ -198,7 +198,7 @@ export function DiscordEventsInteractive() {
               options={[
                 { value: 'completed', label: 'Проведённые' },
                 { value: 'open', label: 'Идут сейчас' },
-                { value: 'abandoned', label: 'Не проведённые' },
+                { value: 'abandoned', label: 'Отменённые' },
                 { value: 'all', label: 'Все' },
               ]}
             />
@@ -244,34 +244,35 @@ export function DiscordEventsInteractive() {
         const title = String(item.title || 'Без названия');
         const busy = busyId === id || busyId.startsWith(`${id}:`);
         return (
-          <div className="card card-pad" key={id} style={{ marginBottom: 12 }}>
-            <div className="card-header">
-              <h3>{title}</h3>
-              <span className={`badge ${
-                item.status === 'completed' ? 'badge-green'
-                  : item.status === 'open' ? 'badge-amber'
-                    : 'badge-muted'
-              }`}
-              >
-                {STATUS_LABEL[String(item.status)] || String(item.status)}
-              </span>
-            </div>
-            <div className="role-tag">
-              {new Date(String(item.message_created_at)).toLocaleString('ru-RU')}
-              {item.event_key ? ` · ID ${item.event_key}` : ''}
-              {' · '}
-              участников: {Number(item.participant_count) || participants.length}
-            </div>
-            <div className="row-actions" style={{ marginTop: 10, flexWrap: 'wrap', gap: 8 }}>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => setExpanded(open ? null : id)}
-              >
-                {open ? 'Скрыть состав' : 'Показать состав'}
-              </button>
-              {caps.editStatus ? (
-                <div style={{ minWidth: 180 }}>
+          <div className="card devent-card" key={id}>
+            <div className="devent-card-top">
+              <div className="devent-card-main">
+                <h3>{title}</h3>
+                <div className="devent-card-meta">
+                  <span className={`badge ${
+                    item.status === 'completed' ? 'badge-green'
+                      : item.status === 'open' ? 'badge-amber'
+                        : 'badge-muted'
+                  }`}
+                  >
+                    {STATUS_LABEL[String(item.status)] || String(item.status)}
+                  </span>
+                  {' · '}
+                  {new Date(String(item.message_created_at)).toLocaleString('ru-RU')}
+                  {item.event_key ? ` · ${item.event_key}` : ''}
+                  {' · '}
+                  {Number(item.participant_count) || participants.length} уч.
+                </div>
+              </div>
+              <div className="devent-card-actions">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setExpanded(open ? null : id)}
+                >
+                  {open ? 'Скрыть' : 'Состав'}
+                </button>
+                {caps.editStatus ? (
                   <Select
                     value={String(item.status)}
                     disabled={busy}
@@ -279,24 +280,25 @@ export function DiscordEventsInteractive() {
                     options={[
                       { value: 'completed', label: 'Проведено' },
                       { value: 'open', label: 'Идёт' },
-                      { value: 'abandoned', label: 'Не проведено' },
+                      { value: 'abandoned', label: 'Отменено' },
                     ]}
                   />
-                </div>
-              ) : null}
-              {caps.delete ? (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  disabled={busy}
-                  onClick={() => void removeEvent(id, title)}
-                >
-                  <NavIcon name="trash" /> Удалить
-                </button>
-              ) : null}
+                ) : null}
+                {caps.delete ? (
+                  <button
+                    type="button"
+                    className="icon-btn danger"
+                    title="Удалить"
+                    disabled={busy}
+                    onClick={() => void removeEvent(id, title)}
+                  >
+                    <NavIcon name="trash" />
+                  </button>
+                ) : null}
+              </div>
             </div>
             {open ? (
-              <div style={{ marginTop: 12 }}>
+              <div className="devent-card-body">
                 {participants.map((p) => {
                   const discordId = String(p.discord_id);
                   const onSite = !!p.on_site || !!p.user_id;
@@ -321,7 +323,7 @@ export function DiscordEventsInteractive() {
                           avatar_url: p.avatar_url,
                           avatar_image_id: p.avatar_image_id,
                         }}
-                        size={36}
+                        size={32}
                       />
                       <span className="member-copy">
                         <span className="nickname">{nickname}</span>
@@ -359,11 +361,11 @@ export function DiscordEventsInteractive() {
                 {caps.editParticipants ? (
                   <form
                     className="inline-form"
-                    style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' }}
+                    style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' }}
                     onSubmit={(e) => void addParticipant(e, id)}
                   >
-                    <div className="field" style={{ margin: 0, minWidth: 220, flex: 1 }}>
-                      <label>Добавить Discord ID</label>
+                    <div className="field" style={{ margin: 0, minWidth: 200, flex: 1 }}>
+                      <label>Discord ID</label>
                       <input className="input" name="discordId" inputMode="numeric" required placeholder="123456789012345678" />
                     </div>
                     <button className="btn btn-primary btn-sm" type="submit" disabled={busy}>

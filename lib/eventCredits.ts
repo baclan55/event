@@ -1,11 +1,11 @@
 /**
- * Доначисление МП за календарную неделю (пн–вс) по леджеру event_bot_credits.
- * Нужно, когда участник был в Discord-сборе до появления в users —
- * после регистрации/привязки Discord ID старые completed-сборы текущей
- * недели попадают в weekly_events.
+ * Синхронизация МП за календарную неделю (пн–вс) после входа / привязки Discord.
+ * Считаем уникальные completed-сборы по message_created_at — не по completed_at
+ * и не по сырому числу строк в event_bot_credits (там могут быть старые записи
+ * после пересборки).
  */
 
-import { sqlInCurrentWeek, weekTimeZone, type SqlQuery } from '@/lib/weekBounds';
+import { countWeeklyMpForUser, weekTimeZone, type SqlQuery } from '@/lib/weekBounds';
 
 export type { SqlQuery };
 
@@ -19,30 +19,28 @@ export async function reconcileWeeklyEventCredits(
     return { userId: null, weeklyEvents: 0, creditCount: 0 };
   }
 
-  const credits = await query(
-    `SELECT COUNT(*)::text AS count
-     FROM event_bot_credits c
-     JOIN discord_gather_events e ON e.message_id = c.message_id
-     WHERE c.discord_id = $1
-       AND e.status = 'completed'
-       AND ${sqlInCurrentWeek('COALESCE(e.completed_at, e.message_created_at)', 2)}`,
-    [id, tz],
+  const found = await query(
+    'SELECT id FROM users WHERE discord_id = $1',
+    [id],
   );
-  const creditCount = Number(credits.rows[0]?.count || 0);
+  const userId = found.rows[0]?.id != null ? Number(found.rows[0].id) : null;
+  if (userId == null) {
+    return { userId: null, weeklyEvents: 0, creditCount: 0 };
+  }
 
-  // Точное значение за текущую календарную неделю (не «последние 7 дней»).
+  const creditCount = await countWeeklyMpForUser(query, userId, tz);
   const updated = await query(
     `UPDATE users
      SET weekly_events = $2
-     WHERE discord_id = $1
+     WHERE id = $1
      RETURNING id, weekly_events`,
-    [id, creditCount],
+    [userId, creditCount],
   );
 
   const row = updated.rows[0];
   return {
     userId: row?.id != null ? Number(row.id) : null,
-    weeklyEvents: row?.weekly_events != null ? Number(row.weekly_events) : 0,
+    weeklyEvents: row?.weekly_events != null ? Number(row.weekly_events) : creditCount,
     creditCount,
   };
 }

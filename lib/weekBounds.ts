@@ -8,6 +8,9 @@ export function weekTimeZone(): string {
 /**
  * Условие SQL: момент `expr` попадает в текущую календарную неделю (пн–вс) в TZ.
  * `$N` — параметр с именем таймзоны (Europe/Moscow и т.п.).
+ *
+ * Для МП используем message_created_at (когда был сбор), а не completed_at:
+ * при «Пересобрать МП» completed_at может стать «сейчас» и раздуть счётчик.
  */
 export function sqlInCurrentWeek(expr: string, tzParam: number): string {
   return (
@@ -16,25 +19,42 @@ export function sqlInCurrentWeek(expr: string, tzParam: number): string {
   );
 }
 
+/** Подзапрос COUNT уникальных completed-МП по discord_id за текущую неделю. */
+export function sqlCountWeeklyMpSubquery(discordIdExpr: string, tzParam: number): string {
+  const week = sqlInCurrentWeek('e.message_created_at', tzParam);
+  return `(
+    SELECT COUNT(DISTINCT e.message_id)::int
+    FROM discord_gather_participants p
+    JOIN discord_gather_events e ON e.message_id = p.message_id
+    WHERE p.discord_id = ${discordIdExpr}
+      AND e.status = 'completed'
+      AND ${week}
+  )`;
+}
+
 export type SqlQuery = (
   text: string,
   params?: unknown[],
 ) => Promise<{ rows: Array<Record<string, unknown>> }>;
 
-/** Число completed-сборов МП пользователя за текущую календарную неделю. */
+/**
+ * Число уникальных проведённых сборов МП за текущую календарную неделю
+ * (по дате сообщения сбора, без дублей).
+ */
 export async function countWeeklyMpForUser(
   query: SqlQuery,
   userId: number,
   tz = weekTimeZone(),
 ): Promise<number> {
   const result = await query(
-    `SELECT COUNT(*)::text AS count
-     FROM event_bot_credits c
-     JOIN discord_gather_events e ON e.message_id = c.message_id
-     JOIN users u ON u.discord_id = c.discord_id
+    `SELECT COUNT(DISTINCT e.message_id)::text AS count
+     FROM discord_gather_participants p
+     JOIN discord_gather_events e ON e.message_id = p.message_id
+     JOIN users u ON u.discord_id = p.discord_id
      WHERE u.id = $1
+       AND u.discord_id IS NOT NULL
        AND e.status = 'completed'
-       AND ${sqlInCurrentWeek('COALESCE(e.completed_at, e.message_created_at)', 2)}`,
+       AND ${sqlInCurrentWeek('e.message_created_at', 2)}`,
     [userId, tz],
   );
   return Number(result.rows[0]?.count || 0);
