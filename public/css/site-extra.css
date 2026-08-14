@@ -88,13 +88,27 @@ a.stats-rank-title:hover{color:var(--accent-light)}
 .stats-rank-track{height:6px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden}
 .stats-rank-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent-light))}
 
-.stats-line-wrap{width:100%}
+.stats-line-wrap{position:relative;width:100%}
 .stats-line-svg{width:100%;height:auto;display:block}
 .stats-grid-line{stroke:rgba(255,255,255,.08);stroke-width:1}
 .stats-axis-text{fill:var(--text-muted);font-size:11px}
 .stats-area-fill{fill:rgba(124,92,252,.16)}
 .stats-line-stroke{stroke:var(--accent-light);stroke-width:2.5;fill:none}
-.stats-line-dot{fill:var(--accent);stroke:#1a1528;stroke-width:1.5}
+.stats-line-dot{fill:var(--accent);stroke:#1a1528;stroke-width:1.5;transition:r .12s ease,fill .12s ease}
+.stats-line-dot.is-active{fill:var(--accent-light)}
+.stats-dot-hit{cursor:pointer;outline:none}
+.stats-dot-hit:focus-visible .stats-line-dot{fill:var(--accent-light)}
+.stats-guide-line{pointer-events:none}
+.stats-chart-tooltip{
+  position:absolute;z-index:5;pointer-events:none;
+  transform:translate(-50%,calc(-100% - 10px));
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  min-width:52px;padding:7px 10px;border-radius:10px;
+  background:rgba(18,14,28,.96);border:1px solid rgba(167,139,250,.35);
+  box-shadow:0 8px 24px rgba(0,0,0,.35);white-space:nowrap
+}
+.stats-chart-tooltip-label{font-size:11px;color:var(--text-muted);line-height:1.2}
+.stats-chart-tooltip-value{font-family:var(--font-mono);font-size:16px;font-weight:800;color:var(--text-heading);line-height:1.1}
 
 @media (max-width:1100px){
   .stats-kpi-grid,.stats-kpi-5,.stats-kpi-4{grid-template-columns:repeat(3,minmax(0,1fr))}

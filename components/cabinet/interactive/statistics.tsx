@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import {
   STATS_CAP_LABELS,
   STATS_CAP_PATHS,
@@ -95,6 +95,10 @@ function RankList({ title, rows, empty }: { title: string; rows: Point[]; empty:
 }
 
 function LineChart({ title, points }: { title: string; points: Point[] }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState<number | null>(null);
+  const [tipPos, setTipPos] = useState<{ left: number; top: number } | null>(null);
+
   const values = points.map((p) => asNumber(p.value));
   const max = Math.max(1, ...values);
   const w = 640;
@@ -126,11 +130,28 @@ function LineChart({ title, points }: { title: string; points: Point[] }) {
     ? coords
     : [coords[0], coords[Math.floor(coords.length / 2)], coords[coords.length - 1]];
 
+  const showTip = useCallback((index: number, clientX: number, clientY: number) => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const left = Math.min(Math.max(8, clientX - rect.left), rect.width - 8);
+    const top = Math.min(Math.max(8, clientY - rect.top - 12), rect.height - 8);
+    setActive(index);
+    setTipPos({ left, top });
+  }, []);
+
+  const hideTip = useCallback(() => {
+    setActive(null);
+    setTipPos(null);
+  }, []);
+
+  const activePoint = active != null ? coords[active] : null;
+
   return (
     <div className="card card-pad stats-panel">
       <div className="card-header"><h3>{title}</h3></div>
       {points.length ? (
-        <div className="stats-line-wrap">
+        <div className="stats-line-wrap" ref={wrapRef} onMouseLeave={hideTip}>
           <svg viewBox={`0 0 ${w} ${h}`} className="stats-line-svg" role="img" aria-label={title}>
             {ticks.map((tick) => (
               <g key={tick.label + tick.y}>
@@ -165,20 +186,52 @@ function LineChart({ title, points }: { title: string; points: Point[] }) {
               stroke="#a78bfa"
               strokeWidth="2.5"
             />
-            {coords.map((c) => (
-              <circle
-                key={`${c.label}-${c.x}`}
-                cx={c.x}
-                cy={c.y}
-                r="3.5"
-                className="stats-line-dot"
-                fill="#7c5cfc"
-                stroke="#1a1528"
-                strokeWidth="1.5"
-              >
-                <title>{`${c.label}: ${c.v}`}</title>
-              </circle>
-            ))}
+            {activePoint ? (
+              <line
+                x1={activePoint.x}
+                x2={activePoint.x}
+                y1={padT}
+                y2={padT + innerH}
+                className="stats-guide-line"
+                stroke="rgba(167,139,250,.35)"
+                strokeWidth="1"
+                strokeDasharray="4 3"
+              />
+            ) : null}
+            {coords.map((c, i) => {
+              const isActive = active === i;
+              return (
+                <g
+                  key={`${c.label}-${c.x}-${i}`}
+                  className="stats-dot-hit"
+                  onMouseEnter={(e) => showTip(i, e.clientX, e.clientY)}
+                  onMouseMove={(e) => showTip(i, e.clientX, e.clientY)}
+                  onFocus={() => {
+                    const wrap = wrapRef.current;
+                    if (!wrap) return;
+                    const rect = wrap.getBoundingClientRect();
+                    const px = (c.x / w) * rect.width;
+                    const py = (c.y / h) * rect.height;
+                    showTip(i, rect.left + px, rect.top + py);
+                  }}
+                  onBlur={hideTip}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`${c.label}: ${c.v}`}
+                >
+                  <circle cx={c.x} cy={c.y} r="12" fill="transparent" />
+                  <circle
+                    cx={c.x}
+                    cy={c.y}
+                    r={isActive ? 5.5 : 3.5}
+                    className={`stats-line-dot${isActive ? ' is-active' : ''}`}
+                    fill={isActive ? '#c4b5fd' : '#7c5cfc'}
+                    stroke="#1a1528"
+                    strokeWidth="1.5"
+                  />
+                </g>
+              );
+            })}
             {xLabels.map((c) => (
               <text
                 key={`x-${c.x}-${c.label}`}
@@ -193,6 +246,16 @@ function LineChart({ title, points }: { title: string; points: Point[] }) {
               </text>
             ))}
           </svg>
+          {activePoint && tipPos ? (
+            <div
+              className="stats-chart-tooltip"
+              style={{ left: tipPos.left, top: tipPos.top }}
+              role="status"
+            >
+              <span className="stats-chart-tooltip-label">{activePoint.label}</span>
+              <span className="stats-chart-tooltip-value">{activePoint.v}</span>
+            </div>
+          ) : null}
         </div>
       ) : <div className="empty-state"><p>Нет данных за период</p></div>}
     </div>
