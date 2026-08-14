@@ -105,11 +105,18 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
       const user = await requiredPerm('moderate_profile');
       if (user instanceof NextResponse) return user;
       const result = await query(
-        `SELECT p.*, u.nickname, u.discord_username
+        `SELECT p.*,
+                u.nickname,
+                u.discord_username,
+                r.nickname AS reviewer_nickname
          FROM profile_change_requests p
          JOIN users u ON u.id = p.user_id
-         WHERE p.status='pending'
-         ORDER BY p.created_at ASC`,
+         LEFT JOIN users r ON r.id = p.reviewed_by
+         WHERE p.status IN ('pending', 'approved', 'rejected')
+         ORDER BY
+           CASE p.status WHEN 'pending' THEN 0 ELSE 1 END,
+           CASE WHEN p.status = 'pending' THEN p.created_at END ASC NULLS LAST,
+           COALESCE(p.reviewed_at, p.created_at) DESC`,
       );
       return NextResponse.json({
         requests: result.rows,

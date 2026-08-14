@@ -62,7 +62,7 @@ const SUBTITLES: Record<string, string> = {
   '/app/events': 'Сборы МП из Discord: название, дата и участники',
   '/app/payouts': 'Недельные выплаты хелперам',
   '/app/payouts/settings': 'Цены МП/ГМП, минимум и штрафы по ролям',
-  '/app/profile-moderation': 'Заявки на смену имени, фамилии и StaticID',
+  '/app/profile-moderation': 'Активные заявки и история решений по имени, фамилии и StaticID',
   '/app/statistics': 'Сводные показатели отдела',
   '/app/statistics/events': 'Проведение МП: объёмы и топы',
   '/app/statistics/users': 'Состав, роли и статусы',
