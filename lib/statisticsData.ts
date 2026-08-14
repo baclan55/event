@@ -25,14 +25,12 @@ async function seriesFor(
   range: StatsRange,
   extraParams: unknown[] = [],
 ) {
-  const bucket = chartBucket(range.period);
-  const trunc = bucket === 'hour'
-    ? `to_char(date_trunc('hour', (${timeExpr} AT TIME ZONE $1)), 'YYYY-MM-DD HH24:00')`
-    : bucket === 'day'
-      ? `to_char((${timeExpr} AT TIME ZONE $1)::date, 'YYYY-MM-DD')`
-      : bucket === 'week'
-        ? `to_char(date_trunc('week', ${timeExpr} AT TIME ZONE $1), 'IYYY-"W"IW')`
-        : `to_char(date_trunc('month', ${timeExpr} AT TIME ZONE $1), 'YYYY-MM')`;
+  const bucket = chartBucket(range.period, range);
+  const trunc = bucket === 'day'
+    ? `to_char((${timeExpr} AT TIME ZONE $1)::date, 'YYYY-MM-DD')`
+    : bucket === 'week'
+      ? `to_char(date_trunc('week', ${timeExpr} AT TIME ZONE $1), 'IYYY-"W"IW')`
+      : `to_char(date_trunc('month', ${timeExpr} AT TIME ZONE $1), 'YYYY-MM')`;
   const rangeSql = sqlStatsRange(timeExpr);
   const baseParams = statsRangeParams(range);
   const result = await query<{ bucket: string; c: string }>(

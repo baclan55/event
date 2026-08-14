@@ -87,10 +87,18 @@ export function statsRangeParams(range: StatsRange): [string, string | null, str
   return [range.tz, range.fromIso, range.toIso, range.period];
 }
 
-/** Шаг группировки для графиков. */
-export function chartBucket(period: StatsPeriod): 'hour' | 'day' | 'week' | 'month' {
-  if (period === 'day') return 'hour';
-  if (period === 'week' || period === 'month') return 'day';
+/** Шаг группировки для графиков — всегда календарные периоды, без часов. */
+export function chartBucket(
+  period: StatsPeriod,
+  range?: Pick<StatsRange, 'fromIso' | 'toIso'>,
+): 'day' | 'week' | 'month' {
+  if (period === 'day' || period === 'week' || period === 'month') return 'day';
   if (period === 'year') return 'week';
+  if (period === 'custom' && range?.fromIso && range?.toIso) {
+    const days =
+      (new Date(range.toIso).getTime() - new Date(range.fromIso).getTime()) / 86_400_000;
+    if (days <= 45) return 'day';
+    if (days <= 400) return 'week';
+  }
   return 'month';
 }

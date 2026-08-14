@@ -24,12 +24,9 @@ const PERIODS: Array<{ id: StatsPeriod; label: string }> = [
 function shortLabel(raw: string): string {
   const s = String(raw || '').trim();
   if (!s) return '—';
-  // 2026-08-10 or 2026-08-10 12:00
-  const day = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}))?/);
-  if (day) {
-    const base = `${day[3]}.${day[2]}`;
-    return day[4] ? `${base} ${day[4]}:00` : base;
-  }
+  // 2026-08-10 or 2026-08-10 12:00 → дата
+  const day = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (day) return `${day[3]}.${day[2]}`;
   // 2026-W33
   const week = s.match(/^(\d{4})-W(\d{2})$/i);
   if (week) return `W${week[2]}`;
@@ -101,12 +98,12 @@ function LineChart({ title, points }: { title: string; points: Point[] }) {
 
   const values = points.map((p) => asNumber(p.value));
   const max = Math.max(1, ...values);
-  const w = 640;
-  const h = 200;
-  const padL = 36;
-  const padR = 12;
+  const w = 720;
+  const h = 220;
+  const padL = 40;
+  const padR = 36;
   const padT = 16;
-  const padB = 28;
+  const padB = 32;
   const innerW = w - padL - padR;
   const innerH = h - padT - padB;
 
@@ -121,10 +118,12 @@ function LineChart({ title, points }: { title: string; points: Point[] }) {
     ? `${padL},${padT + innerH} ${polyline} ${coords[coords.length - 1].x},${padT + innerH}`
     : '';
 
-  const ticks = [0, 0.5, 1].map((t) => ({
-    y: padT + innerH - t * innerH,
-    label: String(Math.round(max * t)),
-  }));
+  const ticks = [0, 0.5, 1]
+    .map((t) => ({
+      y: padT + innerH - t * innerH,
+      label: String(Math.round(max * t)),
+    }))
+    .filter((tick, i, arr) => i === 0 || tick.label !== arr[i - 1].label);
 
   const xLabels = coords.length <= 8
     ? coords
@@ -148,7 +147,7 @@ function LineChart({ title, points }: { title: string; points: Point[] }) {
   const activePoint = active != null ? coords[active] : null;
 
   return (
-    <div className="card card-pad stats-panel">
+    <div className="card card-pad stats-panel stats-chart-card">
       <div className="card-header"><h3>{title}</h3></div>
       {points.length ? (
         <div className="stats-line-wrap" ref={wrapRef} onMouseLeave={hideTip}>
@@ -232,19 +231,24 @@ function LineChart({ title, points }: { title: string; points: Point[] }) {
                 </g>
               );
             })}
-            {xLabels.map((c) => (
-              <text
-                key={`x-${c.x}-${c.label}`}
-                x={c.x}
-                y={h - 8}
-                textAnchor="middle"
-                className="stats-axis-text"
-                fill="rgba(180,180,200,.85)"
-                fontSize="11"
-              >
-                {c.label}
-              </text>
-            ))}
+            {xLabels.map((c, i) => {
+              const isFirst = i === 0;
+              const isLast = i === xLabels.length - 1;
+              const anchor = isFirst ? 'start' : isLast ? 'end' : 'middle';
+              return (
+                <text
+                  key={`x-${c.x}-${c.label}`}
+                  x={c.x}
+                  y={h - 8}
+                  textAnchor={anchor}
+                  className="stats-axis-text"
+                  fill="rgba(180,180,200,.85)"
+                  fontSize="11"
+                >
+                  {c.label}
+                </text>
+              );
+            })}
           </svg>
           {activePoint && tipPos ? (
             <div

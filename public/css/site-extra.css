@@ -65,10 +65,11 @@ input[type="file"].input::-webkit-file-upload-button:hover,.input[type="file"]::
 .stats-kpi-danger{border-color:rgba(248,113,113,.28);background:linear-gradient(180deg,rgba(248,113,113,.08),transparent 70%),var(--bg-card)}
 .stats-kpi-accent{border-color:rgba(167,139,250,.3);background:linear-gradient(180deg,rgba(124,92,252,.1),transparent 70%),var(--bg-card)}
 
-.stats-panels{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;align-items:start}
+.stats-panels{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(220px,.75fr);gap:14px;align-items:start}
 .stats-panels-1{grid-template-columns:1fr}
 .stats-panel{min-width:0}
 .stats-panel .card-header{margin-bottom:10px}
+.stats-page .stats-chart-card.card.card-pad{padding-left:16px;padding-right:16px}
 
 .stats-rank-list{display:flex;flex-direction:column;gap:10px}
 .stats-rank-row{display:flex;gap:10px;align-items:flex-start}
@@ -88,8 +89,8 @@ a.stats-rank-title:hover{color:var(--accent-light)}
 .stats-rank-track{height:6px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden}
 .stats-rank-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent-light))}
 
-.stats-line-wrap{position:relative;width:100%}
-.stats-line-svg{width:100%;height:auto;display:block}
+.stats-line-wrap{position:relative;width:100%;overflow:visible}
+.stats-line-svg{width:100%;height:auto;display:block;overflow:visible}
 .stats-grid-line{stroke:rgba(255,255,255,.08);stroke-width:1}
 .stats-axis-text{fill:var(--text-muted);font-size:11px}
 .stats-area-fill{fill:rgba(124,92,252,.16)}
