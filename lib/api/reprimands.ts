@@ -248,7 +248,12 @@ export const handleReprimands: ApiHandler = async ({ key, params, method, body }
     action: 'reprimand.create',
     entityType: 'reprimand',
     entityId: reprimandId,
-    details: { userId, type, reason },
+    details: {
+      userId,
+      type,
+      reason,
+      nickname: (await query<{ nickname: string }>('SELECT nickname FROM users WHERE id=$1', [userId])).rows[0]?.nickname,
+    },
   });
   const status = await syncBlockStatus(userId);
   invalidateUserCache(userId);

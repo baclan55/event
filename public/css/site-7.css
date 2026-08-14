@@ -11,6 +11,7 @@
   z-index:1;
 }
 .payout-h-rep{ background:rgba(140,100,220,.18) !important; color:#d4c2ff !important; }
+.payout-h-fixed{ background:rgba(160,120,40,.18) !important; color:#f0d89f !important; }
 .payout-h-events{ background:rgba(70,120,220,.18) !important; color:#b8d0ff !important; }
 .payout-h-bonus{ background:rgba(50,160,180,.18) !important; color:#9fe7f0 !important; }
 .payout-h-comp{ background:rgba(180,70,110,.18) !important; color:#f0b8cb !important; }
@@ -35,6 +36,33 @@
   font-size:11px;
   color:var(--text-muted);
   cursor:pointer;
+}
+.payout-table input[type="checkbox"]{
+  display:inline-block;
+  vertical-align:middle;
+}
+.payout-count-btn{
+  min-width:2.2em;
+  padding:4px 8px !important;
+  font-variant-numeric:tabular-nums;
+}
+.payout-breakdown-summary{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin-bottom:16px;
+  padding:12px 14px;
+  border-radius:10px;
+  background:var(--bg-card-2);
+  border:1px solid var(--border);
+  font-size:13px;
+  color:var(--text-body);
+}
+.payout-breakdown-block{ margin-top:16px; }
+.payout-breakdown-block h4{
+  margin:0 0 8px;
+  font-size:13px;
+  color:var(--text-heading);
 }
 .payout-muted{ color:var(--text-faint); }
 .payout-row-off{ opacity:.45; }

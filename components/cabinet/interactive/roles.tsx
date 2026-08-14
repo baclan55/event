@@ -50,6 +50,8 @@ type RoleRow = {
   mpRateDollars: number;
   gmpRateMc: number;
   gmpRateDollars: number;
+  fixedMc: number;
+  fixedDollars: number;
 };
 
 function countAccess(permissions: Record<Permission, PermissionAccess> | undefined) {
@@ -200,6 +202,8 @@ export function RolesInteractive({
       mpRateDollars: money('mpRateDollars'),
       gmpRateMc: money('gmpRateMc'),
       gmpRateDollars: money('gmpRateDollars'),
+      fixedMc: money('fixedMc'),
+      fixedDollars: money('fixedDollars'),
     };
     try {
       if (editing?.id) {
@@ -272,7 +276,7 @@ export function RolesInteractive({
                 {role.isAdministrator ? ' · администратор' : ''}
                 {role.includeInHelperPayouts ? ' · выплаты' : ''}
                 {role.includeInHelperPayouts
-                  ? ` · МП ${role.mpRateMc} MC / ${role.mpRateDollars}$ · ГМП ${role.gmpRateMc} MC / ${role.gmpRateDollars}$`
+                  ? ` · МП ${role.mpRateMc} MC / ${role.mpRateDollars}$ · ГМП ${role.gmpRateMc} MC / ${role.gmpRateDollars}$ · фикс ${role.fixedMc} MC / ${role.fixedDollars}$`
                   : ''}
               </div>
             </div>
@@ -410,9 +414,35 @@ export function RolesInteractive({
                   />
                 </div>
               </div>
+              <div className="form-row-2" style={{ marginTop: 10 }}>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label>Фикс — MC</label>
+                  <input
+                    className="input"
+                    name="fixedMc"
+                    type="number"
+                    min={0}
+                    step={1}
+                    defaultValue={editing?.fixedMc ?? 0}
+                    disabled={!canEdit}
+                  />
+                </div>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label>Фикс — $</label>
+                  <input
+                    className="input"
+                    name="fixedDollars"
+                    type="number"
+                    min={0}
+                    step={1}
+                    defaultValue={editing?.fixedDollars ?? 0}
+                    disabled={!canEdit}
+                  />
+                </div>
+              </div>
               <div className="field-hint">
-                Сколько MC и долларов начисляется за одно МП и одно ГМП при расчёте выплат хелперов.
-                Мин. МП, фикс и штрафы по-прежнему в разделе «Выплаты → Настройки».
+                Ставка за одно МП/ГМП и фиксированная выплата роли. Фикс начисляется даже при 0 МП
+                и прибавляется к сумме за мероприятия. Мин. МП и штрафы — в «Выплаты → Настройки».
               </div>
             </div>
             <div className="field">

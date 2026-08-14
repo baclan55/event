@@ -112,11 +112,18 @@ async function writePayoutLog(
   );
 }
 
-type EventHit = { at: string; kind: 'mp' | 'gmp'; messageId?: string; eventId?: number };
+type EventHit = {
+  at: string;
+  kind: 'mp' | 'gmp';
+  messageId?: string;
+  eventId?: number;
+  title: string;
+  staffRole?: string;
+};
 
 async function loadUserMpEvents(userId: number, startAt: string, endAt: string): Promise<EventHit[]> {
-  const { rows } = await query<{ message_id: string; at: string }>(
-    `SELECT e.message_id, e.message_created_at::text AS at
+  const { rows } = await query<{ message_id: string; at: string; title: string }>(
+    `SELECT e.message_id, e.message_created_at::text AS at, COALESCE(e.title, '') AS title
      FROM discord_gather_participants p
      JOIN discord_gather_events e ON e.message_id = p.message_id
      JOIN users u ON u.discord_id = p.discord_id
@@ -124,24 +131,38 @@ async function loadUserMpEvents(userId: number, startAt: string, endAt: string):
        AND u.discord_id IS NOT NULL
        AND e.status = 'completed'
        AND e.message_created_at >= $2::timestamptz
-       AND e.message_created_at < $3::timestamptz`,
+       AND e.message_created_at < $3::timestamptz
+     ORDER BY e.message_created_at ASC`,
     [userId, startAt, endAt],
   );
-  return rows.map((r) => ({ at: r.at, kind: 'mp' as const, messageId: r.message_id }));
+  return rows.map((r) => ({
+    at: r.at,
+    kind: 'mp' as const,
+    messageId: r.message_id,
+    title: r.title || 'МП',
+  }));
 }
 
 async function loadUserGmpEvents(userId: number, startAt: string, endAt: string): Promise<EventHit[]> {
-  const { rows } = await query<{ event_id: number; at: string }>(
-    `SELECT e.id AS event_id, e.starts_at::text AS at
+  const { rows } = await query<{ event_id: number; at: string; title: string; staff_role: string }>(
+    `SELECT e.id AS event_id, e.starts_at::text AS at,
+            COALESCE(e.title, '') AS title, COALESCE(s.role, 'staff') AS staff_role
      FROM gmp_staff s
      JOIN gmp_events e ON e.id = s.event_id
      WHERE s.user_id = $1
        AND e.status = 'closed'
        AND e.starts_at >= $2::timestamptz
-       AND e.starts_at < $3::timestamptz`,
+       AND e.starts_at < $3::timestamptz
+     ORDER BY e.starts_at ASC`,
     [userId, startAt, endAt],
   );
-  return rows.map((r) => ({ at: r.at, kind: 'gmp' as const, eventId: r.event_id }));
+  return rows.map((r) => ({
+    at: r.at,
+    kind: 'gmp' as const,
+    eventId: r.event_id,
+    title: r.title || 'ГМП',
+    staffRole: r.staff_role,
+  }));
 }
 
 export type ComputedPayout = {
@@ -151,6 +172,8 @@ export type ComputedPayout = {
   mp_count: number;
   gmp_count: number;
   breakdown: Record<string, unknown>;
+  fixed_mc: number;
+  fixed_dollars: number;
   events_mc: number;
   events_dollars: number;
 };
@@ -174,30 +197,58 @@ export async function computeUserPayoutForWeek(
 
   let rawMc = 0;
   let rawDollars = 0;
-  const byRole: Record<string, { roleId: number; roleName: string; mp: number; gmp: number; mc: number; dollars: number }> = {};
+  const byRole: Record<string, { roleId: number; roleName: string; roleColor: string; mp: number; gmp: number; mc: number; dollars: number }> = {};
+  const events: Array<{
+    kind: 'mp' | 'gmp';
+    at: string;
+    title: string;
+    id: string;
+    roleId: number | null;
+    roleName: string;
+    roleColor: string;
+    rateMc: number;
+    rateDollars: number;
+    staffRole?: string;
+  }> = [];
 
-  for (const hit of [...mpEvents, ...gmpEvents]) {
+  const hits = [...mpEvents, ...gmpEvents].sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  for (const hit of hits) {
     const role = await helperRoleAtNow(userId, hit.at);
     const roleId = role?.id || 0;
     const roleName = role?.name || '—';
+    const roleColor = role?.color || '';
     const cfg = settings.get(roleId) || emptySettings(roleId);
     const key = String(roleId || 'none');
     if (!byRole[key]) {
-      byRole[key] = { roleId, roleName, mp: 0, gmp: 0, mc: 0, dollars: 0 };
+      byRole[key] = { roleId, roleName, roleColor, mp: 0, gmp: 0, mc: 0, dollars: 0 };
     }
+    const rateMc = hit.kind === 'mp' ? cfg.mp_rate_mc : cfg.gmp_rate_mc;
+    const rateDollars = hit.kind === 'mp' ? cfg.mp_rate_dollars : cfg.gmp_rate_dollars;
     if (hit.kind === 'mp') {
       byRole[key].mp += 1;
-      byRole[key].mc += cfg.mp_rate_mc;
-      byRole[key].dollars += cfg.mp_rate_dollars;
-      rawMc += cfg.mp_rate_mc;
-      rawDollars += cfg.mp_rate_dollars;
+      byRole[key].mc += rateMc;
+      byRole[key].dollars += rateDollars;
+      rawMc += rateMc;
+      rawDollars += rateDollars;
     } else {
       byRole[key].gmp += 1;
-      byRole[key].mc += cfg.gmp_rate_mc;
-      byRole[key].dollars += cfg.gmp_rate_dollars;
-      rawMc += cfg.gmp_rate_mc;
-      rawDollars += cfg.gmp_rate_dollars;
+      byRole[key].mc += rateMc;
+      byRole[key].dollars += rateDollars;
+      rawMc += rateMc;
+      rawDollars += rateDollars;
     }
+    events.push({
+      kind: hit.kind,
+      at: hit.at,
+      title: hit.title,
+      id: hit.kind === 'mp' ? String(hit.messageId || '') : String(hit.eventId || ''),
+      roleId: role?.id || null,
+      roleName,
+      roleColor,
+      rateMc: roundMoney(rateMc),
+      rateDollars: roundMoney(rateDollars),
+      staffRole: hit.staffRole,
+    });
   }
 
   const displayRole = await helperRoleAtNow(userId, endAt);
@@ -215,17 +266,26 @@ export async function computeUserPayoutForWeek(
   const verbalCount = Math.max(0, Math.floor(opts.verbalCount ?? 0));
   const strictCount = Math.max(0, Math.floor(opts.strictCount ?? 0));
 
-  let eventsMc = 0;
-  let eventsDollars = 0;
+  const fixedMc = roundMoney(primaryCfg.fixed_mc);
+  const fixedDollars = roundMoney(primaryCfg.fixed_dollars);
+
+  let variableMc = 0;
+  let variableDollars = 0;
   if (eligible) {
     let penaltyPct = 0;
     if (countVerbal) penaltyPct += verbalCount * primaryCfg.verbal_penalty_pct;
     if (countStrict) penaltyPct += strictCount * primaryCfg.strict_penalty_pct;
     penaltyPct = Math.min(100, Math.max(0, penaltyPct));
     const factor = 1 - penaltyPct / 100;
-    eventsMc = roundMoney(rawMc * factor + primaryCfg.fixed_mc);
-    eventsDollars = roundMoney(rawDollars * factor + primaryCfg.fixed_dollars);
+    variableMc = roundMoney(rawMc * factor);
+    variableDollars = roundMoney(rawDollars * factor);
   }
+
+  // Фикс всегда (даже при 0 МП); к нему прибавляется оплата за МП/ГМП.
+  const eventsMc = variableMc;
+  const eventsDollars = variableDollars;
+  const totalMc = roundMoney(variableMc + fixedMc);
+  const totalDollars = roundMoney(variableDollars + fixedDollars);
 
   return {
     role_id: roleAtEnd?.id || null,
@@ -234,56 +294,52 @@ export async function computeUserPayoutForWeek(
     mp_count: mpCount,
     gmp_count: gmpCount,
     breakdown: {
-      byRole: Object.values(byRole),
+      byRole: Object.values(byRole).map((r) => ({
+        ...r,
+        mc: roundMoney(r.mc),
+        dollars: roundMoney(r.dollars),
+      })),
+      events,
       rawMc: roundMoney(rawMc),
       rawDollars: roundMoney(rawDollars),
+      variableMc,
+      variableDollars,
       minMp: primaryCfg.min_mp,
       eligible,
-      fixedMc: eligible ? roundMoney(primaryCfg.fixed_mc) : 0,
-      fixedDollars: eligible ? roundMoney(primaryCfg.fixed_dollars) : 0,
+      fixedMc,
+      fixedDollars,
+      verbalPenaltyPct: primaryCfg.verbal_penalty_pct,
+      strictPenaltyPct: primaryCfg.strict_penalty_pct,
       countVerbal,
       countStrict,
       verbalCount,
       strictCount,
+      primaryRoleId: roleAtEnd?.id || null,
+      primaryRoleName: roleAtEnd?.name || '',
+      primaryRoleColor: roleAtEnd?.color || '',
+      eventsMc,
+      eventsDollars,
+      totalMc,
+      totalDollars,
     },
+    fixed_mc: fixedMc,
+    fixed_dollars: fixedDollars,
     events_mc: eventsMc,
     events_dollars: eventsDollars,
   };
 }
 
-async function helperUserIdsForWeek(weekStart: string): Promise<number[]> {
-  const tz = weekTimeZone();
-  const { startAt, endAt } = await weekBounds(weekStart, tz);
+async function helperUserIdsForWeek(_weekStart: string): Promise<number[]> {
   const { rows } = await query<{ id: number }>(
     `SELECT DISTINCT u.id
      FROM users u
      WHERE u.status = 'member'
-       AND (
-         EXISTS (
-           SELECT 1 FROM user_roles ur
-           JOIN roles r ON r.id = ur.role_id
-           WHERE ur.user_id = u.id AND r.include_in_helper_payouts = TRUE
-         )
-         OR EXISTS (
-           SELECT 1 FROM discord_gather_participants p
-           JOIN discord_gather_events e ON e.message_id = p.message_id
-           WHERE p.discord_id = u.discord_id
-             AND u.discord_id IS NOT NULL
-             AND e.status = 'completed'
-             AND e.message_created_at >= $1::timestamptz
-             AND e.message_created_at < $2::timestamptz
-         )
-         OR EXISTS (
-           SELECT 1 FROM gmp_staff s
-           JOIN gmp_events e ON e.id = s.event_id
-           WHERE s.user_id = u.id
-             AND e.status = 'closed'
-             AND e.starts_at >= $1::timestamptz
-             AND e.starts_at < $2::timestamptz
-         )
+       AND EXISTS (
+         SELECT 1 FROM user_roles ur
+         JOIN roles r ON r.id = ur.role_id
+         WHERE ur.user_id = u.id AND r.include_in_helper_payouts = TRUE
        )
      ORDER BY u.id`,
-    [startAt, endAt],
   );
   return rows.map((r) => r.id);
 }
@@ -422,7 +478,9 @@ export async function rebuildPayoutWeekRows(
            events_dollars = CASE WHEN $10 THEN events_dollars ELSE $12 END,
            events_override = CASE WHEN $13 THEN FALSE ELSE events_override END,
            count_verbal = $14,
-           count_strict = $15
+           count_strict = $15,
+           fixed_mc = $16,
+           fixed_dollars = $17
          WHERE id = $1`,
         [
           row.id,
@@ -440,6 +498,8 @@ export async function rebuildPayoutWeekRows(
           !!opts.forceAll,
           countVerbal,
           countStrict,
+          computed.fixed_mc,
+          computed.fixed_dollars,
         ],
       );
 
@@ -461,11 +521,13 @@ export async function rebuildPayoutWeekRows(
         `INSERT INTO payout_rows (
            week_id, user_id, role_id, role_name, role_color, nickname, static_id,
            mp_count, gmp_count, breakdown, events_mc, events_dollars,
+           fixed_mc, fixed_dollars,
            bonus_mc, bonus_dollars, bonus_note, comp_static_id, comp_dollars,
            count_verbal, count_strict, manual, include_in_payout, events_override
          ) VALUES (
            $1,$2,$3,$4,$5,$6,$7,
            $8,$9,$10::jsonb,$11,$12,
+           $13,$14,
            0,0,'','',0,
            TRUE, TRUE, FALSE, TRUE, FALSE
          ) RETURNING id`,
@@ -482,6 +544,8 @@ export async function rebuildPayoutWeekRows(
           JSON.stringify(computed.breakdown),
           computed.events_mc,
           computed.events_dollars,
+          computed.fixed_mc,
+          computed.fixed_dollars,
         ],
       );
       for (const r of reps) {
@@ -492,6 +556,17 @@ export async function rebuildPayoutWeekRows(
         );
       }
     }
+  }
+
+  // Убрать строки без роли «учёт в выплатах» (кроме вручную добавленных).
+  if (!opts.onlyUserId) {
+    await query(
+      `DELETE FROM payout_rows
+       WHERE week_id = $1
+         AND COALESCE(manual, FALSE) = FALSE
+         AND NOT (user_id = ANY($2::int[]))`,
+      [weekId, userIds],
+    );
   }
 
   // Обновить статус pending/ready
@@ -511,6 +586,11 @@ export async function rebuildPayoutWeekRows(
     forceAll: !!opts.forceAll,
     onlyUserId: opts.onlyUserId || null,
     users: userIds.length,
+    summary: opts.onlyUserId
+      ? 'Пересчитана одна строка ведомости'
+      : opts.forceAll
+        ? `Полный пересчёт ведомости (${userIds.length} сотр.)`
+        : `Пересчёт автополей (${userIds.length} сотр.)`,
   });
 }
 
@@ -555,7 +635,8 @@ export async function recomputeRowEvents(rowId: number, actorId?: number | null)
        role_id=$2, role_name=$3, role_color=$4, nickname=$5,
        static_id=CASE WHEN COALESCE($6,'')='' THEN static_id ELSE $6 END,
        mp_count=$7, gmp_count=$8, breakdown=$9::jsonb,
-       events_mc=$10, events_dollars=$11, events_override=FALSE
+       events_mc=$10, events_dollars=$11, events_override=FALSE,
+       fixed_mc=$12, fixed_dollars=$13
      WHERE id=$1`,
     [
       rowId,
@@ -569,6 +650,8 @@ export async function recomputeRowEvents(rowId: number, actorId?: number | null)
       JSON.stringify(computed.breakdown),
       computed.events_mc,
       computed.events_dollars,
+      computed.fixed_mc,
+      computed.fixed_dollars,
     ],
   );
   await writePayoutLog(row.week_id, actorId ?? null, 'row.recompute', { rowId, userId: row.user_id });
@@ -579,6 +662,8 @@ export function buildExportCommands(rows: Array<{
   static_id: string;
   events_mc: number;
   events_dollars: number;
+  fixed_mc?: number;
+  fixed_dollars?: number;
   bonus_mc: number;
   bonus_dollars: number;
   comp_static_id: string;
@@ -590,8 +675,8 @@ export function buildExportCommands(rows: Array<{
   for (const row of rows) {
     if (!row.include_in_payout) continue;
     const sid = String(row.static_id || '').trim();
-    const mcSum = roundMoney(num(row.events_mc) + num(row.bonus_mc));
-    const dSum = roundMoney(num(row.events_dollars) + num(row.bonus_dollars));
+    const mcSum = roundMoney(num(row.events_mc) + num(row.fixed_mc) + num(row.bonus_mc));
+    const dSum = roundMoney(num(row.events_dollars) + num(row.fixed_dollars) + num(row.bonus_dollars));
     const cSum = roundMoney(num(row.comp_dollars));
     const cSid = String(row.comp_static_id || sid).trim();
     if (sid && mcSum > 0) mc.push(`/givedonate ${sid} ${Math.round(mcSum)} eventhelper`);

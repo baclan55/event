@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
+import { describeLogEntry } from '@/lib/auditShared';
 import { askConfirm, ErrorText, Modal, request, SearchBox, Select, matchesSearch, RoleName, type Row } from './shared';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -243,6 +244,9 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
   const [members, setMembers] = useState<Row[]>([]);
   const [addUserId, setAddUserId] = useState('');
   const [showExport, setShowExport] = useState(false);
+  const [detailRow, setDetailRow] = useState<Row | null>(null);
+  const [detail, setDetail] = useState<Row | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const load = useCallback(async () => {
     const data = await request(`/api/payouts/${weekId}`);
@@ -289,6 +293,22 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
       await load();
     } catch (err) {
       setError((err as Error).message);
+    }
+  }
+
+  async function openDetail(row: Row) {
+    setDetailRow(row);
+    setDetail(null);
+    setDetailLoading(true);
+    setError('');
+    try {
+      const data = await request(`/api/payouts/${weekId}/breakdown?rowId=${row.id}`);
+      setDetail(data);
+    } catch (err) {
+      setError((err as Error).message);
+      setDetailRow(null);
+    } finally {
+      setDetailLoading(false);
     }
   }
 
@@ -409,6 +429,7 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
               <th rowSpan={2}>МП</th>
               <th rowSpan={2}>ГМП</th>
               <th colSpan={2} className="payout-h-rep">Выговоры</th>
+              <th colSpan={2} className="payout-h-fixed">Фикс</th>
               <th colSpan={2} className="payout-h-events">За мероприятия</th>
               <th colSpan={3} className="payout-h-bonus">Доп. бонусы</th>
               <th colSpan={2} className="payout-h-comp">Компенсация</th>
@@ -416,6 +437,8 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
             <tr>
               <th className="payout-h-rep">Устные</th>
               <th className="payout-h-rep">Строгие</th>
+              <th className="payout-h-fixed">MC</th>
+              <th className="payout-h-fixed">$</th>
               <th className="payout-h-events">MC</th>
               <th className="payout-h-events">$</th>
               <th className="payout-h-bonus">MC</th>
@@ -457,8 +480,26 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
                       onBlur={(e) => void patchRow(Number(row.id), { static_id: e.target.value })}
                     />
                   </td>
-                  <td className="payout-num">{row.mp_count}</td>
-                  <td className="payout-num">{row.gmp_count}</td>
+                  <td className="payout-num">
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm payout-count-btn"
+                      title="Разбор расчёта"
+                      onClick={() => void openDetail(row)}
+                    >
+                      {row.mp_count}
+                    </button>
+                  </td>
+                  <td className="payout-num">
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm payout-count-btn"
+                      title="Разбор расчёта"
+                      onClick={() => void openDetail(row)}
+                    >
+                      {row.gmp_count}
+                    </button>
+                  </td>
                   <td className="payout-reps">
                     <label className="payout-rep-toggle" title="Учитывать устные выговоры">
                       <input
@@ -481,6 +522,8 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
                       стр. {strict.length}
                     </label>
                   </td>
+                  <td className="payout-num payout-fixed">{moneyText(row.fixed_mc)}</td>
+                  <td className="payout-num payout-fixed">{moneyText(row.fixed_dollars)}</td>
                   {([
                     ['events_mc', row.events_mc],
                     ['events_dollars', row.events_dollars],
@@ -591,7 +634,167 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
           </div>
         </Modal>
       )}
+
+      {detailRow && (
+        <Modal
+          title={`Расчёт · ${detailRow.nickname}`}
+          onClose={() => { setDetailRow(null); setDetail(null); }}
+          xl
+        >
+          {detailLoading || !detail ? (
+            <div className="empty-state"><h3>Загрузка…</h3></div>
+          ) : (
+            <PayoutBreakdownView detail={detail} />
+          )}
+          <div className="modal-actions">
+            <button
+              className="btn btn-ghost"
+              type="button"
+              onClick={() => { setDetailRow(null); setDetail(null); }}
+            >
+              Закрыть
+            </button>
+          </div>
+        </Modal>
+      )}
     </>
+  );
+}
+
+type BreakdownEvent = {
+  kind?: string;
+  at?: string;
+  title?: string;
+  roleName?: string;
+  roleColor?: string;
+  rateMc?: number;
+  rateDollars?: number;
+  staffRole?: string;
+};
+
+type BreakdownByRole = {
+  roleName?: string;
+  roleColor?: string;
+  mp?: number;
+  gmp?: number;
+  mc?: number;
+  dollars?: number;
+};
+
+function formatEventAt(at: unknown) {
+  const raw = String(at || '');
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw || '—';
+  return d.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function PayoutBreakdownView({ detail }: { detail: Row }) {
+  const row = (detail.row || {}) as Row;
+  const totals = (detail.computedTotals || {}) as Row;
+  const bd = (detail.breakdown || {}) as Row;
+  const events = (Array.isArray(bd.events) ? bd.events : []) as BreakdownEvent[];
+  const byRole = (Array.isArray(bd.byRole) ? bd.byRole : []) as BreakdownByRole[];
+  const penaltyBits: string[] = [];
+  if (bd.countVerbal !== false && Number(bd.verbalCount) > 0) {
+    penaltyBits.push(`устные ${bd.verbalCount} × ${bd.verbalPenaltyPct || 0}%`);
+  }
+  if (bd.countStrict !== false && Number(bd.strictCount) > 0) {
+    penaltyBits.push(`строгие ${bd.strictCount} × ${bd.strictPenaltyPct || 0}%`);
+  }
+
+  return (
+    <div className="payout-breakdown">
+      <div className="payout-breakdown-summary">
+        <div>
+          Роль на конец недели:{' '}
+          <RoleName name={totals.roleName || row.roleName} color={totals.roleColor || row.roleColor} />
+        </div>
+        <div>
+          МП {totals.mpCount ?? row.mpCount} · ГМП {totals.gmpCount ?? row.gmpCount}
+          {' · '}сырьё {bd.rawMc ?? 0} MC / {bd.rawDollars ?? 0}$
+          {bd.eligible
+            ? ` · за МП/ГМП ${bd.variableMc ?? totals.eventsMc ?? 0} MC / ${bd.variableDollars ?? totals.eventsDollars ?? 0}$`
+            : ` · МП/ГМП не оплачены (мин. ${bd.minMp ?? 0} МП)`}
+          {` · фикс ${bd.fixedMc || 0} MC / ${bd.fixedDollars || 0}$`}
+          {` · итого ${bd.totalMc ?? (Number(bd.variableMc || 0) + Number(bd.fixedMc || 0))} MC / ${bd.totalDollars ?? (Number(bd.variableDollars || 0) + Number(bd.fixedDollars || 0))}$`}
+        </div>
+        {(Number(bd.fixedMc) > 0 || Number(bd.fixedDollars) > 0) && (
+          <div>Фикс роли начисляется всегда, даже при 0 МП.</div>
+        )}
+        {penaltyBits.length > 0 && <div>Штрафы: {penaltyBits.join(', ')}</div>}
+        {row.eventsOverride ? (
+          <div className="field-hint">В ведомости суммы «за мероприятия» изменены вручную ({row.eventsMc} MC / {row.eventsDollars}$).</div>
+        ) : null}
+      </div>
+
+      {byRole.length > 0 && (
+        <div className="payout-breakdown-block">
+          <h4>По ролям на момент событий</h4>
+          <div className="payout-table-wrap">
+            <table className="payout-table">
+              <thead>
+                <tr>
+                  <th>Роль</th>
+                  <th>МП</th>
+                  <th>ГМП</th>
+                  <th>MC</th>
+                  <th>$</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byRole.map((r, i) => (
+                  <tr key={`${r.roleName}-${i}`}>
+                    <td><RoleName name={r.roleName} color={r.roleColor} /></td>
+                    <td className="payout-num">{r.mp || 0}</td>
+                    <td className="payout-num">{r.gmp || 0}</td>
+                    <td className="payout-num">{r.mc || 0}</td>
+                    <td className="payout-num">{r.dollars || 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div className="payout-breakdown-block">
+        <h4>Мероприятия ({events.length})</h4>
+        {!events.length ? (
+          <div className="role-tag">За неделю участий в МП/ГМП нет.</div>
+        ) : (
+          <div className="payout-table-wrap">
+            <table className="payout-table">
+              <thead>
+                <tr>
+                  <th>Тип</th>
+                  <th>Дата</th>
+                  <th>Название</th>
+                  <th>Роль</th>
+                  <th>Ставка</th>
+                </tr>
+              </thead>
+              <tbody>
+                {events.map((ev, i) => (
+                  <tr key={`${ev.kind}-${ev.at}-${i}`}>
+                    <td>{ev.kind === 'gmp' ? 'ГМП' : 'МП'}{ev.staffRole === 'organizer' ? ' · орг.' : ''}</td>
+                    <td className="payout-muted">{formatEventAt(ev.at)}</td>
+                    <td>{ev.title || '—'}</td>
+                    <td><RoleName name={ev.roleName} color={ev.roleColor} /></td>
+                    <td className="payout-num">{ev.rateMc || 0} MC / {ev.rateDollars || 0}$</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -613,23 +816,30 @@ export function PayoutLogInteractive({ weekId }: { weekId: number }) {
         </div>
       </div>
       <ErrorText value={error} />
-      {log.map((entry) => (
-        <div className="roster-row" key={entry.id}>
-          <div className="who">
-            <div>
-              <div className="nickname">{entry.action}</div>
-              <div className="role-tag">
-                {new Date(String(entry.created_at)).toLocaleString('ru-RU')}
-                {' · '}
-                {entry.actor_nickname || 'система'}
-              </div>
-              <div className="field-hint" style={{ marginTop: 4 }}>
-                {JSON.stringify(entry.details || {})}
+      {log.map((entry) => {
+        const desc = describeLogEntry(entry);
+        return (
+          <div className="roster-row" key={entry.id}>
+            <div className="who">
+              <div>
+                <div className="nickname">{desc.title}</div>
+                <div className="role-tag">
+                  {entry.actor_nickname || 'система'}
+                  {' · '}
+                  {new Date(String(entry.created_at)).toLocaleString('ru-RU')}
+                </div>
+                {desc.lines.length > 0 && (
+                  <div className="audit-details" style={{ marginTop: 6 }}>
+                    {desc.lines.map((line) => (
+                      <div key={line}>{line}</div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       {!log.length && <div className="empty-state"><h3>Лог пуст</h3></div>}
     </>
   );

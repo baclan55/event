@@ -40,6 +40,8 @@ async function listRoles() {
     mp_rate_dollars: number | string | null;
     gmp_rate_mc: number | string | null;
     gmp_rate_dollars: number | string | null;
+    fixed_mc: number | string | null;
+    fixed_dollars: number | string | null;
   }>(
     `SELECT r.id, r.name, r.priority,
             COALESCE(r.permissions, '{}'::jsonb) AS permissions,
@@ -53,11 +55,13 @@ async function listRoles() {
             COALESCE(s.mp_rate_mc, 0) AS mp_rate_mc,
             COALESCE(s.mp_rate_dollars, 0) AS mp_rate_dollars,
             COALESCE(s.gmp_rate_mc, 0) AS gmp_rate_mc,
-            COALESCE(s.gmp_rate_dollars, 0) AS gmp_rate_dollars
+            COALESCE(s.gmp_rate_dollars, 0) AS gmp_rate_dollars,
+            COALESCE(s.fixed_mc, 0) AS fixed_mc,
+            COALESCE(s.fixed_dollars, 0) AS fixed_dollars
      FROM roles r
      LEFT JOIN user_roles ur ON ur.role_id = r.id
      LEFT JOIN payout_role_settings s ON s.role_id = r.id
-     GROUP BY r.id, s.mp_rate_mc, s.mp_rate_dollars, s.gmp_rate_mc, s.gmp_rate_dollars
+     GROUP BY r.id, s.mp_rate_mc, s.mp_rate_dollars, s.gmp_rate_mc, s.gmp_rate_dollars, s.fixed_mc, s.fixed_dollars
      ORDER BY r.priority ASC, r.id ASC`,
   );
   return result.rows.map((row) => {
@@ -91,6 +95,8 @@ async function listRoles() {
       mpRateDollars: money(row.mp_rate_dollars),
       gmpRateMc: money(row.gmp_rate_mc),
       gmpRateDollars: money(row.gmp_rate_dollars),
+      fixedMc: money(row.fixed_mc),
+      fixedDollars: money(row.fixed_dollars),
     };
   });
 }
@@ -105,6 +111,8 @@ function readPayoutRates(body: Record<string, unknown>) {
     mpRateDollars: money(body.mpRateDollars ?? body.mp_rate_dollars),
     gmpRateMc: money(body.gmpRateMc ?? body.gmp_rate_mc),
     gmpRateDollars: money(body.gmpRateDollars ?? body.gmp_rate_dollars),
+    fixedMc: money(body.fixedMc ?? body.fixed_mc),
+    fixedDollars: money(body.fixedDollars ?? body.fixed_dollars),
   };
 }
 
@@ -114,15 +122,26 @@ async function upsertPayoutRates(
 ) {
   await query(
     `INSERT INTO payout_role_settings (
-       role_id, mp_rate_mc, mp_rate_dollars, gmp_rate_mc, gmp_rate_dollars, updated_at
-     ) VALUES ($1,$2,$3,$4,$5, now())
+       role_id, mp_rate_mc, mp_rate_dollars, gmp_rate_mc, gmp_rate_dollars,
+       fixed_mc, fixed_dollars, updated_at
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7, now())
      ON CONFLICT (role_id) DO UPDATE SET
        mp_rate_mc = EXCLUDED.mp_rate_mc,
        mp_rate_dollars = EXCLUDED.mp_rate_dollars,
        gmp_rate_mc = EXCLUDED.gmp_rate_mc,
        gmp_rate_dollars = EXCLUDED.gmp_rate_dollars,
+       fixed_mc = EXCLUDED.fixed_mc,
+       fixed_dollars = EXCLUDED.fixed_dollars,
        updated_at = now()`,
-    [roleId, rates.mpRateMc, rates.mpRateDollars, rates.gmpRateMc, rates.gmpRateDollars],
+    [
+      roleId,
+      rates.mpRateMc,
+      rates.mpRateDollars,
+      rates.gmpRateMc,
+      rates.gmpRateDollars,
+      rates.fixedMc,
+      rates.fixedDollars,
+    ],
   );
 }
 

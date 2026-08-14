@@ -558,7 +558,9 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .field .perm-flag input[type="checkbox"],
 .gmp-staff-row input[type="checkbox"],
 .field .gmp-staff-row input[type="checkbox"],
-.gmp-table input[type="checkbox"]{
+.gmp-table input[type="checkbox"],
+.payout-table input[type="checkbox"],
+.payout-rep-toggle input[type="checkbox"]{
   -webkit-appearance:none; appearance:none;
   width:18px; height:18px; flex-shrink:0; margin:0;
   border:1.5px solid var(--border-strong); border-radius:5px;
@@ -572,7 +574,9 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .field .perm-flag input[type="checkbox"]:hover,
 .gmp-staff-row input[type="checkbox"]:hover,
 .field .gmp-staff-row input[type="checkbox"]:hover,
-.gmp-table input[type="checkbox"]:hover{
+.gmp-table input[type="checkbox"]:hover,
+.payout-table input[type="checkbox"]:hover,
+.payout-rep-toggle input[type="checkbox"]:hover{
   border-color:var(--accent-light);
 }
 .role-check-item input[type="checkbox"]:checked,
@@ -582,7 +586,9 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .field .perm-flag input[type="checkbox"]:checked,
 .gmp-staff-row input[type="checkbox"]:checked,
 .field .gmp-staff-row input[type="checkbox"]:checked,
-.gmp-table input[type="checkbox"]:checked{
+.gmp-table input[type="checkbox"]:checked,
+.payout-table input[type="checkbox"]:checked,
+.payout-rep-toggle input[type="checkbox"]:checked{
   background:var(--accent); border-color:var(--accent);
   box-shadow:0 0 0 3px var(--accent-soft);
 }
@@ -593,7 +599,9 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .field .perm-flag input[type="checkbox"]:checked::after,
 .gmp-staff-row input[type="checkbox"]:checked::after,
 .field .gmp-staff-row input[type="checkbox"]:checked::after,
-.gmp-table input[type="checkbox"]:checked::after{
+.gmp-table input[type="checkbox"]:checked::after,
+.payout-table input[type="checkbox"]:checked::after,
+.payout-rep-toggle input[type="checkbox"]:checked::after{
   content:""; position:absolute; left:5px; top:1px;
   width:5px; height:9px; border:solid #fff; border-width:0 2px 2px 0;
   transform:rotate(45deg);
@@ -605,7 +613,9 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .field .perm-flag input[type="checkbox"]:disabled,
 .gmp-staff-row input[type="checkbox"]:disabled,
 .field .gmp-staff-row input[type="checkbox"]:disabled,
-.gmp-table input[type="checkbox"]:disabled{
+.gmp-table input[type="checkbox"]:disabled,
+.payout-table input[type="checkbox"]:disabled,
+.payout-rep-toggle input[type="checkbox"]:disabled{
   opacity:.45; cursor:not-allowed;
 }
 .error-text{ color:var(--red); font-size:12.5px; min-height:1.3em; margin:2px 0 6px; }
@@ -1064,6 +1074,14 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 }
 .audit-row:last-child{ border-bottom:0; }
 .audit-main{ display:flex; align-items:center; gap:9px; min-width:0; }
+.audit-body{ min-width:0; flex:1; }
+.audit-details{
+  margin-top:4px;
+  font-size:12.5px;
+  color:var(--text-body);
+  line-height:1.45;
+}
+.audit-details div + div{ margin-top:2px; }
 .audit-meta{ flex-shrink:0; font-size:11px; color:var(--text-muted); text-align:right; }
 
 /* =============================================================================
@@ -1941,6 +1959,7 @@ button.linkish{
   z-index:1;
 }
 .payout-h-rep{ background:rgba(140,100,220,.18) !important; color:#d4c2ff !important; }
+.payout-h-fixed{ background:rgba(160,120,40,.18) !important; color:#f0d89f !important; }
 .payout-h-events{ background:rgba(70,120,220,.18) !important; color:#b8d0ff !important; }
 .payout-h-bonus{ background:rgba(50,160,180,.18) !important; color:#9fe7f0 !important; }
 .payout-h-comp{ background:rgba(180,70,110,.18) !important; color:#f0b8cb !important; }
@@ -1965,6 +1984,33 @@ button.linkish{
   font-size:11px;
   color:var(--text-muted);
   cursor:pointer;
+}
+.payout-table input[type="checkbox"]{
+  display:inline-block;
+  vertical-align:middle;
+}
+.payout-count-btn{
+  min-width:2.2em;
+  padding:4px 8px !important;
+  font-variant-numeric:tabular-nums;
+}
+.payout-breakdown-summary{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin-bottom:16px;
+  padding:12px 14px;
+  border-radius:10px;
+  background:var(--bg-card-2);
+  border:1px solid var(--border);
+  font-size:13px;
+  color:var(--text-body);
+}
+.payout-breakdown-block{ margin-top:16px; }
+.payout-breakdown-block h4{
+  margin:0 0 8px;
+  font-size:13px;
+  color:var(--text-heading);
 }
 .payout-muted{ color:var(--text-faint); }
 .payout-row-off{ opacity:.45; }

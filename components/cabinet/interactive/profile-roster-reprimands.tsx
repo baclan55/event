@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { PublicUser } from '@/lib/authShared';
-import { AUDIT_LABELS } from '@/lib/auditShared';
+import { auditActionLabel, describeLogEntry } from '@/lib/auditShared';
 import { NavIcon } from '@/components/NavIcons';
 import { Avatar, DateField, DEFAULT_LIMITS, ErrorText, matchesSearch, Modal, ReprimandBadge, ReprimandLegend, ReprimandSummary, request, RoleName, SearchBox, Select, type Row } from './shared';
 import {
@@ -13,18 +13,6 @@ import {
   emptyAchievementCatalog,
   type ProfileAchievementCatalog,
 } from './ProfileAchievements';
-
-function formatAuditDetails(entry: Row): string {
-  const details = (entry.details || {}) as Row;
-  const bits: string[] = [];
-  if (entry.target_nickname) bits.push(`кому: ${entry.target_nickname}`);
-  if (details.reason) bits.push(`причина: ${details.reason}`);
-  if (details.type) bits.push(`тип: ${details.type}`);
-  if (typeof details.isOpen === 'boolean') bits.push(details.isOpen ? 'открыт' : 'закрыт');
-  if (details.nickname && !entry.target_nickname) bits.push(`ник: ${details.nickname}`);
-  if (entry.entity_type) bits.push(`${entry.entity_type}${entry.entity_id ? ` #${entry.entity_id}` : ''}`);
-  return bits.join(' · ');
-}
 
 export function ProfileInteractive({
   initialUser,
@@ -396,7 +384,7 @@ export function ProfileInteractive({
                     { value: '', label: 'Все' },
                     ...auditActions.map((action) => ({
                       value: action,
-                      label: AUDIT_LABELS[action] || action,
+                      label: auditActionLabel(action),
                     })),
                   ]}
                 />
@@ -431,20 +419,31 @@ export function ProfileInteractive({
               </div>
             </form>
             <div className="audit-list">
-              {audit.map((entry) => (
-                <div className="audit-row" key={entry.id}>
-                  <div className="audit-main">
-                    <span className="nickname">{AUDIT_LABELS[entry.action] || entry.action}</span>
-                    <span className="role-tag">{formatAuditDetails(entry)}</span>
+              {audit.map((entry) => {
+                const desc = describeLogEntry(entry);
+                return (
+                  <div className="audit-row" key={entry.id}>
+                    <div className="audit-body">
+                      <div className="audit-main">
+                        <span className="nickname">{desc.title}</span>
+                      </div>
+                      {desc.lines.length > 0 && (
+                        <div className="audit-details">
+                          {desc.lines.map((line) => (
+                            <div key={line}>{line}</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="audit-meta">
+                      {entry.actor_nickname || 'Удалённый пользователь'}
+                      {' · '}
+                      {new Date(entry.created_at).toLocaleString('ru-RU')}
+                      {entry.href ? <> · <a href={entry.href}>открыть</a></> : null}
+                    </div>
                   </div>
-                  <div className="audit-meta">
-                    кто: {entry.actor_nickname || 'Удалённый пользователь'}
-                    {' · '}
-                    когда: {new Date(entry.created_at).toLocaleString('ru-RU')}
-                    {entry.href ? <> · <a href={entry.href}>открыть</a></> : null}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {!audit.length && <div className="empty-state"><p>По выбранным фильтрам записей нет.</p></div>}
             </div>
           </>

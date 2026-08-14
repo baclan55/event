@@ -236,7 +236,9 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .field .perm-flag input[type="checkbox"],
 .gmp-staff-row input[type="checkbox"],
 .field .gmp-staff-row input[type="checkbox"],
-.gmp-table input[type="checkbox"]{
+.gmp-table input[type="checkbox"],
+.payout-table input[type="checkbox"],
+.payout-rep-toggle input[type="checkbox"]{
   -webkit-appearance:none; appearance:none;
   width:18px; height:18px; flex-shrink:0; margin:0;
   border:1.5px solid var(--border-strong); border-radius:5px;
@@ -250,7 +252,9 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .field .perm-flag input[type="checkbox"]:hover,
 .gmp-staff-row input[type="checkbox"]:hover,
 .field .gmp-staff-row input[type="checkbox"]:hover,
-.gmp-table input[type="checkbox"]:hover{
+.gmp-table input[type="checkbox"]:hover,
+.payout-table input[type="checkbox"]:hover,
+.payout-rep-toggle input[type="checkbox"]:hover{
   border-color:var(--accent-light);
 }
 .role-check-item input[type="checkbox"]:checked,
@@ -260,7 +264,9 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .field .perm-flag input[type="checkbox"]:checked,
 .gmp-staff-row input[type="checkbox"]:checked,
 .field .gmp-staff-row input[type="checkbox"]:checked,
-.gmp-table input[type="checkbox"]:checked{
+.gmp-table input[type="checkbox"]:checked,
+.payout-table input[type="checkbox"]:checked,
+.payout-rep-toggle input[type="checkbox"]:checked{
   background:var(--accent); border-color:var(--accent);
   box-shadow:0 0 0 3px var(--accent-soft);
 }
@@ -271,7 +277,9 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .field .perm-flag input[type="checkbox"]:checked::after,
 .gmp-staff-row input[type="checkbox"]:checked::after,
 .field .gmp-staff-row input[type="checkbox"]:checked::after,
-.gmp-table input[type="checkbox"]:checked::after{
+.gmp-table input[type="checkbox"]:checked::after,
+.payout-table input[type="checkbox"]:checked::after,
+.payout-rep-toggle input[type="checkbox"]:checked::after{
   content:""; position:absolute; left:5px; top:1px;
   width:5px; height:9px; border:solid #fff; border-width:0 2px 2px 0;
   transform:rotate(45deg);
@@ -283,7 +291,9 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .field .perm-flag input[type="checkbox"]:disabled,
 .gmp-staff-row input[type="checkbox"]:disabled,
 .field .gmp-staff-row input[type="checkbox"]:disabled,
-.gmp-table input[type="checkbox"]:disabled{
+.gmp-table input[type="checkbox"]:disabled,
+.payout-table input[type="checkbox"]:disabled,
+.payout-rep-toggle input[type="checkbox"]:disabled{
   opacity:.45; cursor:not-allowed;
 }
 .error-text{ color:var(--red); font-size:12.5px; min-height:1.3em; margin:2px 0 6px; }

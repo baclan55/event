@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { jsonError } from '@/lib/auth';
+import { fieldLabel, humanValue } from '@/lib/auditShared';
 import { userHasPermission } from '@/lib/roleAccess';
 import {
   buildExportCommands,
+  computeUserPayoutForWeek,
   ensurePayoutWeek,
   recomputeRowEvents,
   rebuildPayoutWeekRows,
@@ -170,6 +172,8 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
           static_id: String(r.static_id || ''),
           events_mc: n(r.events_mc),
           events_dollars: n(r.events_dollars),
+          fixed_mc: n(r.fixed_mc),
+          fixed_dollars: n(r.fixed_dollars),
           bonus_mc: n(r.bonus_mc),
           bonus_dollars: n(r.bonus_dollars),
           comp_static_id: String(r.comp_static_id || ''),
@@ -197,7 +201,9 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
         `UPDATE payout_weeks SET status='locked', locked_at=now(), locked_by=$2, updated_at=now() WHERE id=$1`,
         [weekId, user.id],
       );
-      await writePayoutLog(weekId, user.id, 'week.lock', {});
+      await writePayoutLog(weekId, user.id, 'week.lock', {
+        summary: 'Неделя выплат закрыта для правок',
+      });
       return ok({ status: 'locked' });
     }
 
@@ -206,13 +212,19 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
         `UPDATE payout_weeks SET status='ready', locked_at=NULL, locked_by=NULL, updated_at=now() WHERE id=$1`,
         [weekId],
       );
-      await writePayoutLog(weekId, user.id, 'week.unlock', {});
+      await writePayoutLog(weekId, user.id, 'week.unlock', {
+        summary: 'Неделя выплат снова открыта для правок',
+      });
       return ok({ status: 'ready' });
     }
 
     if (action === 'add_user') {
       const userId = Number(body.userId);
       if (!Number.isFinite(userId)) return jsonError('Укажите сотрудника.', 400);
+      const named = await query<{ nickname: string }>(
+        'SELECT nickname FROM users WHERE id=$1',
+        [userId],
+      );
       await rebuildPayoutWeekRows(weekId, week.rows[0].week_start, {
         actorId: user.id,
         onlyUserId: userId,
@@ -228,7 +240,11 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
           [weekId, userId, String(body.staticId)],
         );
       }
-      await writePayoutLog(weekId, user.id, 'row.add', { userId });
+      await writePayoutLog(weekId, user.id, 'row.add', {
+        userId,
+        nickname: named.rows[0]?.nickname || `#${userId}`,
+        summary: 'Сотрудник вручную добавлен в ведомость',
+      });
       return ok({ added: true });
     }
 
@@ -239,7 +255,16 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
       if (kind !== 'verbal' && kind !== 'strict') {
         return jsonError('kind: verbal или strict.', 400);
       }
+      const prev = await query<{ nickname: string; count_verbal: boolean; count_strict: boolean }>(
+        `SELECT nickname,
+                COALESCE(count_verbal, TRUE) AS count_verbal,
+                COALESCE(count_strict, TRUE) AS count_strict
+         FROM payout_rows WHERE id=$1 AND week_id=$2`,
+        [rowId, weekId],
+      );
+      if (!prev.rows[0]) return jsonError('Строка не найдена.', 404);
       const col = kind === 'verbal' ? 'count_verbal' : 'count_strict';
+      const before = kind === 'verbal' ? prev.rows[0].count_verbal : prev.rows[0].count_strict;
       await query(
         `UPDATE payout_rows SET ${col}=$2 WHERE id=$1 AND week_id=$3`,
         [rowId, counted, weekId],
@@ -249,7 +274,17 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
         [rowId, counted, kind],
       );
       await recomputeRowEvents(rowId, user.id);
-      await writePayoutLog(weekId, user.id, 'reprimand.type_toggle', { rowId, kind, counted });
+      await writePayoutLog(weekId, user.id, 'reprimand.type_toggle', {
+        rowId,
+        nickname: prev.rows[0].nickname,
+        kind,
+        counted,
+        changes: [{
+          label: kind === 'verbal' ? 'Учёт устных выговоров' : 'Учёт строгих выговоров',
+          before,
+          after: counted,
+        }],
+      });
       return ok({ updated: true });
     }
 
@@ -263,6 +298,10 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
         [rowId, reprimandId],
       );
       const kind = hit.rows[0]?.type;
+      const prev = await query<{ nickname: string }>(
+        'SELECT nickname FROM payout_rows WHERE id=$1 AND week_id=$2',
+        [rowId, weekId],
+      );
       if (kind === 'verbal' || kind === 'strict') {
         const col = kind === 'verbal' ? 'count_verbal' : 'count_strict';
         await query(`UPDATE payout_rows SET ${col}=$2 WHERE id=$1 AND week_id=$3`, [rowId, counted, weekId]);
@@ -272,18 +311,46 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
         );
         await recomputeRowEvents(rowId, user.id);
       }
-      await writePayoutLog(weekId, user.id, 'reprimand.toggle', { rowId, reprimandId, counted });
+      await writePayoutLog(weekId, user.id, 'reprimand.toggle', {
+        rowId,
+        reprimandId,
+        nickname: prev.rows[0]?.nickname,
+        kind,
+        counted,
+        changes: kind ? [{
+          label: kind === 'verbal' ? 'Учёт устных выговоров' : 'Учёт строгих выговоров',
+          before: !counted,
+          after: counted,
+        }] : [],
+      });
       return ok({ updated: true });
     }
 
     if (action === 'update_row') {
       const rowId = Number(body.rowId);
       if (!Number.isFinite(rowId)) return jsonError('rowId обязателен.', 400);
+      const current = await query<Record<string, unknown>>(
+        'SELECT * FROM payout_rows WHERE id=$1 AND week_id=$2',
+        [rowId, weekId],
+      );
+      if (!current.rows[0]) return jsonError('Строка не найдена.', 404);
+      const beforeRow = current.rows[0];
+
       const fields: string[] = [];
       const values: unknown[] = [];
+      const changes: Array<{ field: string; label: string; before: unknown; after: unknown }> = [];
       const push = (col: string, val: unknown) => {
         values.push(val);
         fields.push(`${col}=$${values.length}`);
+        const prev = beforeRow[col];
+        if (humanValue(prev) !== humanValue(val)) {
+          changes.push({
+            field: col,
+            label: fieldLabel(col),
+            before: prev,
+            after: val,
+          });
+        }
       };
 
       if (body.static_id != null || body.staticId != null) {
@@ -347,14 +414,26 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
         `UPDATE payout_rows SET ${fields.join(', ')} WHERE id=$${values.length - 1} AND week_id=$${values.length}`,
         values,
       );
-      await writePayoutLog(weekId, user.id, 'row.update', { rowId, fields: Object.keys(body) });
+      await writePayoutLog(weekId, user.id, 'row.update', {
+        rowId,
+        nickname: beforeRow.nickname,
+        changes: changes.filter((c) => c.field !== 'events_override'),
+      });
       return ok({ updated: true });
     }
 
     if (action === 'delete_row') {
       const rowId = Number(body.rowId);
+      const prev = await query<{ nickname: string }>(
+        'SELECT nickname FROM payout_rows WHERE id=$1 AND week_id=$2',
+        [rowId, weekId],
+      );
       await query('DELETE FROM payout_rows WHERE id=$1 AND week_id=$2', [rowId, weekId]);
-      await writePayoutLog(weekId, user.id, 'row.delete', { rowId });
+      await writePayoutLog(weekId, user.id, 'row.delete', {
+        rowId,
+        nickname: prev.rows[0]?.nickname,
+        summary: 'Сотрудник убран из ведомости',
+      });
       return ok({ deleted: true });
     }
 
@@ -378,6 +457,88 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
     return ok({ rebuilt: true });
   }
 
+  if (key === 'payout-breakdown' && method === 'GET') {
+    const user = await requiredPerm('manage_payouts');
+    if (user instanceof NextResponse) return user;
+    const weekId = parseId(params.id);
+    const rowId = Number(request.nextUrl.searchParams.get('rowId') || 0);
+    if (!Number.isFinite(rowId) || rowId <= 0) return jsonError('Укажите строку.', 400);
+
+    const week = await query<{ week_start: string }>(
+      'SELECT week_start::text AS week_start FROM payout_weeks WHERE id=$1',
+      [weekId],
+    );
+    if (!week.rows[0]) return jsonError('Неделя не найдена.', 404);
+
+    const row = await query<{
+      id: number;
+      user_id: number;
+      nickname: string;
+      role_name: string;
+      role_color: string;
+      mp_count: number;
+      gmp_count: number;
+      events_mc: number;
+      events_dollars: number;
+      events_override: boolean;
+      count_verbal: boolean;
+      count_strict: boolean;
+      breakdown: unknown;
+    }>(
+      `SELECT id, user_id, nickname, role_name, role_color, mp_count, gmp_count,
+              events_mc, events_dollars, events_override,
+              COALESCE(count_verbal, TRUE) AS count_verbal,
+              COALESCE(count_strict, TRUE) AS count_strict,
+              breakdown
+       FROM payout_rows WHERE id=$1 AND week_id=$2`,
+      [rowId, weekId],
+    );
+    if (!row.rows[0]) return jsonError('Строка не найдена.', 404);
+
+    const r = row.rows[0];
+    const reps = await query<{ type: string }>(
+      `SELECT type FROM payout_row_reprimands WHERE row_id=$1`,
+      [rowId],
+    );
+    const verbalCount = reps.rows.filter((x) => x.type === 'verbal').length;
+    const strictCount = reps.rows.filter((x) => x.type === 'strict').length;
+
+    const computed = await computeUserPayoutForWeek(
+      r.user_id,
+      week.rows[0].week_start,
+      {
+        countVerbal: !!r.count_verbal,
+        countStrict: !!r.count_strict,
+        verbalCount,
+        strictCount,
+      },
+    );
+
+    return NextResponse.json({
+      row: {
+        id: r.id,
+        userId: r.user_id,
+        nickname: r.nickname,
+        roleName: r.role_name,
+        roleColor: r.role_color,
+        mpCount: r.mp_count,
+        gmpCount: r.gmp_count,
+        eventsMc: n(r.events_mc),
+        eventsDollars: n(r.events_dollars),
+        eventsOverride: !!r.events_override,
+      },
+      breakdown: computed.breakdown,
+      computedTotals: {
+        mpCount: computed.mp_count,
+        gmpCount: computed.gmp_count,
+        eventsMc: computed.events_mc,
+        eventsDollars: computed.events_dollars,
+        roleName: computed.role_name,
+        roleColor: computed.role_color,
+      },
+    });
+  }
+
   if (key === 'payout-export' && method === 'GET') {
     const user = await requiredPerm('manage_payouts');
     if (user instanceof NextResponse) return user;
@@ -393,6 +554,8 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
           static_id: String(r.static_id || ''),
           events_mc: n(r.events_mc),
           events_dollars: n(r.events_dollars),
+          fixed_mc: n(r.fixed_mc),
+          fixed_dollars: n(r.fixed_dollars),
           bonus_mc: n(r.bonus_mc),
           bonus_dollars: n(r.bonus_dollars),
           comp_static_id: String(r.comp_static_id || ''),

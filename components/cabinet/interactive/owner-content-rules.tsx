@@ -2,29 +2,8 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
+import { describeLogEntry } from '@/lib/auditShared';
 import { askConfirm, Avatar, ErrorText, MarkdownFormField, Modal, request, type Row } from './shared';
-
-const AUDIT_LABELS: Record<string, string> = {
-  'user.create': 'Создан пользователь',
-  'user.update': 'Изменён пользователь',
-  'user.delete': 'Удалён пользователь',
-  'roles.update': 'Изменены роли',
-  'reprimand.create': 'Выдан выговор',
-  'reprimand.delete': 'Удалён выговор',
-  'reprimand.unblock': 'Снята блокировка',
-  'vacation.create': 'Создан отпуск',
-  'vacation.approved': 'Отпуск одобрен',
-  'vacation.rejected': 'Отпуск отклонён',
-  'vacation.cancelled': 'Отпуск отменён',
-  'vacation.delete': 'Удалён отпуск',
-  'content.update': 'Изменён контент',
-  'rule.create': 'Создано правило',
-  'rule.update': 'Изменено правило',
-  'rule.delete': 'Удалено правило',
-  'application.approved': 'Заявка одобрена',
-  'application.rejected': 'Заявка отклонена',
-  'application.delete': 'Заявка удалена',
-};
 
 export function OwnerInteractive({ canManageOwners }: { canManageOwners: boolean }) {
   const [users, setUsers] = useState<Row[]>([]);
@@ -71,10 +50,24 @@ export function OwnerInteractive({ canManageOwners }: { canManageOwners: boolean
       <section className="card card-pad audit-card">
         <div className="card-header"><h3>Журнал действий</h3><span className="badge badge-muted">{audit.length}</span></div>
         <div className="audit-list">
-          {audit.map((entry) => <div className="audit-row" key={entry.id}>
-            <div className="audit-main"><span className="nickname">{AUDIT_LABELS[entry.action] || entry.action}</span><span className="role-tag">{entry.entity_type}{entry.entity_id ? ` #${entry.entity_id}` : ''}</span></div>
-            <div className="audit-meta">{entry.actor_nickname || 'Удалённый пользователь'} · {new Date(entry.created_at).toLocaleString('ru-RU')}</div>
-          </div>)}
+          {audit.map((entry) => {
+            const desc = describeLogEntry(entry);
+            return (
+              <div className="audit-row" key={entry.id}>
+                <div className="audit-body">
+                  <div className="audit-main"><span className="nickname">{desc.title}</span></div>
+                  {desc.lines.length > 0 && (
+                    <div className="audit-details">
+                      {desc.lines.map((line) => <div key={line}>{line}</div>)}
+                    </div>
+                  )}
+                </div>
+                <div className="audit-meta">
+                  {entry.actor_nickname || 'Удалённый пользователь'} · {new Date(entry.created_at).toLocaleString('ru-RU')}
+                </div>
+              </div>
+            );
+          })}
           {!audit.length && <div className="empty-state"><p>Административных действий пока нет.</p></div>}
         </div>
       </section>
