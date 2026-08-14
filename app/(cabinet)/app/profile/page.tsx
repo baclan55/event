@@ -1,6 +1,6 @@
 import { loadProfileWeekly, loadReprimandsMe, requirePortalUser } from '@/lib/cabinetData';
 import { ProfileInteractive } from '@/components/cabinet/InteractiveCore';
-import { roleCtxFromPublic, userHasPermission } from '@/lib/roleAccess';
+import { roleCtxFromPublic, userHasProfileOwnViewCap } from '@/lib/roleAccess';
 import { listAudit } from '@/lib/audit';
 import { evaluateAchievementsForUser, listProfileAchievementCatalog } from '@/lib/achievements';
 import { invalidateUserCache } from '@/lib/auth';
@@ -10,13 +10,19 @@ export const dynamic = 'force-dynamic';
 export default async function ProfilePage() {
   const user = await requirePortalUser();
   const roleCtx = roleCtxFromPublic(user);
-  const canViewAudit = userHasPermission(roleCtx, 'view_audit');
+  const profileTabs = {
+    reprimands: userHasProfileOwnViewCap(roleCtx, 'reprimands'),
+    achievements: userHasProfileOwnViewCap(roleCtx, 'achievements'),
+    events: userHasProfileOwnViewCap(roleCtx, 'events'),
+    gmp: userHasProfileOwnViewCap(roleCtx, 'gmp'),
+    audit: userHasProfileOwnViewCap(roleCtx, 'audit'),
+  };
   await evaluateAchievementsForUser(user.id).catch(() => undefined);
   const [{ weeklyEvents, weeklyTarget }, reprimands, audit, achievementCatalog] = await Promise.all([
     loadProfileWeekly(user.id),
-    loadReprimandsMe(user.id),
-    canViewAudit ? listAudit({ limit: 150, userId: user.id }) : Promise.resolve([]),
-    listProfileAchievementCatalog(user.id),
+    profileTabs.reprimands ? loadReprimandsMe(user.id) : Promise.resolve([]),
+    profileTabs.audit ? listAudit({ limit: 150, userId: user.id }) : Promise.resolve([]),
+    profileTabs.achievements ? listProfileAchievementCatalog(user.id) : Promise.resolve(undefined),
   ]);
   invalidateUserCache(user.id);
   return (
@@ -24,9 +30,10 @@ export default async function ProfilePage() {
       initialUser={{ ...user, weeklyEvents }}
       reprimands={reprimands}
       target={weeklyTarget}
-      canViewAudit={canViewAudit}
+      canViewAudit={profileTabs.audit}
       initialAudit={audit}
       initialAchievementCatalog={achievementCatalog}
+      profileTabs={profileTabs}
     />
   );
 }

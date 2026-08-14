@@ -89,13 +89,13 @@ export function ProfileInteractive({
   const hasNorm = target != null && target > 0;
   const done = hasNorm && user.weeklyEvents >= target;
   const tabs = {
-    reprimands: isSelf || !!profileTabs?.reprimands,
-    achievements: isSelf || !!profileTabs?.achievements,
-    events: isSelf || !!profileTabs?.events,
-    gmp: isSelf || !!profileTabs?.gmp,
-    audit: isSelf
-      ? (canViewAudit || initialUser.isOwner)
-      : !!profileTabs?.audit,
+    reprimands: profileTabs ? !!profileTabs.reprimands : isSelf,
+    achievements: profileTabs ? !!profileTabs.achievements : isSelf,
+    events: profileTabs ? !!profileTabs.events : isSelf,
+    gmp: profileTabs ? !!profileTabs.gmp : isSelf,
+    audit: profileTabs
+      ? !!profileTabs.audit
+      : isSelf && (canViewAudit || initialUser.isOwner),
   };
   const firstTab = (['reprimands', 'achievements', 'events', 'gmp', 'audit'] as const).find((k) => tabs[k]) || 'reprimands';
 

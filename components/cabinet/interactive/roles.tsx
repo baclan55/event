@@ -46,6 +46,10 @@ type RoleRow = {
   dashboardBlocks: Record<DashboardBlock, boolean>;
   weeklyEventsTarget: number | null;
   usersCount: number;
+  mpRateMc: number;
+  mpRateDollars: number;
+  gmpRateMc: number;
+  gmpRateDollars: number;
 };
 
 function countAccess(permissions: Record<Permission, PermissionAccess> | undefined) {
@@ -138,19 +142,31 @@ export function RolesInteractive({
     });
   }
 
-  function setProfileViewCap(cap: ProfileViewCap | 'view', value: boolean) {
+  function setProfileViewCap(
+    scope: 'own' | 'others',
+    cap: ProfileViewCap | 'view',
+    value: boolean,
+  ) {
     setDraftPerms((prev) => {
       const current = normalizeProfileViewAccess(prev.view_profile);
-      const next: ProfileViewAccess = { ...current, edit: false };
-      if (cap === 'view') {
+      const next: ProfileViewAccess = {
+        ...current,
+        edit: false,
+        own: { ...current.own },
+        others: { ...current.others },
+      };
+      if (scope === 'others' && cap === 'view') {
         next.view = value;
         if (!value) {
-          for (const key of PROFILE_VIEW_CAPS) next[key] = false;
+          for (const key of PROFILE_VIEW_CAPS) next.others[key] = false;
         }
-      } else {
-        next[cap] = value;
-        if (value) next.view = true;
-        next.view = next.view || PROFILE_VIEW_CAPS.some((key) => next[key]);
+      } else if (cap !== 'view') {
+        next[scope][cap] = value;
+        if (scope === 'others' && value) next.view = true;
+      }
+      if (scope === 'others') {
+        next.view = next.view || PROFILE_VIEW_CAPS.some((key) => next.others[key]);
+        for (const key of PROFILE_VIEW_CAPS) next[key] = next.others[key];
       }
       return { ...prev, view_profile: next };
     });
@@ -167,6 +183,10 @@ export function RolesInteractive({
     ) as Record<DashboardBlock, boolean>;
     const targetRaw = String(form.get('weeklyEventsTarget') || '').trim();
     const weeklyEventsTarget = targetRaw === '' ? null : Number.parseInt(targetRaw, 10);
+    const money = (key: string) => {
+      const n = Number(form.get(key));
+      return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+    };
     const payload = {
       name: String(form.get('name') || '').trim(),
       permissions,
@@ -176,6 +196,10 @@ export function RolesInteractive({
       color: String(form.get('colorHex') || '').trim(),
       dashboardBlocks,
       weeklyEventsTarget: Number.isFinite(weeklyEventsTarget as number) ? weeklyEventsTarget : null,
+      mpRateMc: money('mpRateMc'),
+      mpRateDollars: money('mpRateDollars'),
+      gmpRateMc: money('gmpRateMc'),
+      gmpRateDollars: money('gmpRateDollars'),
     };
     try {
       if (editing?.id) {
@@ -247,6 +271,9 @@ export function RolesInteractive({
                 {role.isEventHelper ? ' · ивент хелпер' : ''}
                 {role.isAdministrator ? ' · администратор' : ''}
                 {role.includeInHelperPayouts ? ' · выплаты' : ''}
+                {role.includeInHelperPayouts
+                  ? ` · МП ${role.mpRateMc} MC / ${role.mpRateDollars}$ · ГМП ${role.gmpRateMc} MC / ${role.gmpRateDollars}$`
+                  : ''}
               </div>
             </div>
           </div>
@@ -330,6 +357,65 @@ export function RolesInteractive({
               </div>
             </div>
             <div className="field">
+              <label>Ставка за 1 мероприятие (выплаты)</label>
+              <div className="form-row-2" style={{ marginBottom: 10 }}>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label>МП — MC</label>
+                  <input
+                    className="input"
+                    name="mpRateMc"
+                    type="number"
+                    min={0}
+                    step={1}
+                    defaultValue={editing?.mpRateMc ?? 0}
+                    disabled={!canEdit}
+                  />
+                </div>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label>МП — $</label>
+                  <input
+                    className="input"
+                    name="mpRateDollars"
+                    type="number"
+                    min={0}
+                    step={1}
+                    defaultValue={editing?.mpRateDollars ?? 0}
+                    disabled={!canEdit}
+                  />
+                </div>
+              </div>
+              <div className="form-row-2">
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label>ГМП — MC</label>
+                  <input
+                    className="input"
+                    name="gmpRateMc"
+                    type="number"
+                    min={0}
+                    step={1}
+                    defaultValue={editing?.gmpRateMc ?? 0}
+                    disabled={!canEdit}
+                  />
+                </div>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label>ГМП — $</label>
+                  <input
+                    className="input"
+                    name="gmpRateDollars"
+                    type="number"
+                    min={0}
+                    step={1}
+                    defaultValue={editing?.gmpRateDollars ?? 0}
+                    disabled={!canEdit}
+                  />
+                </div>
+              </div>
+              <div className="field-hint">
+                Сколько MC и долларов начисляется за одно МП и одно ГМП при расчёте выплат хелперов.
+                Мин. МП, фикс и штрафы по-прежнему в разделе «Выплаты → Настройки».
+              </div>
+            </div>
+            <div className="field">
               <label>Цвет роли</label>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 <input
@@ -339,6 +425,11 @@ export function RolesInteractive({
                   defaultValue={editing?.color || '#a8b0c2'}
                   disabled={!canEdit}
                   style={{ width: 52, padding: 4, minHeight: 42 }}
+                  onChange={(e) => {
+                    const form = e.currentTarget.form;
+                    const hex = form?.elements.namedItem('colorHex') as HTMLInputElement | null;
+                    if (hex) hex.value = e.target.value;
+                  }}
                 />
                 <input
                   className="input"
@@ -427,30 +518,52 @@ export function RolesInteractive({
                     return (
                       <div className="perm-card perm-card-gmp" key={key}>
                         <div className="perm-card-title">{PERMISSION_LABELS[key]}</div>
-                        <div className="perm-card-flags">
-                          <label className="perm-flag">
-                            <input
-                              type="checkbox"
-                              checked={!!profile.view}
-                              disabled={!canEdit}
-                              onChange={(e) => setProfileViewCap('view', e.target.checked)}
-                            />
-                            Просмотр чужого профиля
-                          </label>
-                          {PROFILE_VIEW_CAPS.map((cap) => (
-                            <label className="perm-flag" key={cap}>
+
+                        <div className="perm-profile-scope">
+                          <div className="perm-profile-scope-title">Свой профиль</div>
+                          <div className="perm-card-flags">
+                            {PROFILE_VIEW_CAPS.map((cap) => (
+                              <label className="perm-flag" key={`own-${cap}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!profile.own[cap]}
+                                  disabled={!canEdit}
+                                  onChange={(e) => setProfileViewCap('own', cap, e.target.checked)}
+                                />
+                                {PROFILE_VIEW_CAP_LABELS[cap]}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="perm-profile-scope">
+                          <div className="perm-profile-scope-title">Чужие профили</div>
+                          <div className="perm-card-flags">
+                            <label className="perm-flag">
                               <input
                                 type="checkbox"
-                                checked={!!profile[cap]}
+                                checked={!!profile.view}
                                 disabled={!canEdit}
-                                onChange={(e) => setProfileViewCap(cap, e.target.checked)}
+                                onChange={(e) => setProfileViewCap('others', 'view', e.target.checked)}
                               />
-                              {PROFILE_VIEW_CAP_LABELS[cap]}
+                              Просмотр чужого профиля
                             </label>
-                          ))}
+                            {PROFILE_VIEW_CAPS.map((cap) => (
+                              <label className="perm-flag" key={`others-${cap}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!profile.others[cap]}
+                                  disabled={!canEdit}
+                                  onChange={(e) => setProfileViewCap('others', cap, e.target.checked)}
+                                />
+                                {PROFILE_VIEW_CAP_LABELS[cap]}
+                              </label>
+                            ))}
+                          </div>
                         </div>
+
                         <div className="field-hint" style={{ marginTop: 8 }}>
-                          Отдельные вкладки в профиле другого сотрудника. Свой профиль всегда доступен полностью.
+                          Отдельные вкладки для своего профиля и профиля другого сотрудника.
                         </div>
                       </div>
                     );

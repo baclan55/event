@@ -43,7 +43,7 @@ const SUBTITLES: Record<string, string> = {
   '/app/rules': 'Правила проведения мероприятий и их суть',
   '/app/regulations': 'Регламент работы по ролям',
   '/app/first-steps': 'С чего начать новому сотруднику',
-  '/app/vacations': 'Календарь отпусков и подача заявки',
+  '/app/vacations': 'Календарь и заявки на отпуск',
   '/app/reprimands': 'Учёт дисциплинарных взысканий',
   '/app/applications': 'Заявки на роль Event Helper',
   '/app/application-history': 'Одобренные и отклонённые заявки с сайта',

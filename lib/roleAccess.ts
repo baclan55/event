@@ -121,7 +121,7 @@ export const EVENT_CAP_LABELS: Record<EventCap, string> = {
   delete: 'Удаление мероприятий',
 };
 
-/** Просмотр вкладок чужого профиля (хранятся в permissions.view_profile). */
+/** Вкладки профиля (свой / чужой) — хранятся в permissions.view_profile. */
 export const PROFILE_VIEW_CAPS = [
   'reprimands',
   'achievements',
@@ -132,7 +132,12 @@ export const PROFILE_VIEW_CAPS = [
 
 export type ProfileViewCap = (typeof PROFILE_VIEW_CAPS)[number];
 
-export type ProfileViewAccess = PermissionAccess & Record<ProfileViewCap, boolean>;
+export type ProfileTabCaps = Record<ProfileViewCap, boolean>;
+
+export type ProfileViewAccess = PermissionAccess & ProfileTabCaps & {
+  own: ProfileTabCaps;
+  others: ProfileTabCaps;
+};
 
 export const PROFILE_VIEW_CAP_LABELS: Record<ProfileViewCap, string> = {
   reprimands: 'Выговоры',
@@ -141,6 +146,16 @@ export const PROFILE_VIEW_CAP_LABELS: Record<ProfileViewCap, string> = {
   gmp: 'ГМП',
   audit: 'Журнал действий',
 };
+
+export function emptyProfileTabCaps(): ProfileTabCaps {
+  return {
+    reprimands: false,
+    achievements: false,
+    events: false,
+    gmp: false,
+    audit: false,
+  };
+}
 
 export const PERMISSION_LABELS: Record<Permission, string> = {
   reprimands: 'Система выговоров',
@@ -199,6 +214,7 @@ export type RoleUser = {
   gmpCaps?: GmpCap[];
   eventCaps?: EventCap[];
   profileViewCaps?: ProfileViewCap[];
+  profileOwnViewCaps?: ProfileViewCap[];
 };
 
 export function emptyPermissionAccess(): PermissionAccess {
@@ -302,26 +318,30 @@ export function emptyProfileViewAccess(): ProfileViewAccess {
   return {
     view: false,
     edit: false,
-    reprimands: false,
-    achievements: false,
-    events: false,
-    gmp: false,
-    audit: false,
+    ...emptyProfileTabCaps(),
+    own: emptyProfileTabCaps(),
+    others: emptyProfileTabCaps(),
   };
 }
 
+function applyLegacyOpenTabs(target: ProfileTabCaps, includeAudit = false) {
+  for (const key of PROFILE_VIEW_CAPS) {
+    if (includeAudit || key !== 'audit') target[key] = true;
+  }
+}
+
 /**
- * Просмотр вкладок чужого профиля.
- * Legacy без явного view_profile: все вкладки открыты (кроме audit — по view_audit снаружи).
+ * Просмотр вкладок своего и чужого профиля.
+ * Legacy без own/others: чужие — как раньше по плоским флагам; свой — все вкладки кроме журнала.
  */
 export function normalizeProfileViewAccess(raw: unknown, opts?: { legacyOpen?: boolean }): ProfileViewAccess {
   const caps = emptyProfileViewAccess();
   if (!raw || typeof raw !== 'object') {
     if (opts?.legacyOpen) {
       caps.view = true;
-      for (const key of PROFILE_VIEW_CAPS) {
-        if (key !== 'audit') caps[key] = true;
-      }
+      applyLegacyOpenTabs(caps.others);
+      applyLegacyOpenTabs(caps.own);
+      for (const key of PROFILE_VIEW_CAPS) caps[key] = caps.others[key];
     }
     return caps;
   }
@@ -329,21 +349,42 @@ export function normalizeProfileViewAccess(raw: unknown, opts?: { legacyOpen?: b
   const base = normalizePermissionAccess(raw);
   caps.view = base.view || base.edit;
   caps.edit = false;
-  const hasExplicitCaps = PROFILE_VIEW_CAPS.some((cap) => cap in source);
-  if (hasExplicitCaps) {
-    for (const cap of PROFILE_VIEW_CAPS) caps[cap] = !!source[cap];
-  } else if (caps.view) {
-    for (const cap of PROFILE_VIEW_CAPS) {
-      if (cap !== 'audit') caps[cap] = true;
+
+  const hasOthers = source.others != null && typeof source.others === 'object';
+  const hasOwn = source.own != null && typeof source.own === 'object';
+
+  if (hasOthers) {
+    const others = source.others as Record<string, unknown>;
+    for (const cap of PROFILE_VIEW_CAPS) caps.others[cap] = !!others[cap];
+  } else {
+    const hasExplicitCaps = PROFILE_VIEW_CAPS.some((cap) => cap in source);
+    if (hasExplicitCaps) {
+      for (const cap of PROFILE_VIEW_CAPS) caps.others[cap] = !!source[cap];
+    } else if (caps.view) {
+      applyLegacyOpenTabs(caps.others);
     }
   }
-  const anyCap = PROFILE_VIEW_CAPS.some((cap) => caps[cap]);
-  caps.view = caps.view || anyCap;
+
+  if (hasOwn) {
+    const own = source.own as Record<string, unknown>;
+    for (const cap of PROFILE_VIEW_CAPS) caps.own[cap] = !!own[cap];
+  } else {
+    // До явной настройки «Свой профиль» — вкладки открыты (журнал по-прежнему отдельно).
+    applyLegacyOpenTabs(caps.own);
+  }
+
+  for (const cap of PROFILE_VIEW_CAPS) caps[cap] = caps.others[cap];
+  const anyOther = PROFILE_VIEW_CAPS.some((cap) => caps.others[cap]);
+  caps.view = caps.view || anyOther;
   return caps;
 }
 
 export function profileViewCapsFromAccess(access: ProfileViewAccess): ProfileViewCap[] {
-  return PROFILE_VIEW_CAPS.filter((cap) => access[cap]);
+  return PROFILE_VIEW_CAPS.filter((cap) => access.others[cap]);
+}
+
+export function profileOwnViewCapsFromAccess(access: ProfileViewAccess): ProfileViewCap[] {
+  return PROFILE_VIEW_CAPS.filter((cap) => access.own[cap]);
 }
 
 export function normalizeRolePermissions(raw: unknown): Record<Permission, PermissionAccess> {
@@ -434,6 +475,7 @@ export function roleCtxFromPublic(user: {
   gmpCaps?: GmpCap[];
   eventCaps?: EventCap[];
   profileViewCaps?: ProfileViewCap[];
+  profileOwnViewCaps?: ProfileViewCap[];
 }): RoleUser {
   return {
     is_owner: !!user.isOwner,
@@ -443,6 +485,7 @@ export function roleCtxFromPublic(user: {
     gmpCaps: user.gmpCaps || [],
     eventCaps: user.eventCaps || [],
     profileViewCaps: user.profileViewCaps || [],
+    profileOwnViewCaps: user.profileOwnViewCaps || [],
   };
 }
 
@@ -471,6 +514,29 @@ export function profileViewCapsFromRole(name: string, rawPermissions: unknown): 
   return caps;
 }
 
+export function profileOwnViewCapsFromRole(name: string, rawPermissions: unknown): ProfileViewCap[] {
+  const hasExplicit = !!rawPermissions && typeof rawPermissions === 'object'
+    && 'view_profile' in (rawPermissions as object);
+  if (hasExplicit) {
+    const raw = (rawPermissions as Record<string, unknown>).view_profile;
+    const normalized = normalizeProfileViewAccess(raw);
+    const caps = profileOwnViewCapsFromAccess(normalized);
+    const hasOwnBlock = !!raw && typeof raw === 'object' && 'own' in (raw as object);
+    if (!hasOwnBlock) {
+      // До секции «Свой профиль» журнал в своём шёл через view_audit.
+      const access = accessFromRole(name, rawPermissions);
+      if ((access.view_audit.view || access.view_audit.edit) && !caps.includes('audit')) {
+        caps.push('audit');
+      }
+    }
+    return caps;
+  }
+  const caps: ProfileViewCap[] = PROFILE_VIEW_CAPS.filter((cap) => cap !== 'audit');
+  const access = accessFromRole(name, rawPermissions);
+  if (access.view_audit.view || access.view_audit.edit) caps.push('audit');
+  return caps;
+}
+
 export function userHasProfileViewCap(
   user: RoleUser | null | undefined,
   cap: ProfileViewCap,
@@ -484,6 +550,20 @@ export function userHasProfileViewCap(
     return true;
   }
   return false;
+}
+
+export function userHasProfileOwnViewCap(
+  user: RoleUser | null | undefined,
+  cap: ProfileViewCap,
+): boolean {
+  if (!user) return false;
+  if (user.is_owner) return true;
+  if (Array.isArray(user.profileOwnViewCaps)) {
+    return user.profileOwnViewCaps.includes(cap);
+  }
+  // Старые сессии без profileOwnViewCaps: как раньше — всё, журнал по view_audit.
+  if (cap === 'audit') return userHasPermission(user, 'view_audit');
+  return true;
 }
 
 export function userHasGmpCap(

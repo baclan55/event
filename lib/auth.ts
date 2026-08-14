@@ -6,6 +6,7 @@ import {
   gmpCapsFromRole,
   permissionsFromRole,
   profileViewCapsFromRole,
+  profileOwnViewCapsFromRole,
   userHasAnyRole,
   userHasPermission,
   userHasRoleIn,
@@ -65,6 +66,7 @@ export type DbUser = RoleUser & {
   gmpCaps: GmpCap[];
   eventCaps: EventCap[];
   profileViewCaps: ProfileViewCap[];
+  profileOwnViewCaps: ProfileViewCap[];
   is_event_helper?: boolean;
   is_administrator?: boolean;
   dashboard_blocks?: Record<DashboardBlock, boolean>;
@@ -129,6 +131,16 @@ function aggregateProfileViewCaps(roles: DbRole[]): ProfileViewCap[] {
   return [...set];
 }
 
+function aggregateProfileOwnViewCaps(roles: DbRole[]): ProfileViewCap[] {
+  const set = new Set<ProfileViewCap>();
+  for (const role of roles) {
+    for (const cap of profileOwnViewCapsFromRole(role.name, role.permissions)) {
+      set.add(cap);
+    }
+  }
+  return [...set];
+}
+
 function aggregateRoleFlags(roles: DbRole[]) {
   let isEventHelper = false;
   let isAdministrator = false;
@@ -174,6 +186,9 @@ function cloneUser(user: DbUser): DbUser {
   const profileViewCaps = Array.isArray(user.profileViewCaps)
     ? [...user.profileViewCaps]
     : aggregateProfileViewCaps(roles);
+  const profileOwnViewCaps = Array.isArray(user.profileOwnViewCaps)
+    ? [...user.profileOwnViewCaps]
+    : aggregateProfileOwnViewCaps(roles);
   const flags = aggregateRoleFlags(roles);
   return {
     ...user,
@@ -184,6 +199,7 @@ function cloneUser(user: DbUser): DbUser {
     gmpCaps,
     eventCaps,
     profileViewCaps,
+    profileOwnViewCaps,
     is_event_helper: user.is_event_helper ?? flags.isEventHelper,
     is_administrator: user.is_administrator ?? flags.isAdministrator,
     dashboard_blocks: user.dashboard_blocks || flags.dashboardBlocks,
@@ -216,6 +232,9 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
   const profileViewCaps = Array.isArray(u.profileViewCaps)
     ? u.profileViewCaps
     : aggregateProfileViewCaps(roles);
+  const profileOwnViewCaps = Array.isArray(u.profileOwnViewCaps)
+    ? u.profileOwnViewCaps
+    : aggregateProfileOwnViewCaps(roles);
   const flags = aggregateRoleFlags(roles);
   const isEventHelper = u.is_event_helper ?? flags.isEventHelper;
   const isAdministrator = u.is_administrator ?? flags.isAdministrator;
@@ -241,6 +260,7 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
     gmpCaps,
     eventCaps,
     profileViewCaps,
+    profileOwnViewCaps,
     isBlocked: !!u.is_blocked,
     blockedAt: u.blocked_at || null,
     firstName,
@@ -308,6 +328,7 @@ export async function loadUserById(userId: number): Promise<DbUser | null> {
   user.gmpCaps = aggregateGmpCaps(roles);
   user.eventCaps = aggregateEventCaps(roles);
   user.profileViewCaps = aggregateProfileViewCaps(roles);
+  user.profileOwnViewCaps = aggregateProfileOwnViewCaps(roles);
   const flags = aggregateRoleFlags(roles);
   user.is_event_helper = flags.isEventHelper;
   user.is_administrator = flags.isAdministrator;

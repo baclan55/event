@@ -93,6 +93,13 @@
     grid-template-columns:repeat(3, minmax(0,1fr));
   }
 }
+.perm-profile-scope + .perm-profile-scope{ margin-top:14px; }
+.perm-profile-scope-title{
+  font-size:12px;
+  font-weight:600;
+  color:var(--text-muted);
+  margin-bottom:8px;
+}
 
 /* --- ГМП --- */
 .gmp-staff-pick{

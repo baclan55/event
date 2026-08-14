@@ -36,6 +36,10 @@ async function listRoles() {
     dashboard_blocks: unknown;
     weekly_events_target: number | null;
     users_count: number;
+    mp_rate_mc: number | string | null;
+    mp_rate_dollars: number | string | null;
+    gmp_rate_mc: number | string | null;
+    gmp_rate_dollars: number | string | null;
   }>(
     `SELECT r.id, r.name, r.priority,
             COALESCE(r.permissions, '{}'::jsonb) AS permissions,
@@ -45,10 +49,15 @@ async function listRoles() {
             COALESCE(r.color, '') AS color,
             COALESCE(r.dashboard_blocks, '{"stats":true,"top_admin":true,"top_helper":true}'::jsonb) AS dashboard_blocks,
             r.weekly_events_target,
-            COUNT(ur.user_id)::int AS users_count
+            COUNT(ur.user_id)::int AS users_count,
+            COALESCE(s.mp_rate_mc, 0) AS mp_rate_mc,
+            COALESCE(s.mp_rate_dollars, 0) AS mp_rate_dollars,
+            COALESCE(s.gmp_rate_mc, 0) AS gmp_rate_mc,
+            COALESCE(s.gmp_rate_dollars, 0) AS gmp_rate_dollars
      FROM roles r
      LEFT JOIN user_roles ur ON ur.role_id = r.id
-     GROUP BY r.id
+     LEFT JOIN payout_role_settings s ON s.role_id = r.id
+     GROUP BY r.id, s.mp_rate_mc, s.mp_rate_dollars, s.gmp_rate_mc, s.gmp_rate_dollars
      ORDER BY r.priority ASC, r.id ASC`,
   );
   return result.rows.map((row) => {
@@ -62,6 +71,10 @@ async function listRoles() {
       || !!row.color
       || (row.dashboard_blocks && typeof row.dashboard_blocks === 'object'
         && Object.keys(row.dashboard_blocks as object).length > 0);
+    const money = (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.round(n) : 0;
+    };
     return {
       id: row.id,
       name: row.name,
@@ -74,8 +87,43 @@ async function listRoles() {
       dashboardBlocks: explicitMeta ? meta.dashboardBlocks : defaults.dashboardBlocks,
       weeklyEventsTarget: parseWeeklyTarget(row.weekly_events_target),
       usersCount: row.users_count,
+      mpRateMc: money(row.mp_rate_mc),
+      mpRateDollars: money(row.mp_rate_dollars),
+      gmpRateMc: money(row.gmp_rate_mc),
+      gmpRateDollars: money(row.gmp_rate_dollars),
     };
   });
+}
+
+function readPayoutRates(body: Record<string, unknown>) {
+  const money = (v: unknown) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+  };
+  return {
+    mpRateMc: money(body.mpRateMc ?? body.mp_rate_mc),
+    mpRateDollars: money(body.mpRateDollars ?? body.mp_rate_dollars),
+    gmpRateMc: money(body.gmpRateMc ?? body.gmp_rate_mc),
+    gmpRateDollars: money(body.gmpRateDollars ?? body.gmp_rate_dollars),
+  };
+}
+
+async function upsertPayoutRates(
+  roleId: number,
+  rates: ReturnType<typeof readPayoutRates>,
+) {
+  await query(
+    `INSERT INTO payout_role_settings (
+       role_id, mp_rate_mc, mp_rate_dollars, gmp_rate_mc, gmp_rate_dollars, updated_at
+     ) VALUES ($1,$2,$3,$4,$5, now())
+     ON CONFLICT (role_id) DO UPDATE SET
+       mp_rate_mc = EXCLUDED.mp_rate_mc,
+       mp_rate_dollars = EXCLUDED.mp_rate_dollars,
+       gmp_rate_mc = EXCLUDED.gmp_rate_mc,
+       gmp_rate_dollars = EXCLUDED.gmp_rate_dollars,
+       updated_at = now()`,
+    [roleId, rates.mpRateMc, rates.mpRateDollars, rates.gmpRateMc, rates.gmpRateDollars],
+  );
 }
 
 function readMeta(body: Record<string, unknown>, name: string) {
@@ -160,6 +208,7 @@ export const handleRoles: ApiHandler = async ({ key, request, params, method, bo
     }
     const meta = readMeta(body, name);
     const weeklyEventsTarget = parseWeeklyTarget(body.weeklyEventsTarget);
+    const payoutRates = readPayoutRates(body);
     const max = await query<{ m: number | null }>('SELECT MAX(priority) AS m FROM roles');
     const priority = (max.rows[0]?.m || 0) + 1;
     try {
@@ -178,12 +227,13 @@ export const handleRoles: ApiHandler = async ({ key, request, params, method, bo
           weeklyEventsTarget,
         ],
       );
+      await upsertPayoutRates(inserted.rows[0].id, payoutRates);
       await writeAudit({
         actorId: user.id,
         action: 'role.create',
         entityType: 'role',
         entityId: inserted.rows[0].id,
-        details: { name, permissions, weeklyEventsTarget, ...meta },
+        details: { name, permissions, weeklyEventsTarget, payoutRates, ...meta },
       });
       return ok({ id: inserted.rows[0].id, roles: await listRoles() });
     } catch (error) {
@@ -214,6 +264,7 @@ export const handleRoles: ApiHandler = async ({ key, request, params, method, bo
     if (unsafe) return jsonError(unsafe, 400);
     const meta = readMeta(body, name);
     const weeklyEventsTarget = parseWeeklyTarget(body.weeklyEventsTarget);
+    const payoutRates = readPayoutRates(body);
     try {
       await query(
         `UPDATE roles SET name=$1, permissions=$2::jsonb,
@@ -231,12 +282,13 @@ export const handleRoles: ApiHandler = async ({ key, request, params, method, bo
           id,
         ],
       );
+      await upsertPayoutRates(id, payoutRates);
       await writeAudit({
         actorId: user.id,
         action: 'role.update',
         entityType: 'role',
         entityId: id,
-        details: { name, permissions, weeklyEventsTarget, ...meta },
+        details: { name, permissions, weeklyEventsTarget, payoutRates, ...meta },
       });
       invalidateUserCache();
       return ok({ roles: await listRoles() });

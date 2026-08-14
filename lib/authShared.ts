@@ -20,6 +20,7 @@ export type PublicUser = {
   gmpCaps: GmpCap[];
   eventCaps: EventCap[];
   profileViewCaps: ProfileViewCap[];
+  profileOwnViewCaps: ProfileViewCap[];
   isBlocked: boolean;
   blockedAt: string | null;
   firstName: string | null;
