@@ -1,0 +1,59 @@
+
+.payout-table th{
+  background:var(--bg-card-2);
+  color:var(--text-muted);
+  font-size:10.5px;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  font-weight:700;
+  position:sticky;
+  top:0;
+  z-index:1;
+}
+.payout-h-rep{ background:rgba(140,100,220,.18) !important; color:#d4c2ff !important; }
+.payout-h-events{ background:rgba(70,120,220,.18) !important; color:#b8d0ff !important; }
+.payout-h-bonus{ background:rgba(50,160,180,.18) !important; color:#9fe7f0 !important; }
+.payout-h-comp{ background:rgba(180,70,110,.18) !important; color:#f0b8cb !important; }
+.payout-cell{
+  min-width:72px;
+  max-width:110px;
+  padding:7px 8px !important;
+  font-size:12.5px;
+}
+.payout-cell-note{
+  min-width:120px;
+  max-width:180px;
+}
+.payout-role{ font-weight:700; color:var(--text-heading); }
+.payout-num{ text-align:center; font-variant-numeric:tabular-nums; }
+.payout-reps{ min-width:90px; }
+.payout-rep-toggle{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  margin-right:6px;
+  font-size:11px;
+  color:var(--text-muted);
+  cursor:pointer;
+}
+.payout-muted{ color:var(--text-faint); }
+.payout-row-off{ opacity:.45; }
+.payout-table tbody tr.payout-tint-chief td{ background:rgba(40,90,180,.14); }
+.payout-table tbody tr.payout-tint-dep td{ background:rgba(130,70,190,.14); }
+.payout-table tbody tr.payout-tint-senior td{ background:rgba(190,150,40,.14); }
+.payout-table tbody tr.payout-tint-helper td{ background:rgba(190,70,90,.12); }
+.payout-table tbody tr.payout-tint-mini td{ background:rgba(50,150,90,.14); }
+.payout-table tbody tr.payout-tint-default td{ background:transparent; }
+.payout-table tbody tr:hover td{ filter:brightness(1.08); }
+
+@media (max-width:640px){
+  .devent-card-actions{ width:100%; }
+  .devent-card-actions .ui-select{ flex:1 1 auto; max-width:none; }
+  .site-header-inner{ justify-content:center; text-align:center; }
+  .site-nav{ gap:16px; }
+  .site-hero{ padding:52px 18px 40px; }
+  .site-hero h1{ font-size:30px; }
+  .site-section{ padding:30px 18px 10px; }
+  .qform{ padding:18px 16px 48px; }
+  .qform-card{ padding:18px 18px; }
+}

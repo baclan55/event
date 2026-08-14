@@ -30,7 +30,9 @@ export function CabinetShellServer({
   const [topbarHidden, setTopbarHidden] = useState(false);
   const [topbarScrolled, setTopbarScrolled] = useState(false);
   const active = (key: string) =>
-    pathname === `/app/${key}` || (key === 'dashboard' && (pathname === '/app' || pathname === '/app/dashboard'));
+    pathname === `/app/${key}`
+    || pathname.startsWith(`/app/${key}/`)
+    || (key === 'dashboard' && (pathname === '/app' || pathname === '/app/dashboard'));
 
   useEffect(() => {
     let lastY = window.scrollY;

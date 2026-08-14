@@ -11,6 +11,7 @@ import { handleSystem } from './api/system';
 import type { ApiContext, ApiHandler } from './api/types';
 import { handleVacations } from './api/vacations';
 import { handleGmp } from './api/gmp';
+import { handlePayouts } from './api/payouts';
 
 const handlers: ApiHandler[] = [
   handleSystem,
@@ -22,6 +23,7 @@ const handlers: ApiHandler[] = [
   handleApplications,
   handleVacations,
   handleGmp,
+  handlePayouts,
 ];
 
 export async function handle(

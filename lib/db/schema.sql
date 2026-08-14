@@ -546,3 +546,99 @@ CREATE TABLE IF NOT EXISTS gmp_marks (
   PRIMARY KEY (player_id, checkpoint_id)
 );
 CREATE INDEX IF NOT EXISTS idx_gmp_marks_checkpoint ON gmp_marks(checkpoint_id);
+
+-- ============================================================================
+-- История назначений ролей (для выплат: ставка МП/ГМП на момент события)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS user_role_history (
+  id         BIGSERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role_id    INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ended_at   TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_user_role_history_user_time
+  ON user_role_history(user_id, started_at, ended_at);
+CREATE INDEX IF NOT EXISTS idx_user_role_history_open
+  ON user_role_history(user_id, role_id) WHERE ended_at IS NULL;
+
+INSERT INTO user_role_history (user_id, role_id, started_at, ended_at)
+SELECT ur.user_id, ur.role_id, ur.assigned_at, NULL
+FROM user_roles ur
+WHERE NOT EXISTS (
+  SELECT 1 FROM user_role_history h
+  WHERE h.user_id = ur.user_id AND h.role_id = ur.role_id AND h.ended_at IS NULL
+);
+
+-- ============================================================================
+-- Выплаты хелперам (недельные таблицы)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS payout_role_settings (
+  role_id             INTEGER PRIMARY KEY REFERENCES roles(id) ON DELETE CASCADE,
+  mp_rate_mc          NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  mp_rate_dollars     NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  gmp_rate_mc         NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  gmp_rate_dollars    NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  min_mp              INTEGER NOT NULL DEFAULT 0,
+  fixed_mc            NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  fixed_dollars       NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  verbal_penalty_pct  NUMERIC(6, 2) NOT NULL DEFAULT 0,
+  strict_penalty_pct  NUMERIC(6, 2) NOT NULL DEFAULT 0,
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS payout_weeks (
+  id         SERIAL PRIMARY KEY,
+  week_start DATE NOT NULL UNIQUE,
+  status     TEXT NOT NULL DEFAULT 'ready'
+               CHECK (status IN ('pending_events', 'ready', 'locked')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  locked_at  TIMESTAMPTZ,
+  locked_by  INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_payout_weeks_start ON payout_weeks(week_start DESC);
+
+CREATE TABLE IF NOT EXISTS payout_rows (
+  id               SERIAL PRIMARY KEY,
+  week_id          INTEGER NOT NULL REFERENCES payout_weeks(id) ON DELETE CASCADE,
+  user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role_id          INTEGER REFERENCES roles(id) ON DELETE SET NULL,
+  role_name        TEXT NOT NULL DEFAULT '',
+  nickname         TEXT NOT NULL DEFAULT '',
+  static_id        TEXT NOT NULL DEFAULT '',
+  mp_count         INTEGER NOT NULL DEFAULT 0,
+  gmp_count        INTEGER NOT NULL DEFAULT 0,
+  breakdown        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  events_mc        NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  events_dollars   NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  bonus_mc         NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  bonus_dollars    NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  bonus_note       TEXT NOT NULL DEFAULT '',
+  comp_static_id   TEXT NOT NULL DEFAULT '',
+  comp_dollars     NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  manual           BOOLEAN NOT NULL DEFAULT FALSE,
+  include_in_payout BOOLEAN NOT NULL DEFAULT TRUE,
+  events_override  BOOLEAN NOT NULL DEFAULT FALSE,
+  UNIQUE (week_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_payout_rows_week ON payout_rows(week_id);
+
+CREATE TABLE IF NOT EXISTS payout_row_reprimands (
+  row_id       INTEGER NOT NULL REFERENCES payout_rows(id) ON DELETE CASCADE,
+  reprimand_id INTEGER NOT NULL REFERENCES reprimands(id) ON DELETE CASCADE,
+  type         TEXT NOT NULL,
+  counted      BOOLEAN NOT NULL DEFAULT TRUE,
+  PRIMARY KEY (row_id, reprimand_id)
+);
+
+CREATE TABLE IF NOT EXISTS payout_log (
+  id         BIGSERIAL PRIMARY KEY,
+  week_id    INTEGER NOT NULL REFERENCES payout_weeks(id) ON DELETE CASCADE,
+  actor_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  action     TEXT NOT NULL,
+  details    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_payout_log_week ON payout_log(week_id, created_at DESC);
+

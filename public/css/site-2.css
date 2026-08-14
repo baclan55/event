@@ -16,6 +16,82 @@ select.input option, select.input optgroup{
 }
 .field-hint{ font-size:11.5px; color:var(--text-faint); margin-top:6px; }
 
+/* Кастомный date / datetime picker */
+.ui-date{ position:relative; width:100%; }
+.ui-date-native{
+  position:absolute; inset:0; opacity:0; pointer-events:none; width:100%; height:100%;
+}
+.ui-date-trigger{
+  width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px;
+  background:var(--bg-input); border:1px solid var(--border); color:var(--text-heading);
+  border-radius:10px; padding:11px 13px; font-size:13.5px; font-family:inherit;
+  cursor:pointer; text-align:left;
+}
+.ui-date-trigger.is-placeholder{ color:var(--text-faint); }
+.ui-date-trigger:disabled{ opacity:.55; cursor:not-allowed; }
+.ui-date.open .ui-date-trigger,
+.ui-date-trigger:focus-visible{
+  border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); outline:none;
+}
+.ui-date-icon{
+  width:16px; height:16px; flex-shrink:0; opacity:.7;
+  background:
+    linear-gradient(var(--text-muted), var(--text-muted)) 3px 2px / 10px 2px no-repeat,
+    linear-gradient(var(--text-muted), var(--text-muted)) 5px 1px / 2px 4px no-repeat,
+    linear-gradient(var(--text-muted), var(--text-muted)) 11px 1px / 2px 4px no-repeat,
+    linear-gradient(transparent, transparent) 0 0 / 16px 16px no-repeat;
+  border:1.5px solid var(--text-muted); border-radius:3px;
+  box-sizing:border-box;
+}
+.ui-date-panel{
+  background:var(--bg-card); border:1px solid var(--border); border-radius:14px;
+  box-shadow:0 16px 40px rgba(0,0,0,.45); padding:12px; color:var(--text-heading);
+  color-scheme: dark;
+}
+.ui-date-head{
+  display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;
+}
+.ui-date-title{
+  font-weight:700; font-size:13.5px; text-transform:capitalize; color:var(--text-heading);
+}
+.ui-date-nav{
+  width:32px; height:32px; border-radius:8px; border:1px solid var(--border);
+  background:var(--bg-input); color:var(--text-heading); cursor:pointer; font-size:18px; line-height:1;
+}
+.ui-date-nav:hover{ border-color:var(--accent); }
+.ui-date-weekdays{
+  display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-bottom:4px;
+}
+.ui-date-weekdays span{
+  text-align:center; font-size:10.5px; font-weight:700; color:var(--text-muted);
+  text-transform:lowercase; padding:4px 0;
+}
+.ui-date-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+.ui-date-day{
+  height:34px; border:none; border-radius:8px; background:transparent;
+  color:var(--text-heading); cursor:pointer; font-size:12.5px; font-weight:600;
+}
+.ui-date-day.is-out{ color:var(--text-faint); opacity:.55; }
+.ui-date-day.is-today{ box-shadow:inset 0 0 0 1px var(--accent); }
+.ui-date-day.is-selected{
+  background:linear-gradient(155deg, var(--accent) 0%, var(--accent-2) 100%);
+  color:#fff;
+}
+.ui-date-day:hover:not(.is-selected){ background:var(--bg-input); }
+.ui-date-time{
+  display:grid; grid-template-columns:1fr 1fr auto; gap:8px; align-items:end;
+  margin-top:10px; padding-top:10px; border-top:1px solid var(--border);
+}
+.ui-date-time label{
+  display:block; font-size:10.5px; font-weight:700; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--text-muted); margin:0;
+}
+.ui-date-time .input{ margin-top:6px; padding:8px 10px; }
+.ui-date-footer{
+  display:flex; justify-content:space-between; gap:8px; margin-top:10px;
+  padding-top:8px; border-top:1px solid var(--border);
+}
+
 /* Кастомный DropMenu */
 .ui-select{ position:relative; width:100%; }
 .ui-select-native{
@@ -231,49 +307,3 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
   cursor:pointer;
 }
 .mde-btn:hover{ background:var(--bg-hover); color:var(--text-heading); }
-.mde-btn-bold{ font-weight:800; }
-.mde-btn-italic{ font-style:italic; }
-.mde-btn-strike{ text-decoration:line-through; }
-.mde-btn-code{ font-family:var(--font-mono); font-size:11px; }
-.mde-sep{ width:1px; height:20px; background:var(--border); margin:0 3px; flex-shrink:0; }
-.mde-btn-discord{ color:#8b93f8; }
-.mde-btn-discord:hover{ color:#fff; background:#5865f2; }
-.mde-toolbar-spacer{ flex:1 1 auto; min-width:8px; }
-.mde-tabs{ padding:3px; flex-shrink:0; }
-.mde-tabs button{ padding:5px 12px; font-size:11.5px; }
-
-/* Панель вставки ссылки на канал Discord — раскрывается прямо в теле
-   редактора между тулбаром и полем ввода, а не в отдельном модальном окне
-   (редактор обычно и так открыт внутри Modal, а тот умеет показывать
-   только одно окно за раз). */
-.mde-discord-pop{
-  padding:14px 14px 2px; background:var(--bg-card-2); border-bottom:1px solid var(--border);
-}
-.mde-discord-pop .field{ margin-bottom:12px; }
-.mde-discord-pop-actions{ display:flex; justify-content:flex-end; gap:8px; margin-bottom:14px; }
-
-.mde-textarea{
-  display:block; width:100%; min-height:180px; max-height:460px; resize:vertical;
-  border:none; border-radius:0; background:none; line-height:1.6; font-family:inherit;
-}
-.mde-textarea:focus{ outline:none; box-shadow:none; }
-.mde-preview{ min-height:180px; max-height:460px; overflow-y:auto; padding:14px 16px; }
-.mde-preview .empty-state{ padding:14px 0; }
-
-/* "Чип" ссылки на канал Discord — то, что реально попадает в отображаемый
-   текст (см. transformDiscordAnchor в src/utils/richText.js на бэке).
-   Оформлен по образцу упоминания канала в самом Discord: приглушённый
-   блёрпл-фон, "#" перед названием, при наведении — сплошная заливка. Класс
-   общий и для предпросмотра в редакторе, и для готовой страницы — стиль
-   совпадает в обоих местах. */
-.discord-chip{
-  display:inline-flex; align-items:center;
-  padding:1px 7px 1px 5px; border-radius:5px; margin:0 1px;
-  background:rgba(88,101,242,.3); color:#c9cdfb;
-  font-weight:600; text-decoration:none; white-space:nowrap; cursor:pointer;
-}
-.discord-chip::before{
-  content:"#"; margin-right:2px; color:#9aa1f5; font-weight:700;
-}
-.discord-chip:hover, .discord-chip:focus-visible{ background:#5865f2; color:#fff; }
-.discord-chip:hover::before, .discord-chip:focus-visible::before{ color:#fff; }

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { NavIcon } from '@/components/NavIcons';
-import { askConfirm, ErrorText, MarkdownFormField, matchesSearch, Modal, request, SearchBox, Select, type Row } from './shared';
+import { askConfirm, DateField, ErrorText, MarkdownFormField, matchesSearch, Modal, request, SearchBox, Select, type Row } from './shared';
 
 const STATUS_LABEL: Record<string, string> = {
   draft: 'Черновик',
@@ -189,11 +189,10 @@ function GmpFormFields({
         </div>
         <div className="field">
           <label>Дата и время</label>
-          <input
-            className="input"
-            type="datetime-local"
+          <DateField
             name="startsAtLocal"
             required
+            withTime
             defaultValue={toLocalInputValue(initial?.startsAt)}
           />
         </div>

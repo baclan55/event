@@ -1,5 +1,6 @@
 import { pool } from '@/lib/db';
 import { findBlacklistMatch } from '@/lib/blacklist';
+import { syncUserRoleHistory } from '@/lib/roleHistory';
 
 export async function recomputeBestRole(client: { query: typeof pool.query }, userId: number) {
   const { rows } = await client.query<{ id: number }>(
@@ -52,6 +53,7 @@ export async function replaceUserRoles(userId: number, roleIds: number[]) {
     } else {
       await client.query('DELETE FROM user_roles WHERE user_id = $1', [userId]);
     }
+    await syncUserRoleHistory(client, userId, unique);
     await recomputeBestRole(client, userId);
     await client.query('COMMIT');
   } catch (err) {
@@ -79,6 +81,15 @@ export async function addUserRole(userId: number, roleName: string) {
       `INSERT INTO user_roles (user_id, role_id, assigned_at) VALUES ($1, $2, now())
        ON CONFLICT DO NOTHING`,
       [userId, rows[0].id]
+    );
+    const current = await client.query<{ role_id: number }>(
+      'SELECT role_id FROM user_roles WHERE user_id = $1',
+      [userId],
+    );
+    await syncUserRoleHistory(
+      client,
+      userId,
+      current.rows.map((r) => r.role_id),
     );
     await recomputeBestRole(client, userId);
     await client.query('COMMIT');

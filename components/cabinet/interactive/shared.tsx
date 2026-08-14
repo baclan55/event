@@ -389,3 +389,311 @@ export function ReprimandLegend({ tier, limits = DEFAULT_LIMITS }: { tier: strin
     ? <div className="rp-legend">Максимум <b>{limits.admin.points} баллов</b>. Каждый балл перестаёт учитываться через <b>{limits.admin.decayDays} дней</b>.</div>
     : <div className="rp-legend">Устный = <b>{limits.helper.verbalPoints} балл</b>, строгий = <b>{limits.helper.strictPoints} балла</b>. При <b>{limits.helper.blockPoints} баллах</b> учётная запись блокируется. Каждые <b>{limits.helper.verbalToStrict} устных</b> объединяются в строгий.</div>;
 }
+
+const WEEKDAYS_RU = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+const MONTHS_RU = [
+  'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
+  'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
+];
+
+function pad2(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+function parseDateParts(value: string): { y: number; m: number; d: number; hh: number; mm: number } | null {
+  const v = String(value || '').trim();
+  if (!v) return null;
+  const m = v.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  return {
+    y: Number(m[1]),
+    m: Number(m[2]),
+    d: Number(m[3]),
+    hh: Number(m[4] || 0),
+    mm: Number(m[5] || 0),
+  };
+}
+
+function toDateValue(y: number, m: number, d: number) {
+  return `${y}-${pad2(m)}-${pad2(d)}`;
+}
+
+function toDateTimeValue(y: number, m: number, d: number, hh: number, mm: number) {
+  return `${toDateValue(y, m, d)}T${pad2(hh)}:${pad2(mm)}`;
+}
+
+function formatDisplay(value: string, withTime: boolean) {
+  const p = parseDateParts(value);
+  if (!p) return withTime ? 'ДД.ММ.ГГГГ ЧЧ:ММ' : 'ДД.ММ.ГГГГ';
+  const date = `${pad2(p.d)}.${pad2(p.m)}.${p.y}`;
+  return withTime ? `${date} ${pad2(p.hh)}:${pad2(p.mm)}` : date;
+}
+
+function monthMatrix(year: number, month: number) {
+  const first = new Date(year, month - 1, 1);
+  const startPad = (first.getDay() + 6) % 7; // mon=0
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const cells: Array<{ y: number; m: number; d: number; inMonth: boolean }> = [];
+  for (let i = 0; i < startPad; i++) {
+    const d = new Date(year, month - 1, -startPad + i + 1);
+    cells.push({ y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate(), inMonth: false });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ y: year, m: month, d, inMonth: true });
+  }
+  while (cells.length % 7 !== 0 || cells.length < 42) {
+    const last = cells[cells.length - 1];
+    const next = new Date(last.y, last.m - 1, last.d + 1);
+    cells.push({ y: next.getFullYear(), m: next.getMonth() + 1, d: next.getDate(), inMonth: false });
+  }
+  return cells;
+}
+
+/** Тёмный календарь вместо нативного date / datetime-local. */
+export function DateField({
+  name,
+  value,
+  defaultValue = '',
+  onChange,
+  required,
+  disabled,
+  withTime = false,
+}: {
+  name?: string;
+  value?: string;
+  defaultValue?: string;
+  onChange?: (value: string) => void;
+  required?: boolean;
+  disabled?: boolean;
+  withTime?: boolean;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [internal, setInternal] = useState(defaultValue);
+  const current = value !== undefined ? value : internal;
+  const parsed = parseDateParts(current);
+  const now = new Date();
+  const [viewY, setViewY] = useState(parsed?.y || now.getFullYear());
+  const [viewM, setViewM] = useState(parsed?.m || now.getMonth() + 1);
+  const [draftH, setDraftH] = useState(parsed?.hh ?? now.getHours());
+  const [draftMin, setDraftMin] = useState(parsed?.mm ?? 0);
+  const [panelStyle, setPanelStyle] = useState<CSSProperties>({});
+
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!open) return;
+    const p = parseDateParts(current);
+    if (p) {
+      setViewY(p.y);
+      setViewM(p.m);
+      setDraftH(p.hh);
+      setDraftMin(p.mm);
+    }
+  }, [open, current]);
+
+  const placePanel = useCallback(() => {
+    const trigger = rootRef.current?.querySelector('.ui-date-trigger') as HTMLElement | null;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const width = Math.min(320, Math.max(280, rect.width));
+    const gap = 6;
+    const spaceBelow = window.innerHeight - rect.bottom - gap;
+    const openUp = spaceBelow < 340 && rect.top > spaceBelow;
+    setPanelStyle({
+      position: 'fixed',
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+      width,
+      top: openUp ? undefined : rect.bottom + gap,
+      bottom: openUp ? Math.max(8, window.innerHeight - rect.top + gap) : undefined,
+      zIndex: 430,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    placePanel();
+  }, [open, placePanel, withTime]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    const onReposition = () => placePanel();
+    document.addEventListener('mousedown', onDoc);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onReposition);
+    window.addEventListener('scroll', onReposition, true);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onReposition);
+      window.removeEventListener('scroll', onReposition, true);
+    };
+  }, [open, placePanel]);
+
+  function commit(next: string) {
+    if (value === undefined) setInternal(next);
+    onChange?.(next);
+  }
+
+  function pickDay(y: number, m: number, d: number) {
+    if (withTime) {
+      commit(toDateTimeValue(y, m, d, draftH, draftMin));
+    } else {
+      commit(toDateValue(y, m, d));
+      setOpen(false);
+    }
+  }
+
+  function applyTime() {
+    const p = parseDateParts(current) || {
+      y: viewY,
+      m: viewM,
+      d: now.getDate(),
+      hh: draftH,
+      mm: draftMin,
+    };
+    commit(toDateTimeValue(p.y, p.m, p.d, draftH, draftMin));
+    setOpen(false);
+  }
+
+  function shiftMonth(delta: number) {
+    const dt = new Date(viewY, viewM - 1 + delta, 1);
+    setViewY(dt.getFullYear());
+    setViewM(dt.getMonth() + 1);
+  }
+
+  const cells = monthMatrix(viewY, viewM);
+  const selectedKey = parsed ? toDateValue(parsed.y, parsed.m, parsed.d) : '';
+  const todayKey = toDateValue(now.getFullYear(), now.getMonth() + 1, now.getDate());
+
+  return (
+    <div className={`ui-date${open ? ' open' : ''}`} ref={rootRef}>
+      {name ? (
+        <input
+          className="ui-date-native"
+          tabIndex={-1}
+          readOnly
+          name={name}
+          value={current}
+          required={required}
+          aria-hidden
+        />
+      ) : null}
+      <button
+        type="button"
+        className={`ui-date-trigger${!current ? ' is-placeholder' : ''}`}
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((v) => !v)}
+      >
+        <span>{formatDisplay(current, withTime)}</span>
+        <span className="ui-date-icon" aria-hidden />
+      </button>
+      {mounted && open
+        ? createPortal(
+          <div className="ui-date-panel" ref={panelRef} style={panelStyle} role="dialog" aria-label="Календарь">
+            <div className="ui-date-head">
+              <button type="button" className="ui-date-nav" onClick={() => shiftMonth(-1)} aria-label="Предыдущий месяц">‹</button>
+              <div className="ui-date-title">{MONTHS_RU[viewM - 1]} {viewY}</div>
+              <button type="button" className="ui-date-nav" onClick={() => shiftMonth(1)} aria-label="Следующий месяц">›</button>
+            </div>
+            <div className="ui-date-weekdays">
+              {WEEKDAYS_RU.map((d) => <span key={d}>{d}</span>)}
+            </div>
+            <div className="ui-date-grid">
+              {cells.map((cell) => {
+                const key = toDateValue(cell.y, cell.m, cell.d);
+                const selected = key === selectedKey;
+                const today = key === todayKey;
+                return (
+                  <button
+                    type="button"
+                    key={`${key}-${cell.inMonth ? 'm' : 'o'}`}
+                    className={[
+                      'ui-date-day',
+                      cell.inMonth ? '' : 'is-out',
+                      selected ? 'is-selected' : '',
+                      today ? 'is-today' : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => pickDay(cell.y, cell.m, cell.d)}
+                  >
+                    {cell.d}
+                  </button>
+                );
+              })}
+            </div>
+            {withTime ? (
+              <div className="ui-date-time">
+                <label>
+                  Часы
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    max={23}
+                    value={draftH}
+                    onChange={(e) => setDraftH(Math.min(23, Math.max(0, Number(e.target.value) || 0)))}
+                  />
+                </label>
+                <label>
+                  Минуты
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    max={59}
+                    value={draftMin}
+                    onChange={(e) => setDraftMin(Math.min(59, Math.max(0, Number(e.target.value) || 0)))}
+                  />
+                </label>
+                <button type="button" className="btn btn-primary btn-sm" onClick={applyTime}>Готово</button>
+              </div>
+            ) : null}
+            <div className="ui-date-footer">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  commit('');
+                  setOpen(false);
+                }}
+              >
+                Удалить
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  if (withTime) {
+                    commit(toDateTimeValue(
+                      now.getFullYear(),
+                      now.getMonth() + 1,
+                      now.getDate(),
+                      now.getHours(),
+                      now.getMinutes(),
+                    ));
+                    setOpen(false);
+                  } else {
+                    pickDay(now.getFullYear(), now.getMonth() + 1, now.getDate());
+                  }
+                }}
+              >
+                Сегодня
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )
+        : null}
+    </div>
+  );
+}

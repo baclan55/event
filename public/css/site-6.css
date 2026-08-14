@@ -1,4 +1,59 @@
 
+.site-callout-underline{ width:36px; height:3px; border-radius:2px; background:var(--red); margin-bottom:18px; }
+.site-callout .site-list{ margin-bottom:22px; }
+
+.site-footer{
+  margin-top:auto; text-align:center; padding:34px 24px 46px; color:var(--text-faint); font-size:12px;
+  display:flex; flex-direction:column; align-items:center; gap:8px;
+}
+.site-footer a{ display:inline-flex; align-items:center; gap:6px; color:var(--text-muted); font-weight:600; }
+.site-footer a:hover{ color:var(--accent-light); }
+
+/* --- Форма заявки (в стиле опросника) --- */
+.site-page-head{ max-width:640px; margin:0 auto; padding:46px 24px 6px; text-align:center; }
+.site-page-head h1{ font-size:27px; margin-bottom:8px; }
+.site-page-head p{ color:var(--text-muted); font-size:13.5px; }
+
+.qform{ max-width:640px; margin:0 auto; padding:24px 24px 60px; display:flex; flex-direction:column; gap:14px; }
+.qform-card{ background:var(--bg-card); border:1px solid var(--border-soft); border-radius:var(--radius-lg); padding:22px 24px; }
+.qform-label{ display:block; font-size:14.5px; font-weight:700; color:var(--text-heading); margin-bottom:5px; }
+.qform-required{ color:var(--accent-light); margin-left:3px; }
+.qform-hint{ font-size:12px; color:var(--text-muted); margin-bottom:10px; }
+.qform-hint-row{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+.qform-hint-row .qform-hint{ margin-bottom:0; }
+.qform-card .input{ margin-top:2px; }
+.qform .error-text{ text-align:center; }
+
+/* --- ссылка "Как найти свой Discord ID?" рядом с полем Discord в заявке --- */
+.qform-hint-link{
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:12px; font-weight:600; color:var(--accent-light);
+  background:none; border:none; padding:0; cursor:pointer; white-space:nowrap;
+}
+.qform-hint-link:hover{ color:var(--text-heading); text-decoration:underline; }
+
+/* --- гайд "Как найти свой Discord ID" (модалка) --- */
+.dc-guide-steps{ display:flex; flex-direction:column; }
+.dc-guide-step{
+  display:flex; align-items:flex-start; gap:14px;
+  padding:14px 2px; border-bottom:1px solid var(--border-soft);
+}
+.dc-guide-step:last-child{ border-bottom:none; padding-bottom:2px; }
+.dc-guide-num{
+  flex-shrink:0; width:28px; height:28px; border-radius:50%;
+  background:var(--accent); color:#fff; font-weight:800; font-size:13px;
+  display:flex; align-items:center; justify-content:center;
+}
+.dc-guide-text{ padding-top:3px; font-size:13.5px; color:var(--text-body); line-height:1.55; }
+.dc-guide-text b{ color:var(--text-heading); }
+.dc-guide-done{
+  display:flex; align-items:center; gap:12px; margin-top:16px;
+  padding:14px 16px; border-radius:var(--radius-md);
+  background:var(--green-soft); border:1px solid rgba(52,211,153,.25);
+}
+.dc-guide-done svg{ flex-shrink:0; color:var(--green); }
+.dc-guide-done-text{ font-size:13px; color:var(--text-body); line-height:1.5; }
+.dc-guide-done-text b{ color:var(--green); }
 
 /* --- чекбокс согласия / флаги в формах --- */
 .qform-check-label,
@@ -341,14 +396,25 @@
 }
 .devent-card .roster-row{ padding:6px 0; }
 
-@media (max-width:640px){
-  .devent-card-actions{ width:100%; }
-  .devent-card-actions .ui-select{ flex:1 1 auto; max-width:none; }
-  .site-header-inner{ justify-content:center; text-align:center; }
-  .site-nav{ gap:16px; }
-  .site-hero{ padding:52px 18px 40px; }
-  .site-hero h1{ font-size:30px; }
-  .site-section{ padding:30px 18px 10px; }
-  .qform{ padding:18px 16px 48px; }
-  .qform-card{ padding:18px 18px; }
+/* Выплаты хелперам */
+.payout-table-wrap{
+  overflow:auto;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:var(--bg-card);
+}
+.payout-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:12.5px;
+  min-width:980px;
+}
+.payout-table-wide{ min-width:1280px; }
+.payout-table th,
+.payout-table td{
+  border-bottom:1px solid var(--border);
+  padding:8px 8px;
+  text-align:left;
+  vertical-align:middle;
+  white-space:nowrap;
 }

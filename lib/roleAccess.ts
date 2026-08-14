@@ -57,6 +57,7 @@ export const PERMISSIONS = [
   'manage_achievements',
   'manage_gmp',
   'manage_events',
+  'manage_payouts',
   'moderate_profile',
   'view_profile',
 ] as const;
@@ -155,6 +156,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   manage_achievements: 'Достижения',
   manage_gmp: 'ГМП',
   manage_events: 'Мероприятия',
+  manage_payouts: 'Выплаты хелперам',
   moderate_profile: 'Модерация игровых данных',
   view_profile: 'Просмотр профиля',
 };
@@ -180,6 +182,7 @@ export const PERMISSION_FALLBACK_ROLES: Record<Permission, readonly string[]> = 
   manage_achievements: OWNER_PANEL_ROLES,
   manage_gmp: EDIT_ROLES,
   manage_events: EDIT_ROLES,
+  manage_payouts: EDIT_ROLES,
   moderate_profile: REPRIMANDS_ROLES,
   view_profile: [],
 };

@@ -8,6 +8,7 @@ const routes: Record<string, string> = {
   firstSteps: '/app/first-steps', vacations: '/app/vacations', reprimands: '/app/reprimands',
   applications: '/app/applications', 'application-history': '/app/application-history', candidates: '/app/candidates', roles: '/app/roles', owner: '/app/roles',
   blacklist: '/app/blacklist', achievements: '/app/achievements', gmp: '/app/gmp',
+  payouts: '/app/payouts',
   'profile-moderation': '/app/profile-moderation',
   blocked: '/app/blocked', pending: '/app/pending',
 };

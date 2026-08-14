@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { PublicUser } from '@/lib/authShared';
 import { AUDIT_LABELS } from '@/lib/auditShared';
 import { NavIcon } from '@/components/NavIcons';
-import { Avatar, DEFAULT_LIMITS, ErrorText, matchesSearch, Modal, ReprimandBadge, ReprimandLegend, ReprimandSummary, request, SearchBox, Select, type Row } from './shared';
+import { Avatar, DateField, DEFAULT_LIMITS, ErrorText, matchesSearch, Modal, ReprimandBadge, ReprimandLegend, ReprimandSummary, request, SearchBox, Select, type Row } from './shared';
 import {
   ProfileAchievementsPanel,
   catalogFromPayload,
@@ -407,11 +407,11 @@ export function ProfileInteractive({
               </div>
               <div className="field">
                 <label>С даты</label>
-                <input className="input" type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} />
+                <DateField value={filterFrom} onChange={setFilterFrom} />
               </div>
               <div className="field">
                 <label>По дату</label>
-                <input className="input" type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} />
+                <DateField value={filterTo} onChange={setFilterTo} />
               </div>
               <div className="modal-actions" style={{ gridColumn: '1 / -1', justifyContent: 'flex-start' }}>
                 <button className="btn btn-primary btn-sm" type="submit">Применить</button>

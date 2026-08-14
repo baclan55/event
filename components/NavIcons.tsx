@@ -144,6 +144,14 @@ export function NavIcon({ name }: { name: string }) {
           <path d="M9.2 8.2h5.6" />
         </svg>
       );
+    case 'payouts':
+      return (
+        <svg {...svgProps}>
+          <rect x="3" y="5" width="18" height="14" rx="2" />
+          <path d="M3 10h18" />
+          <path d="M8 5v14" />
+        </svg>
+      );
     case 'gmp':
       return (
         <svg {...svgProps}>

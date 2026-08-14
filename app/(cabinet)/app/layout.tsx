@@ -27,6 +27,8 @@ const TITLES: Record<string, string> = {
   '/app/achievements': 'Достижения',
   '/app/gmp': 'ГМП',
   '/app/events': 'Мероприятия',
+  '/app/payouts': 'Выплаты',
+  '/app/payouts/settings': 'Ставки выплат',
   '/app/profile-moderation': 'Модерация профиля',
   '/app/blocked': 'Доступ закрыт',
   '/app/pending': 'Ожидание роли',
@@ -51,12 +53,16 @@ const SUBTITLES: Record<string, string> = {
   '/app/achievements': 'Создание достижений и триггеры',
   '/app/gmp': 'Большие мероприятия: чекпоинты, staff и награды',
   '/app/events': 'Сборы МП из Discord: название, дата и участники',
+  '/app/payouts': 'Недельные выплаты хелперам',
+  '/app/payouts/settings': 'Цены МП/ГМП, минимум и штрафы по ролям',
   '/app/profile-moderation': 'Заявки на смену имени, фамилии и StaticID',
 };
 
 function titleForPath(pathname: string) {
   if (pathname.startsWith('/app/profile/') && pathname !== '/app/profile') return 'Профиль сотрудника';
   if (pathname.startsWith('/app/gmp/') && pathname !== '/app/gmp') return 'ГМП';
+  if (pathname.match(/^\/app\/payouts\/\d+\/log$/)) return 'Лог выплат';
+  if (pathname.match(/^\/app\/payouts\/\d+$/)) return 'Таблица выплат';
   return TITLES[pathname] || 'Кабинет';
 }
 
@@ -66,6 +72,9 @@ function subtitleForPath(pathname: string, appTitle: string) {
   }
   if (pathname.startsWith('/app/gmp/') && pathname !== '/app/gmp') {
     return `Карточка мероприятия · ${appTitle}`;
+  }
+  if (pathname.match(/^\/app\/payouts\/\d+/)) {
+    return `Недельная ведомость · ${appTitle}`;
   }
   return `${SUBTITLES[pathname] || runtimeEnv('APP_SUBTITLE') || 'Ивент-отдел сервера'} · ${appTitle}`;
 }
@@ -128,8 +137,13 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     ['/app/blacklist', 'manage_blacklist'],
     ['/app/achievements', 'manage_achievements'],
     ['/app/profile-moderation', 'moderate_profile'],
+    ['/app/payouts', 'manage_payouts'],
   ];
   for (const [route, perm] of protectedRoutes) {
+    if ((pathname === route || pathname.startsWith(`${route}/`)) && route === '/app/payouts') {
+      if (!userHasPermission(roleCtx, perm)) redirect('/app/dashboard');
+      continue;
+    }
     if (pathname === route && !userHasPermission(roleCtx, perm)) {
       redirect('/app/dashboard');
     }
@@ -180,6 +194,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
         ['roles', 'Роли и доступы', userHasPermission(roleCtx, 'manage_roles')],
         ['blacklist', 'Чёрный список', userHasPermission(roleCtx, 'manage_blacklist')],
         ['achievements', 'Достижения', userHasPermission(roleCtx, 'manage_achievements')],
+        ['payouts', 'Выплаты', userHasPermission(roleCtx, 'manage_payouts')],
         ['profile-moderation', 'Модерация профиля', userHasPermission(roleCtx, 'moderate_profile')],
       ],
     },

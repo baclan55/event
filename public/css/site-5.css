@@ -1,4 +1,62 @@
 
+.vac-mini-grid{
+  display:grid; grid-template-columns:repeat(7,1fr); gap:0; text-align:center;
+  border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--bg-card);
+}
+.vac-mini-wd{
+  font-size:9.5px; color:var(--text-faint); padding:6px 0;
+  border-right:1px solid var(--border); border-bottom:1px solid var(--border); background:var(--bg-card-2);
+}
+.vac-mini-wd:nth-child(7n){ border-right:none; }
+.vac-mini-day{
+  appearance:none; min-width:0; border:0; border-radius:0;
+  border-right:1px solid var(--border); border-bottom:1px solid var(--border);
+  background:var(--bg-card); box-shadow:none;
+  font-size:12px; padding:8px 0; cursor:pointer; color:var(--text-body);
+}
+.vac-mini-day:nth-child(7n){ border-right:none; }
+.vac-mini-day:hover{ background:var(--bg-hover); }
+.vac-mini-day.is-muted{ color:var(--text-faint); opacity:.4; }
+.vac-mini-day.is-today{ font-weight:800; color:var(--accent-light); }
+.vac-mini-day.in-range{ background:var(--accent-soft); }
+.vac-mini-day.range-start{ background:var(--accent); color:#fff; border-radius:6px 0 0 6px; }
+.vac-mini-day.range-end{ background:var(--accent); color:#fff; border-radius:0 6px 6px 0; }
+.vac-mini-day.range-start.range-end{ border-radius:6px; }
+.vac-mini-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
+
+.vac-slots-list{
+  display:flex; flex-direction:column; gap:4px; max-height:140px; overflow-y:auto;
+  background:var(--bg-input); border:1px solid var(--border); border-radius:10px; padding:8px 10px;
+}
+.vac-slot-row{ display:flex; justify-content:space-between; font-size:12px; color:var(--text-body); font-family:var(--font-mono); }
+.vac-slot-row .is-near, .vac-slot-row .is-full{ color:var(--amber); font-weight:700; }
+
+@media (max-width:560px){
+  .vac-today-date{ font-size:14px; }
+}
+
+/* =============================================================================
+   Модальные окна
+   ============================================================================= */
+.modal-overlay{
+  position:fixed; inset:0; z-index:300; display:flex; align-items:center; justify-content:center;
+  background:rgba(6,5,12,.68); padding:16px; backdrop-filter:blur(2px);
+  overflow:auto; box-sizing:border-box; overscroll-behavior:contain;
+}
+.modal-dialog{
+  width:min(440px, 100%); max-width:100%; max-height:min(92dvh, 100%);
+  overflow-x:hidden; overflow-y:auto; box-sizing:border-box;
+  background:var(--bg-card); border:1px solid var(--border-soft);
+  border-radius:var(--radius-lg); padding:30px 28px; box-shadow:var(--shadow-pop);
+  position:relative; margin:auto; flex-shrink:0; min-width:0;
+}
+/* Чтобы кастомный DropMenu не обрезался краем модалки */
+.modal-dialog .ui-select{ z-index:2; }
+.modal-dialog .ui-select.is-open{ z-index:30; }
+.modal-dialog.wide{ width:min(600px, 100%); max-width:100%; }
+.modal-dialog.xl{ width:min(980px, 100%); max-width:100%; }
+.modal-dialog.editor{ width:min(840px, 100%); max-width:100%; }
+.role-checklist-compact{ max-height:none; }
 .perm-grid{
   display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px;
 }
@@ -219,58 +277,3 @@ button.linkish{
 
 .site-callout{ margin-top:26px; }
 .site-callout h3{ font-size:16px; margin-bottom:8px; }
-.site-callout-underline{ width:36px; height:3px; border-radius:2px; background:var(--red); margin-bottom:18px; }
-.site-callout .site-list{ margin-bottom:22px; }
-
-.site-footer{
-  margin-top:auto; text-align:center; padding:34px 24px 46px; color:var(--text-faint); font-size:12px;
-  display:flex; flex-direction:column; align-items:center; gap:8px;
-}
-.site-footer a{ display:inline-flex; align-items:center; gap:6px; color:var(--text-muted); font-weight:600; }
-.site-footer a:hover{ color:var(--accent-light); }
-
-/* --- Форма заявки (в стиле опросника) --- */
-.site-page-head{ max-width:640px; margin:0 auto; padding:46px 24px 6px; text-align:center; }
-.site-page-head h1{ font-size:27px; margin-bottom:8px; }
-.site-page-head p{ color:var(--text-muted); font-size:13.5px; }
-
-.qform{ max-width:640px; margin:0 auto; padding:24px 24px 60px; display:flex; flex-direction:column; gap:14px; }
-.qform-card{ background:var(--bg-card); border:1px solid var(--border-soft); border-radius:var(--radius-lg); padding:22px 24px; }
-.qform-label{ display:block; font-size:14.5px; font-weight:700; color:var(--text-heading); margin-bottom:5px; }
-.qform-required{ color:var(--accent-light); margin-left:3px; }
-.qform-hint{ font-size:12px; color:var(--text-muted); margin-bottom:10px; }
-.qform-hint-row{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
-.qform-hint-row .qform-hint{ margin-bottom:0; }
-.qform-card .input{ margin-top:2px; }
-.qform .error-text{ text-align:center; }
-
-/* --- ссылка "Как найти свой Discord ID?" рядом с полем Discord в заявке --- */
-.qform-hint-link{
-  display:inline-flex; align-items:center; gap:5px;
-  font-size:12px; font-weight:600; color:var(--accent-light);
-  background:none; border:none; padding:0; cursor:pointer; white-space:nowrap;
-}
-.qform-hint-link:hover{ color:var(--text-heading); text-decoration:underline; }
-
-/* --- гайд "Как найти свой Discord ID" (модалка) --- */
-.dc-guide-steps{ display:flex; flex-direction:column; }
-.dc-guide-step{
-  display:flex; align-items:flex-start; gap:14px;
-  padding:14px 2px; border-bottom:1px solid var(--border-soft);
-}
-.dc-guide-step:last-child{ border-bottom:none; padding-bottom:2px; }
-.dc-guide-num{
-  flex-shrink:0; width:28px; height:28px; border-radius:50%;
-  background:var(--accent); color:#fff; font-weight:800; font-size:13px;
-  display:flex; align-items:center; justify-content:center;
-}
-.dc-guide-text{ padding-top:3px; font-size:13.5px; color:var(--text-body); line-height:1.55; }
-.dc-guide-text b{ color:var(--text-heading); }
-.dc-guide-done{
-  display:flex; align-items:center; gap:12px; margin-top:16px;
-  padding:14px 16px; border-radius:var(--radius-md);
-  background:var(--green-soft); border:1px solid rgba(52,211,153,.25);
-}
-.dc-guide-done svg{ flex-shrink:0; color:var(--green); }
-.dc-guide-done-text{ font-size:13px; color:var(--text-body); line-height:1.5; }
-.dc-guide-done-text b{ color:var(--green); }
