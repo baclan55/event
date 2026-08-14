@@ -657,38 +657,5 @@ export async function recomputeRowEvents(rowId: number, actorId?: number | null)
   await writePayoutLog(row.week_id, actorId ?? null, 'row.recompute', { rowId, userId: row.user_id });
 }
 
-export function buildExportCommands(rows: Array<{
-  include_in_payout: boolean;
-  static_id: string;
-  events_mc: number;
-  events_dollars: number;
-  fixed_mc?: number;
-  fixed_dollars?: number;
-  bonus_mc: number;
-  bonus_dollars: number;
-  comp_static_id: string;
-  comp_dollars: number;
-}>) {
-  const mc: string[] = [];
-  const dollars: string[] = [];
-  const comp: string[] = [];
-  for (const row of rows) {
-    if (!row.include_in_payout) continue;
-    const sid = String(row.static_id || '').trim();
-    const mcSum = roundMoney(num(row.events_mc) + num(row.fixed_mc) + num(row.bonus_mc));
-    const dSum = roundMoney(num(row.events_dollars) + num(row.fixed_dollars) + num(row.bonus_dollars));
-    const cSum = roundMoney(num(row.comp_dollars));
-    const cSid = String(row.comp_static_id || sid).trim();
-    if (sid && mcSum > 0) mc.push(`/givedonate ${sid} ${Math.round(mcSum)} eventhelper`);
-    if (sid && dSum > 0) dollars.push(`/givemoney ${sid} ${Math.round(dSum)} eventhelper`);
-    if (cSid && cSum > 0) comp.push(`/givemoney ${cSid} ${Math.round(cSum)} compenseh`);
-  }
-  return {
-    mc: mc.join('\n'),
-    dollars: dollars.join('\n'),
-    compensation: comp.join('\n'),
-    all: [...mc, ...dollars, ...comp].join('\n'),
-  };
-}
-
+export { buildExportCommands } from '@/lib/payoutExport';
 export { writePayoutLog };

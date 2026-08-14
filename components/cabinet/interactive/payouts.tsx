@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
 import { describeLogEntry } from '@/lib/auditShared';
+import { buildExportCommands, type PayoutExportResult } from '@/lib/payoutExport';
 import { askConfirm, ErrorText, Modal, request, SearchBox, Select, matchesSearch, RoleName, type Row } from './shared';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -237,7 +238,7 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
   const [week, setWeek] = useState<Row | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [canEdit, setCanEdit] = useState(false);
-  const [exportText, setExportText] = useState<{ mc: string; dollars: string; compensation: string; all: string } | null>(null);
+  const [exportText, setExportText] = useState<PayoutExportResult | null>(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [adding, setAdding] = useState(false);
@@ -255,6 +256,26 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
     setCanEdit(!!data.canEdit);
     setExportText(data.export || null);
   }, [weekId]);
+
+  function openExport() {
+    const built = buildExportCommands(
+      rows.map((r) => ({
+        include_in_payout: !!r.include_in_payout,
+        static_id: String(r.static_id || ''),
+        nickname: String(r.nickname || ''),
+        events_mc: money(r.events_mc),
+        events_dollars: money(r.events_dollars),
+        fixed_mc: money(r.fixed_mc),
+        fixed_dollars: money(r.fixed_dollars),
+        bonus_mc: money(r.bonus_mc),
+        bonus_dollars: money(r.bonus_dollars),
+        comp_static_id: String(r.comp_static_id || ''),
+        comp_dollars: money(r.comp_dollars),
+      })),
+    );
+    setExportText(built);
+    setShowExport(true);
+  }
 
   useEffect(() => {
     void load().catch((err) => setError((err as Error).message));
@@ -395,7 +416,7 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
         </div>
         <div className="row-actions">
           <Link className="btn btn-ghost btn-sm" href={`/app/payouts/${weekId}/log`}>Лог</Link>
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowExport(true)}>Команды</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => openExport()}>Команды</button>
           {canEdit && !locked ? (
             <>
               <button className="btn btn-ghost btn-sm" onClick={() => void openAdd()}>Добавить</button>
@@ -604,6 +625,24 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
 
       {showExport && exportText && (
         <Modal title="Команды выдачи" onClose={() => setShowExport(false)} editor>
+          {exportText.skipped?.length ? (
+            <div className="gmp-closed-note" style={{ marginBottom: 14 }}>
+              Без Static ID команды не собраны ({exportText.skipped.length}):
+              <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                {exportText.skipped.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+              Заполните Static в таблице и откройте «Команды» снова.
+            </div>
+          ) : null}
+          <div className="field-hint" style={{ marginBottom: 12 }}>
+            Команд MC: {exportText.counts?.mc ?? 0}
+            {' · '}
+            долларов: {exportText.counts?.dollars ?? 0}
+            {' · '}
+            компенсация: {exportText.counts?.compensation ?? 0}
+          </div>
           <div className="field">
             <label>MC (/givedonate … eventhelper)</label>
             <textarea className="input" rows={6} readOnly value={exportText.mc} />

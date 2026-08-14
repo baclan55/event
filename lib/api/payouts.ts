@@ -131,9 +131,11 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
     if (!week.rows[0]) return jsonError('Неделя не найдена.', 404);
 
     const rows = await query<Record<string, unknown>>(
-      `SELECT pr.*
+      `SELECT pr.*,
+              COALESCE(NULLIF(TRIM(pr.static_id), ''), NULLIF(TRIM(u.static_id), ''), '') AS export_static_id
        FROM payout_rows pr
        LEFT JOIN roles r ON r.id = pr.role_id
+       LEFT JOIN users u ON u.id = pr.user_id
        WHERE pr.week_id = $1
        ORDER BY COALESCE(r.priority, 999), pr.nickname`,
       [weekId],
@@ -163,13 +165,15 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
       week: week.rows[0],
       rows: rows.rows.map((r) => ({
         ...r,
+        static_id: String(r.static_id || r.export_static_id || ''),
         reprimands: byRow.get(Number(r.id)) || [],
       })),
       canEdit: userHasPermission(user, 'manage_payouts', 'edit'),
       export: buildExportCommands(
         rows.rows.map((r) => ({
           include_in_payout: !!r.include_in_payout,
-          static_id: String(r.static_id || ''),
+          static_id: String(r.export_static_id || r.static_id || ''),
+          nickname: String(r.nickname || ''),
           events_mc: n(r.events_mc),
           events_dollars: n(r.events_dollars),
           fixed_mc: n(r.fixed_mc),
@@ -544,14 +548,20 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
     if (user instanceof NextResponse) return user;
     const weekId = parseId(params.id);
     const rows = await query<Record<string, unknown>>(
-      'SELECT * FROM payout_rows WHERE week_id=$1 ORDER BY nickname',
+      `SELECT pr.*,
+              COALESCE(NULLIF(TRIM(pr.static_id), ''), NULLIF(TRIM(u.static_id), ''), '') AS export_static_id
+       FROM payout_rows pr
+       LEFT JOIN users u ON u.id = pr.user_id
+       WHERE pr.week_id=$1
+       ORDER BY pr.nickname`,
       [weekId],
     );
     return NextResponse.json({
       export: buildExportCommands(
         rows.rows.map((r) => ({
           include_in_payout: !!r.include_in_payout,
-          static_id: String(r.static_id || ''),
+          static_id: String(r.export_static_id || r.static_id || ''),
+          nickname: String(r.nickname || ''),
           events_mc: n(r.events_mc),
           events_dollars: n(r.events_dollars),
           fixed_mc: n(r.fixed_mc),
