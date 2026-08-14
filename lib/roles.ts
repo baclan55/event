@@ -102,15 +102,16 @@ export async function addUserRole(userId: number, roleName: string) {
 }
 
 export async function getRolesForUsers(userIds: number[]) {
-  const map = new Map<number, { id: number; name: string; priority: number }[]>();
+  const map = new Map<number, { id: number; name: string; priority: number; color: string }[]>();
   if (!userIds.length) return map;
   const { rows } = await pool.query<{
     user_id: number;
     id: number;
     name: string;
     priority: number;
+    color: string;
   }>(
-    `SELECT ur.user_id, r.id, r.name, r.priority
+    `SELECT ur.user_id, r.id, r.name, r.priority, COALESCE(r.color, '') AS color
      FROM user_roles ur
      JOIN roles r ON r.id = ur.role_id
      WHERE ur.user_id = ANY($1::int[])
@@ -119,7 +120,7 @@ export async function getRolesForUsers(userIds: number[]) {
   );
   for (const row of rows) {
     const list = map.get(row.user_id) || [];
-    list.push({ id: row.id, name: row.name, priority: row.priority });
+    list.push({ id: row.id, name: row.name, priority: row.priority, color: row.color });
     map.set(row.user_id, list);
   }
   return map;

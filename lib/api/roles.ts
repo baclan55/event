@@ -11,6 +11,7 @@ import {
   DASHBOARD_BLOCKS,
   defaultRoleMetaForName,
   normalizeDashboardBlocks,
+  normalizeRoleColor,
   parseRoleMeta,
 } from '@/lib/roleMeta';
 import { parseWeeklyTarget } from '@/lib/weeklyTarget';
@@ -30,6 +31,8 @@ async function listRoles() {
     permissions: Record<string, boolean> | null;
     is_event_helper: boolean;
     is_administrator: boolean;
+    include_in_helper_payouts: boolean;
+    color: string;
     dashboard_blocks: unknown;
     weekly_events_target: number | null;
     users_count: number;
@@ -38,6 +41,8 @@ async function listRoles() {
             COALESCE(r.permissions, '{}'::jsonb) AS permissions,
             COALESCE(r.is_event_helper, FALSE) AS is_event_helper,
             COALESCE(r.is_administrator, FALSE) AS is_administrator,
+            COALESCE(r.include_in_helper_payouts, FALSE) AS include_in_helper_payouts,
+            COALESCE(r.color, '') AS color,
             COALESCE(r.dashboard_blocks, '{"stats":true,"top_admin":true,"top_helper":true}'::jsonb) AS dashboard_blocks,
             r.weekly_events_target,
             COUNT(ur.user_id)::int AS users_count
@@ -53,6 +58,8 @@ async function listRoles() {
     const meta = parseRoleMeta(row);
     const defaults = defaultRoleMetaForName(row.name);
     const explicitMeta = row.is_event_helper || row.is_administrator
+      || row.include_in_helper_payouts
+      || !!row.color
       || (row.dashboard_blocks && typeof row.dashboard_blocks === 'object'
         && Object.keys(row.dashboard_blocks as object).length > 0);
     return {
@@ -62,6 +69,8 @@ async function listRoles() {
       permissions: normalizeRolePermissions(raw),
       isEventHelper: explicitMeta ? meta.isEventHelper : defaults.isEventHelper,
       isAdministrator: explicitMeta ? meta.isAdministrator : defaults.isAdministrator,
+      includeInHelperPayouts: explicitMeta ? meta.includeInHelperPayouts : defaults.includeInHelperPayouts,
+      color: explicitMeta ? meta.color : defaults.color,
       dashboardBlocks: explicitMeta ? meta.dashboardBlocks : defaults.dashboardBlocks,
       weeklyEventsTarget: parseWeeklyTarget(row.weekly_events_target),
       usersCount: row.users_count,
@@ -74,6 +83,13 @@ function readMeta(body: Record<string, unknown>, name: string) {
   return {
     isEventHelper: typeof body.isEventHelper === 'boolean' ? body.isEventHelper : defaults.isEventHelper,
     isAdministrator: typeof body.isAdministrator === 'boolean' ? body.isAdministrator : defaults.isAdministrator,
+    includeInHelperPayouts:
+      typeof body.includeInHelperPayouts === 'boolean'
+        ? body.includeInHelperPayouts
+        : defaults.includeInHelperPayouts,
+    color: normalizeRoleColor(
+      body.color != null ? body.color : defaults.color,
+    ),
     dashboardBlocks: normalizeDashboardBlocks(body.dashboardBlocks ?? defaults.dashboardBlocks),
   };
 }
@@ -148,14 +164,16 @@ export const handleRoles: ApiHandler = async ({ key, request, params, method, bo
     const priority = (max.rows[0]?.m || 0) + 1;
     try {
       const inserted = await query<{ id: number }>(
-        `INSERT INTO roles(name, priority, permissions, is_event_helper, is_administrator, dashboard_blocks, weekly_events_target)
-         VALUES($1,$2,$3::jsonb,$4,$5,$6::jsonb,$7) RETURNING id`,
+        `INSERT INTO roles(name, priority, permissions, is_event_helper, is_administrator, include_in_helper_payouts, color, dashboard_blocks, weekly_events_target)
+         VALUES($1,$2,$3::jsonb,$4,$5,$6,$7,$8::jsonb,$9) RETURNING id`,
         [
           name,
           priority,
           JSON.stringify(permissions),
           meta.isEventHelper,
           meta.isAdministrator,
+          meta.includeInHelperPayouts,
+          meta.color,
           JSON.stringify(meta.dashboardBlocks),
           weeklyEventsTarget,
         ],
@@ -199,13 +217,15 @@ export const handleRoles: ApiHandler = async ({ key, request, params, method, bo
     try {
       await query(
         `UPDATE roles SET name=$1, permissions=$2::jsonb,
-         is_event_helper=$3, is_administrator=$4, dashboard_blocks=$5::jsonb,
-         weekly_events_target=$6 WHERE id=$7`,
+         is_event_helper=$3, is_administrator=$4, include_in_helper_payouts=$5, color=$6,
+         dashboard_blocks=$7::jsonb, weekly_events_target=$8 WHERE id=$9`,
         [
           name,
           JSON.stringify(permissions),
           meta.isEventHelper,
           meta.isAdministrator,
+          meta.includeInHelperPayouts,
+          meta.color,
           JSON.stringify(meta.dashboardBlocks),
           weeklyEventsTarget,
           id,

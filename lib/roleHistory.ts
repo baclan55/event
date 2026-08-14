@@ -43,18 +43,18 @@ type SimpleQuery = <T extends Record<string, unknown> = Record<string, unknown>>
   params?: unknown[],
 ) => Promise<{ rows: T[] }>;
 
-/** Helper-роль пользователя в момент `at` (лучший priority среди is_event_helper). */
+/** Helper/payout-роль пользователя в момент `at` (лучший priority среди include_in_helper_payouts). */
 export async function helperRoleAt(
   dbQuery: SimpleQuery,
   userId: number,
   at: Date | string,
-): Promise<{ id: number; name: string; priority: number } | null> {
-  const { rows } = await dbQuery<{ id: number; name: string; priority: number }>(
-    `SELECT r.id, r.name, r.priority
+): Promise<{ id: number; name: string; priority: number; color: string } | null> {
+  const { rows } = await dbQuery<{ id: number; name: string; priority: number; color: string }>(
+    `SELECT r.id, r.name, r.priority, COALESCE(r.color, '') AS color
      FROM user_role_history h
      JOIN roles r ON r.id = h.role_id
      WHERE h.user_id = $1
-       AND r.is_event_helper = TRUE
+       AND r.include_in_helper_payouts = TRUE
        AND h.started_at <= $2::timestamptz
        AND (h.ended_at IS NULL OR h.ended_at > $2::timestamptz)
      ORDER BY r.priority ASC
@@ -63,11 +63,11 @@ export async function helperRoleAt(
   );
   if (rows[0]) return rows[0];
 
-  const fallback = await dbQuery<{ id: number; name: string; priority: number }>(
-    `SELECT r.id, r.name, r.priority
+  const fallback = await dbQuery<{ id: number; name: string; priority: number; color: string }>(
+    `SELECT r.id, r.name, r.priority, COALESCE(r.color, '') AS color
      FROM user_roles ur
      JOIN roles r ON r.id = ur.role_id
-     WHERE ur.user_id = $1 AND r.is_event_helper = TRUE
+     WHERE ur.user_id = $1 AND r.include_in_helper_payouts = TRUE
      ORDER BY r.priority ASC
      LIMIT 1`,
     [userId],
@@ -78,6 +78,6 @@ export async function helperRoleAt(
 export async function helperRoleAtNow(
   userId: number,
   at: Date | string,
-): Promise<{ id: number; name: string; priority: number } | null> {
+): Promise<{ id: number; name: string; priority: number; color: string } | null> {
   return helperRoleAt(query as SimpleQuery, userId, at);
 }

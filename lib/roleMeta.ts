@@ -12,6 +12,8 @@ export const DASHBOARD_BLOCK_LABELS: Record<DashboardBlock, string> = {
 export type RoleMeta = {
   isEventHelper: boolean;
   isAdministrator: boolean;
+  includeInHelperPayouts: boolean;
+  color: string;
   dashboardBlocks: Record<DashboardBlock, boolean>;
 };
 
@@ -29,6 +31,21 @@ export function normalizeDashboardBlocks(raw: unknown): Record<DashboardBlock, b
   return base;
 }
 
+/** Нормализация цвета роли: #RGB / #RRGGBB или пусто. */
+export function normalizeRoleColor(raw: unknown): string {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  if (/^#[0-9a-fA-F]{6}$/.test(s)) return s.toLowerCase();
+  if (/^#[0-9a-fA-F]{3}$/.test(s)) {
+    const r = s[1];
+    const g = s[2];
+    const b = s[3];
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  if (/^[0-9a-fA-F]{6}$/.test(s)) return `#${s.toLowerCase()}`;
+  return '';
+}
+
 export function defaultRoleMetaForName(name: string): RoleMeta {
   const adminNames = [
     'Chief Event',
@@ -44,9 +61,12 @@ export function defaultRoleMetaForName(name: string): RoleMeta {
     'Event Helper',
     'Mini Event Helper',
   ];
+  const isHelper = helperNames.includes(name);
   return {
-    isEventHelper: helperNames.includes(name),
+    isEventHelper: isHelper,
     isAdministrator: adminNames.includes(name),
+    includeInHelperPayouts: isHelper,
+    color: '',
     dashboardBlocks: defaultDashboardBlocks(),
   };
 }
@@ -55,17 +75,26 @@ export function parseRoleMeta(row: {
   name?: string;
   is_event_helper?: boolean | null;
   is_administrator?: boolean | null;
+  include_in_helper_payouts?: boolean | null;
+  color?: string | null;
   dashboard_blocks?: unknown;
 }): RoleMeta {
   const fallback = defaultRoleMetaForName(row.name || '');
   const hasExplicit =
     row.is_event_helper != null
     || row.is_administrator != null
+    || row.include_in_helper_payouts != null
+    || (row.color != null && String(row.color).length > 0)
     || (row.dashboard_blocks != null && typeof row.dashboard_blocks === 'object');
   if (!hasExplicit) return fallback;
   return {
     isEventHelper: !!row.is_event_helper,
     isAdministrator: !!row.is_administrator,
+    includeInHelperPayouts:
+      row.include_in_helper_payouts != null
+        ? !!row.include_in_helper_payouts
+        : !!row.is_event_helper,
+    color: normalizeRoleColor(row.color),
     dashboardBlocks: normalizeDashboardBlocks(row.dashboard_blocks),
   };
 }

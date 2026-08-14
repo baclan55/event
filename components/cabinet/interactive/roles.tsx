@@ -41,6 +41,8 @@ type RoleRow = {
   permissions: Record<Permission, PermissionAccess>;
   isEventHelper: boolean;
   isAdministrator: boolean;
+  includeInHelperPayouts: boolean;
+  color: string;
   dashboardBlocks: Record<DashboardBlock, boolean>;
   weeklyEventsTarget: number | null;
   usersCount: number;
@@ -170,6 +172,8 @@ export function RolesInteractive({
       permissions,
       isEventHelper: form.get('isEventHelper') === 'on',
       isAdministrator: form.get('isAdministrator') === 'on',
+      includeInHelperPayouts: form.get('includeInHelperPayouts') === 'on',
+      color: String(form.get('colorHex') || '').trim(),
       dashboardBlocks,
       weeklyEventsTarget: Number.isFinite(weeklyEventsTarget as number) ? weeklyEventsTarget : null,
     };
@@ -235,13 +239,14 @@ export function RolesInteractive({
         <div className="roster-row" key={role.id}>
           <div className="who">
             <div>
-              <div className="nickname">{role.name}</div>
+              <div className="nickname" style={role.color ? { color: role.color } : undefined}>{role.name}</div>
               <div className="role-tag">
                 вес {role.priority} · {role.usersCount} сотр. ·{' '}
                 {countAccess(role.permissions)} доступов
                 {role.weeklyEventsTarget != null ? ` · норма ${role.weeklyEventsTarget} МП/нед.` : ' · без нормы МП'}
                 {role.isEventHelper ? ' · ивент хелпер' : ''}
                 {role.isAdministrator ? ' · администратор' : ''}
+                {role.includeInHelperPayouts ? ' · выплаты' : ''}
               </div>
             </div>
           </div>
@@ -305,8 +310,12 @@ export function RolesInteractive({
                     <input type="checkbox" name="isAdministrator" defaultChecked={!!editing?.isAdministrator} disabled={!canEdit} />
                     Администратор
                   </label>
+                  <label className="role-check-item">
+                    <input type="checkbox" name="includeInHelperPayouts" defaultChecked={!!editing?.includeInHelperPayouts} disabled={!canEdit} />
+                    Учёт в выплатах хелперов
+                  </label>
                 </div>
-                <div className="field-hint">Нужно для разного содержимого и обязательных полей профиля.</div>
+                <div className="field-hint">«Выплаты» — сотрудники с этой ролью попадают в недельную ведомость.</div>
               </div>
               <div className="field">
                 <label>Блоки на главной</label>
@@ -319,6 +328,35 @@ export function RolesInteractive({
                   ))}
                 </div>
               </div>
+            </div>
+            <div className="field">
+              <label>Цвет роли</label>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <input
+                  className="input"
+                  type="color"
+                  name="color"
+                  defaultValue={editing?.color || '#a8b0c2'}
+                  disabled={!canEdit}
+                  style={{ width: 52, padding: 4, minHeight: 42 }}
+                />
+                <input
+                  className="input"
+                  name="colorHex"
+                  defaultValue={editing?.color || ''}
+                  placeholder="#a8b0c2 или пусто"
+                  disabled={!canEdit}
+                  onChange={(e) => {
+                    const form = e.currentTarget.form;
+                    const picker = form?.elements.namedItem('color') as HTMLInputElement | null;
+                    const v = e.target.value.trim();
+                    if (picker && /^#?[0-9a-fA-F]{6}$/.test(v)) {
+                      picker.value = v.startsWith('#') ? v : `#${v}`;
+                    }
+                  }}
+                />
+              </div>
+              <div className="field-hint">Название роли будет этим цветом в составе, выплатах и профиле. Пустой hex — без цвета.</div>
             </div>
             <div className="field">
               <label>Доступы</label>

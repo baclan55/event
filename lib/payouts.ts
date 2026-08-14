@@ -23,7 +23,7 @@ function num(v: unknown, fallback = 0): number {
 }
 
 function roundMoney(n: number): number {
-  return Math.round(n * 100) / 100;
+  return Math.round(n);
 }
 
 export async function sqlWeekStart(offsetWeeks = 0, tz = weekTimeZone()): Promise<string> {
@@ -147,6 +147,7 @@ async function loadUserGmpEvents(userId: number, startAt: string, endAt: string)
 export type ComputedPayout = {
   role_id: number | null;
   role_name: string;
+  role_color: string;
   mp_count: number;
   gmp_count: number;
   breakdown: Record<string, unknown>;
@@ -157,7 +158,12 @@ export type ComputedPayout = {
 export async function computeUserPayoutForWeek(
   userId: number,
   weekStart: string,
-  countedReprimands: Array<{ type: string; counted: boolean }>,
+  opts: {
+    countVerbal?: boolean;
+    countStrict?: boolean;
+    verbalCount?: number;
+    strictCount?: number;
+  } = {},
   settingsMap?: Map<number, PayoutRoleSettings>,
 ): Promise<ComputedPayout> {
   const tz = weekTimeZone();
@@ -195,7 +201,6 @@ export async function computeUserPayoutForWeek(
   }
 
   const displayRole = await helperRoleAtNow(userId, endAt);
-  // чуть раньше конца недели — роль на вс 23:59
   const endMinus = new Date(new Date(endAt).getTime() - 1000);
   const roleAtEnd = (await helperRoleAtNow(userId, endMinus)) || displayRole;
   const primaryCfg = roleAtEnd
@@ -205,16 +210,17 @@ export async function computeUserPayoutForWeek(
   const mpCount = mpEvents.length;
   const gmpCount = gmpEvents.length;
   const eligible = mpCount >= primaryCfg.min_mp;
+  const countVerbal = opts.countVerbal !== false;
+  const countStrict = opts.countStrict !== false;
+  const verbalCount = Math.max(0, Math.floor(opts.verbalCount ?? 0));
+  const strictCount = Math.max(0, Math.floor(opts.strictCount ?? 0));
 
   let eventsMc = 0;
   let eventsDollars = 0;
   if (eligible) {
     let penaltyPct = 0;
-    for (const r of countedReprimands) {
-      if (!r.counted) continue;
-      if (r.type === 'verbal') penaltyPct += primaryCfg.verbal_penalty_pct;
-      if (r.type === 'strict') penaltyPct += primaryCfg.strict_penalty_pct;
-    }
+    if (countVerbal) penaltyPct += verbalCount * primaryCfg.verbal_penalty_pct;
+    if (countStrict) penaltyPct += strictCount * primaryCfg.strict_penalty_pct;
     penaltyPct = Math.min(100, Math.max(0, penaltyPct));
     const factor = 1 - penaltyPct / 100;
     eventsMc = roundMoney(rawMc * factor + primaryCfg.fixed_mc);
@@ -224,16 +230,21 @@ export async function computeUserPayoutForWeek(
   return {
     role_id: roleAtEnd?.id || null,
     role_name: roleAtEnd?.name || '',
+    role_color: roleAtEnd?.color || '',
     mp_count: mpCount,
     gmp_count: gmpCount,
     breakdown: {
       byRole: Object.values(byRole),
-      rawMc,
-      rawDollars,
+      rawMc: roundMoney(rawMc),
+      rawDollars: roundMoney(rawDollars),
       minMp: primaryCfg.min_mp,
       eligible,
-      fixedMc: eligible ? primaryCfg.fixed_mc : 0,
-      fixedDollars: eligible ? primaryCfg.fixed_dollars : 0,
+      fixedMc: eligible ? roundMoney(primaryCfg.fixed_mc) : 0,
+      fixedDollars: eligible ? roundMoney(primaryCfg.fixed_dollars) : 0,
+      countVerbal,
+      countStrict,
+      verbalCount,
+      strictCount,
     },
     events_mc: eventsMc,
     events_dollars: eventsDollars,
@@ -251,7 +262,7 @@ async function helperUserIdsForWeek(weekStart: string): Promise<number[]> {
          EXISTS (
            SELECT 1 FROM user_roles ur
            JOIN roles r ON r.id = ur.role_id
-           WHERE ur.user_id = u.id AND r.is_event_helper = TRUE
+           WHERE ur.user_id = u.id AND r.include_in_helper_payouts = TRUE
          )
          OR EXISTS (
            SELECT 1 FROM discord_gather_participants p
@@ -357,19 +368,14 @@ export async function rebuildPayoutWeekRows(
   for (const userId of userIds) {
     const existing = await query<{
       id: number;
-      manual: boolean;
       events_override: boolean;
-      include_in_payout: boolean;
-      bonus_mc: string;
-      bonus_dollars: string;
-      bonus_note: string;
-      comp_static_id: string;
-      comp_dollars: string;
       static_id: string;
-      nickname: string;
+      count_verbal: boolean;
+      count_strict: boolean;
     }>(
-      `SELECT id, manual, events_override, include_in_payout, bonus_mc, bonus_dollars, bonus_note,
-              comp_static_id, comp_dollars, static_id, nickname
+      `SELECT id, events_override, static_id,
+              COALESCE(count_verbal, TRUE) AS count_verbal,
+              COALESCE(count_strict, TRUE) AS count_strict
        FROM payout_rows WHERE week_id=$1 AND user_id=$2`,
       [weekId, userId],
     );
@@ -380,24 +386,22 @@ export async function rebuildPayoutWeekRows(
     );
     if (!user.rows[0]) continue;
 
-    let counted: Array<{ type: string; counted: boolean }> = [];
     const reps = await activeHelperReprimands(userId, startAt, endAt);
+    const verbalCount = reps.filter((r) => r.type === 'verbal').length;
+    const strictCount = reps.filter((r) => r.type === 'strict').length;
+    const countVerbal = existing.rows[0] && !opts.forceAll
+      ? !!existing.rows[0].count_verbal
+      : true;
+    const countStrict = existing.rows[0] && !opts.forceAll
+      ? !!existing.rows[0].count_strict
+      : true;
 
-    if (existing.rows[0] && !opts.forceAll) {
-      const prev = await query<{ reprimand_id: number; type: string; counted: boolean }>(
-        'SELECT reprimand_id, type, counted FROM payout_row_reprimands WHERE row_id=$1',
-        [existing.rows[0].id],
-      );
-      const prevMap = new Map(prev.rows.map((r) => [r.reprimand_id, r.counted]));
-      counted = reps.map((r) => ({
-        type: r.type,
-        counted: prevMap.has(r.id) ? !!prevMap.get(r.id) : true,
-      }));
-    } else {
-      counted = reps.map((r) => ({ type: r.type, counted: true }));
-    }
-
-    const computed = await computeUserPayoutForWeek(userId, weekStart, counted, settingsMap);
+    const computed = await computeUserPayoutForWeek(
+      userId,
+      weekStart,
+      { countVerbal, countStrict, verbalCount, strictCount },
+      settingsMap,
+    );
     const nickname = user.rows[0].nickname;
     const staticId = String(user.rows[0].static_id || existing.rows[0]?.static_id || '');
 
@@ -408,19 +412,23 @@ export async function rebuildPayoutWeekRows(
         `UPDATE payout_rows SET
            role_id = $2,
            role_name = $3,
-           nickname = $4,
-           static_id = CASE WHEN $5 = '' THEN static_id ELSE $5 END,
-           mp_count = $6,
-           gmp_count = $7,
-           breakdown = $8::jsonb,
-           events_mc = CASE WHEN $9 THEN events_mc ELSE $10 END,
-           events_dollars = CASE WHEN $9 THEN events_dollars ELSE $11 END,
-           events_override = CASE WHEN $12 THEN FALSE ELSE events_override END
+           role_color = $4,
+           nickname = $5,
+           static_id = CASE WHEN $6 = '' THEN static_id ELSE $6 END,
+           mp_count = $7,
+           gmp_count = $8,
+           breakdown = $9::jsonb,
+           events_mc = CASE WHEN $10 THEN events_mc ELSE $11 END,
+           events_dollars = CASE WHEN $10 THEN events_dollars ELSE $12 END,
+           events_override = CASE WHEN $13 THEN FALSE ELSE events_override END,
+           count_verbal = $14,
+           count_strict = $15
          WHERE id = $1`,
         [
           row.id,
           computed.role_id,
           computed.role_name,
+          computed.role_color,
           nickname,
           staticId,
           computed.mp_count,
@@ -430,35 +438,43 @@ export async function rebuildPayoutWeekRows(
           computed.events_mc,
           computed.events_dollars,
           !!opts.forceAll,
+          countVerbal,
+          countStrict,
         ],
       );
 
       await query('DELETE FROM payout_row_reprimands WHERE row_id=$1', [row.id]);
-      for (let i = 0; i < reps.length; i++) {
+      for (const r of reps) {
         await query(
           `INSERT INTO payout_row_reprimands (row_id, reprimand_id, type, counted)
            VALUES ($1, $2, $3, $4)`,
-          [row.id, reps[i].id, reps[i].type, counted[i]?.counted ?? true],
+          [
+            row.id,
+            r.id,
+            r.type,
+            r.type === 'verbal' ? countVerbal : countStrict,
+          ],
         );
       }
     } else {
       const ins = await query<{ id: number }>(
         `INSERT INTO payout_rows (
-           week_id, user_id, role_id, role_name, nickname, static_id,
+           week_id, user_id, role_id, role_name, role_color, nickname, static_id,
            mp_count, gmp_count, breakdown, events_mc, events_dollars,
            bonus_mc, bonus_dollars, bonus_note, comp_static_id, comp_dollars,
-           manual, include_in_payout, events_override
+           count_verbal, count_strict, manual, include_in_payout, events_override
          ) VALUES (
-           $1,$2,$3,$4,$5,$6,
-           $7,$8,$9::jsonb,$10,$11,
+           $1,$2,$3,$4,$5,$6,$7,
+           $8,$9,$10::jsonb,$11,$12,
            0,0,'','',0,
-           FALSE, TRUE, FALSE
+           TRUE, TRUE, FALSE, TRUE, FALSE
          ) RETURNING id`,
         [
           weekId,
           userId,
           computed.role_id,
           computed.role_name,
+          computed.role_color,
           nickname,
           staticId,
           computed.mp_count,
@@ -504,8 +520,12 @@ export async function recomputeRowEvents(rowId: number, actorId?: number | null)
     week_id: number;
     user_id: number;
     week_start: string;
+    count_verbal: boolean;
+    count_strict: boolean;
   }>(
-    `SELECT pr.id, pr.week_id, pr.user_id, pw.week_start::text AS week_start
+    `SELECT pr.id, pr.week_id, pr.user_id, pw.week_start::text AS week_start,
+            COALESCE(pr.count_verbal, TRUE) AS count_verbal,
+            COALESCE(pr.count_strict, TRUE) AS count_strict
      FROM payout_rows pr
      JOIN payout_weeks pw ON pw.id = pr.week_id
      WHERE pr.id = $1`,
@@ -514,30 +534,34 @@ export async function recomputeRowEvents(rowId: number, actorId?: number | null)
   const row = rows[0];
   if (!row) return;
 
-  const reps = await query<{ type: string; counted: boolean }>(
-    'SELECT type, counted FROM payout_row_reprimands WHERE row_id=$1',
+  const reps = await query<{ type: string }>(
+    'SELECT type FROM payout_row_reprimands WHERE row_id=$1',
     [rowId],
   );
-  const computed = await computeUserPayoutForWeek(
-    row.user_id,
-    row.week_start,
-    reps.rows.map((r) => ({ type: r.type, counted: !!r.counted })),
-  );
+  const verbalCount = reps.rows.filter((r) => r.type === 'verbal').length;
+  const strictCount = reps.rows.filter((r) => r.type === 'strict').length;
+  const computed = await computeUserPayoutForWeek(row.user_id, row.week_start, {
+    countVerbal: !!row.count_verbal,
+    countStrict: !!row.count_strict,
+    verbalCount,
+    strictCount,
+  });
   const user = await query<{ nickname: string; static_id: string | null }>(
     'SELECT nickname, static_id FROM users WHERE id=$1',
     [row.user_id],
   );
   await query(
     `UPDATE payout_rows SET
-       role_id=$2, role_name=$3, nickname=$4,
-       static_id=CASE WHEN COALESCE($5,'')='' THEN static_id ELSE $5 END,
-       mp_count=$6, gmp_count=$7, breakdown=$8::jsonb,
-       events_mc=$9, events_dollars=$10, events_override=FALSE
+       role_id=$2, role_name=$3, role_color=$4, nickname=$5,
+       static_id=CASE WHEN COALESCE($6,'')='' THEN static_id ELSE $6 END,
+       mp_count=$7, gmp_count=$8, breakdown=$9::jsonb,
+       events_mc=$10, events_dollars=$11, events_override=FALSE
      WHERE id=$1`,
     [
       rowId,
       computed.role_id,
       computed.role_name,
+      computed.role_color,
       user.rows[0]?.nickname || '',
       user.rows[0]?.static_id || '',
       computed.mp_count,

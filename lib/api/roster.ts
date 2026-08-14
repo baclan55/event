@@ -52,14 +52,14 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
         `SELECT u.id,u.nickname,u.discord_id,u.discord_username,u.avatar_image_id,u.avatar_url,
           CASE WHEN u.discord_id IS NULL THEN 0 ELSE COALESCE(${weekCountSql}, 0) END AS weekly_events,
           u.note,u.role_id,u.status,u.is_blocked,u.blocked_at,u.is_owner,u.is_admin,
-          r.name role_name,r.priority role_priority, r.weekly_events_target
+          r.name role_name,r.priority role_priority, r.weekly_events_target, COALESCE(r.color,'') AS role_color
          FROM users u LEFT JOIN roles r ON r.id=u.role_id
          ORDER BY COALESCE(r.priority,999),u.nickname`,
         [tz],
       );
       const roles = await getRolesForUsers(result.rows.map((row) => row.id as number));
       const targets = await weeklyTargetsByRoleId();
-      const allRoles = await query('SELECT id,name,priority,weekly_events_target FROM roles ORDER BY priority');
+      const allRoles = await query('SELECT id,name,priority,weekly_events_target,COALESCE(color,\'\') AS color FROM roles ORDER BY priority');
       return NextResponse.json({
         members: result.rows.map((row) => ({
           ...row,

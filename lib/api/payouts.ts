@@ -15,7 +15,7 @@ import type { ApiHandler } from './types';
 
 function n(v: unknown): number {
   const x = Number(v);
-  return Number.isFinite(x) ? x : 0;
+  return Number.isFinite(x) ? Math.round(x) : 0;
 }
 
 export const handlePayouts: ApiHandler = async ({ key, params, method, body, request }) => {
@@ -39,7 +39,7 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
                 COALESCE(s.strict_penalty_pct, 0) AS strict_penalty_pct
          FROM roles r
          LEFT JOIN payout_role_settings s ON s.role_id = r.id
-         WHERE r.is_event_helper = TRUE
+         WHERE r.include_in_helper_payouts = TRUE
          ORDER BY r.priority ASC`,
       );
       return NextResponse.json({
@@ -232,15 +232,46 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
       return ok({ added: true });
     }
 
+    if (action === 'toggle_reprimand_type') {
+      const rowId = Number(body.rowId);
+      const kind = String(body.kind || '');
+      const counted = body.counted === true || body.counted === 'true';
+      if (kind !== 'verbal' && kind !== 'strict') {
+        return jsonError('kind: verbal или strict.', 400);
+      }
+      const col = kind === 'verbal' ? 'count_verbal' : 'count_strict';
+      await query(
+        `UPDATE payout_rows SET ${col}=$2 WHERE id=$1 AND week_id=$3`,
+        [rowId, counted, weekId],
+      );
+      await query(
+        `UPDATE payout_row_reprimands SET counted=$2 WHERE row_id=$1 AND type=$3`,
+        [rowId, counted, kind],
+      );
+      await recomputeRowEvents(rowId, user.id);
+      await writePayoutLog(weekId, user.id, 'reprimand.type_toggle', { rowId, kind, counted });
+      return ok({ updated: true });
+    }
+
     if (action === 'toggle_reprimand') {
+      // совместимость: переключает тип целиком
       const rowId = Number(body.rowId);
       const reprimandId = Number(body.reprimandId);
       const counted = body.counted === true || body.counted === 'true';
-      await query(
-        `UPDATE payout_row_reprimands SET counted=$3 WHERE row_id=$1 AND reprimand_id=$2`,
-        [rowId, reprimandId, counted],
+      const hit = await query<{ type: string }>(
+        'SELECT type FROM payout_row_reprimands WHERE row_id=$1 AND reprimand_id=$2',
+        [rowId, reprimandId],
       );
-      await recomputeRowEvents(rowId, user.id);
+      const kind = hit.rows[0]?.type;
+      if (kind === 'verbal' || kind === 'strict') {
+        const col = kind === 'verbal' ? 'count_verbal' : 'count_strict';
+        await query(`UPDATE payout_rows SET ${col}=$2 WHERE id=$1 AND week_id=$3`, [rowId, counted, weekId]);
+        await query(
+          `UPDATE payout_row_reprimands SET counted=$2 WHERE row_id=$1 AND type=$3`,
+          [rowId, counted, kind],
+        );
+        await recomputeRowEvents(rowId, user.id);
+      }
       await writePayoutLog(weekId, user.id, 'reprimand.toggle', { rowId, reprimandId, counted });
       return ok({ updated: true });
     }
@@ -297,7 +328,18 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
       if (body.role_name != null || body.roleName != null) {
         push('role_name', String(body.role_name ?? body.roleName ?? ''));
       }
-      if (body.nickname != null) push('nickname', String(body.nickname));
+      if (body.count_verbal != null || body.countVerbal != null) {
+        push(
+          'count_verbal',
+          body.count_verbal === true || body.count_verbal === 'true' || body.countVerbal === true,
+        );
+      }
+      if (body.count_strict != null || body.countStrict != null) {
+        push(
+          'count_strict',
+          body.count_strict === true || body.count_strict === 'true' || body.countStrict === true,
+        );
+      }
 
       if (!fields.length) return jsonError('Нет полей для обновления.', 400);
       values.push(rowId, weekId);
@@ -389,7 +431,7 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
          AND EXISTS (
            SELECT 1 FROM user_roles ur
            JOIN roles rr ON rr.id = ur.role_id
-           WHERE ur.user_id = u.id AND rr.is_event_helper = TRUE
+           WHERE ur.user_id = u.id AND rr.include_in_helper_payouts = TRUE
          )
          AND NOT EXISTS (
            SELECT 1 FROM payout_rows pr WHERE pr.week_id = $1 AND pr.user_id = u.id

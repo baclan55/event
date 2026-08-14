@@ -371,6 +371,11 @@ CREATE INDEX IF NOT EXISTS idx_event_bot_jobs_pending
 -- Классификация роли (не доступ к функциям) + блоки главной.
 -- ---------------------------------------------------------------------------
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_event_helper BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS include_in_helper_payouts BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT '';
+-- Миграция: кто уже хелпер — сразу в выплатах
+UPDATE roles SET include_in_helper_payouts = TRUE
+WHERE is_event_helper = TRUE AND include_in_helper_payouts = FALSE;
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_administrator BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS dashboard_blocks JSONB NOT NULL DEFAULT '{"stats":true,"top_admin":true,"top_helper":true}'::jsonb;
 -- Норма МП за календарную неделю (пн–вс). NULL = нормы нет.
@@ -605,6 +610,7 @@ CREATE TABLE IF NOT EXISTS payout_rows (
   user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   role_id          INTEGER REFERENCES roles(id) ON DELETE SET NULL,
   role_name        TEXT NOT NULL DEFAULT '',
+  role_color       TEXT NOT NULL DEFAULT '',
   nickname         TEXT NOT NULL DEFAULT '',
   static_id        TEXT NOT NULL DEFAULT '',
   mp_count         INTEGER NOT NULL DEFAULT 0,
@@ -617,11 +623,16 @@ CREATE TABLE IF NOT EXISTS payout_rows (
   bonus_note       TEXT NOT NULL DEFAULT '',
   comp_static_id   TEXT NOT NULL DEFAULT '',
   comp_dollars     NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  count_verbal     BOOLEAN NOT NULL DEFAULT TRUE,
+  count_strict     BOOLEAN NOT NULL DEFAULT TRUE,
   manual           BOOLEAN NOT NULL DEFAULT FALSE,
   include_in_payout BOOLEAN NOT NULL DEFAULT TRUE,
   events_override  BOOLEAN NOT NULL DEFAULT FALSE,
   UNIQUE (week_id, user_id)
 );
+ALTER TABLE payout_rows ADD COLUMN IF NOT EXISTS role_color TEXT NOT NULL DEFAULT '';
+ALTER TABLE payout_rows ADD COLUMN IF NOT EXISTS count_verbal BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE payout_rows ADD COLUMN IF NOT EXISTS count_strict BOOLEAN NOT NULL DEFAULT TRUE;
 CREATE INDEX IF NOT EXISTS idx_payout_rows_week ON payout_rows(week_id);
 
 CREATE TABLE IF NOT EXISTS payout_row_reprimands (

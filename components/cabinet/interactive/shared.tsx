@@ -16,6 +16,24 @@ import { MarkdownEditor } from '@/components/MarkdownEditor';
 
 export type Row = Record<string, any>;
 
+export function RoleName({
+  name,
+  color,
+  className,
+  fallback = '—',
+}: {
+  name?: string | null;
+  color?: string | null;
+  className?: string;
+  fallback?: string;
+}) {
+  const text = String(name || '').trim() || fallback;
+  const c = String(color || '').trim();
+  return (
+    <span className={className} style={c ? { color: c } : undefined}>{text}</span>
+  );
+}
+
 /** Поиск: все слова запроса должны встретиться в любом из полей. */
 export function matchesSearch(fields: unknown[], query: string): boolean {
   const q = String(query || '').trim().toLowerCase();

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
-import { askConfirm, ErrorText, Modal, request, SearchBox, Select, matchesSearch, type Row } from './shared';
+import { askConfirm, ErrorText, Modal, request, SearchBox, Select, matchesSearch, RoleName, type Row } from './shared';
 
 const STATUS_LABEL: Record<string, string> = {
   pending_events: 'Есть незаконченные мероприятия',
@@ -13,7 +13,12 @@ const STATUS_LABEL: Record<string, string> = {
 
 function money(v: unknown) {
   const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n);
+}
+
+function moneyText(v: unknown) {
+  return String(money(v));
 }
 
 /** Tint строки по названию helper-роли (как в Google-таблице). */
@@ -208,12 +213,12 @@ export function PayoutSettingsInteractive() {
                   <td key={field}>
                     <input
                       className="input payout-cell"
-                      type="number"
-                      step="any"
-                      disabled={!canEdit}
-                      value={String(r[field] ?? 0)}
-                      onChange={(e) => patch(Number(r.id), field, e.target.value)}
-                    />
+                        type="number"
+                        step={1}
+                        disabled={!canEdit}
+                        value={moneyText(r[field])}
+                        onChange={(e) => patch(Number(r.id), field, e.target.value)}
+                      />
                   </td>
                 ))}
               </tr>
@@ -274,12 +279,12 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
     }
   }
 
-  async function toggleRep(rowId: number, reprimandId: number, counted: boolean) {
+  async function toggleRepType(rowId: number, kind: 'verbal' | 'strict', counted: boolean) {
     if (!canEdit || locked) return;
     try {
       await request(`/api/payouts/${weekId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ action: 'toggle_reprimand', rowId, reprimandId, counted }),
+        body: JSON.stringify({ action: 'toggle_reprimand_type', rowId, kind, counted }),
       });
       await load();
     } catch (err) {
@@ -289,10 +294,11 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
 
   async function rebuild(force: boolean) {
     if (!(await askConfirm(force
-      ? 'Полностью пересобрать автополя (включая вручную правленые события)?'
-      : 'Пересобрать автополя (ручные правки events сохранятся)?', {
+      ? 'Полный сброс: пересчитать всё, включая вручную изменённые суммы «за мероприятия»?'
+      : 'Пересобрать автополя? Ручные правки сумм «за мероприятия» сохранятся.', {
       title: 'Пересборка',
-      confirmLabel: 'Пересобрать',
+      confirmLabel: force ? 'Сбросить и пересчитать' : 'Пересобрать',
+      danger: force,
     }))) return;
     try {
       await request(`/api/payouts/${weekId}/rebuild`, {
@@ -374,6 +380,7 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
             <>
               <button className="btn btn-ghost btn-sm" onClick={() => void openAdd()}>Добавить</button>
               <button className="btn btn-ghost btn-sm" onClick={() => void rebuild(false)}>Пересобрать</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => void rebuild(true)}>Сбросить правки</button>
               <button className="btn btn-ghost btn-sm" onClick={() => void lock(true)}>Заблокировать</button>
             </>
           ) : null}
@@ -437,7 +444,9 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
                       onChange={(e) => void patchRow(Number(row.id), { include_in_payout: e.target.checked })}
                     />
                   </td>
-                  <td className="payout-role">{row.role_name || '—'}</td>
+                  <td className="payout-role">
+                    <RoleName name={row.role_name} color={row.role_color} />
+                  </td>
                   <td>{row.nickname}</td>
                   <td>
                     <input
@@ -451,30 +460,26 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
                   <td className="payout-num">{row.mp_count}</td>
                   <td className="payout-num">{row.gmp_count}</td>
                   <td className="payout-reps">
-                    {verbal.length ? verbal.map((r) => (
-                      <label key={String(r.reprimand_id)} className="payout-rep-toggle" title={String(r.reason || '')}>
-                        <input
-                          type="checkbox"
-                          checked={!!r.counted}
-                          disabled={!canEdit || locked}
-                          onChange={(e) => void toggleRep(Number(row.id), Number(r.reprimand_id), e.target.checked)}
-                        />
-                        уст.
-                      </label>
-                    )) : <span className="payout-muted">0</span>}
+                    <label className="payout-rep-toggle" title="Учитывать устные выговоры">
+                      <input
+                        type="checkbox"
+                        checked={row.count_verbal !== false}
+                        disabled={!canEdit || locked}
+                        onChange={(e) => void toggleRepType(Number(row.id), 'verbal', e.target.checked)}
+                      />
+                      уст. {verbal.length}
+                    </label>
                   </td>
                   <td className="payout-reps">
-                    {strict.length ? strict.map((r) => (
-                      <label key={String(r.reprimand_id)} className="payout-rep-toggle" title={String(r.reason || '')}>
-                        <input
-                          type="checkbox"
-                          checked={!!r.counted}
-                          disabled={!canEdit || locked}
-                          onChange={(e) => void toggleRep(Number(row.id), Number(r.reprimand_id), e.target.checked)}
-                        />
-                        стр.
-                      </label>
-                    )) : <span className="payout-muted">0</span>}
+                    <label className="payout-rep-toggle" title="Учитывать строгие выговоры">
+                      <input
+                        type="checkbox"
+                        checked={row.count_strict !== false}
+                        disabled={!canEdit || locked}
+                        onChange={(e) => void toggleRepType(Number(row.id), 'strict', e.target.checked)}
+                      />
+                      стр. {strict.length}
+                    </label>
                   </td>
                   {([
                     ['events_mc', row.events_mc],
@@ -486,9 +491,9 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
                       <input
                         className="input payout-cell"
                         type="number"
-                        step="any"
+                        step={1}
                         disabled={!canEdit || locked}
-                        value={String(val ?? 0)}
+                        value={moneyText(val)}
                         onChange={(e) => setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, [field]: e.target.value } : r)))}
                         onBlur={(e) => void patchRow(Number(row.id), { [field]: money(e.target.value) })}
                       />
@@ -518,9 +523,9 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
                     <input
                       className="input payout-cell"
                       type="number"
-                      step="any"
+                      step={1}
                       disabled={!canEdit || locked}
-                      value={String(row.comp_dollars ?? 0)}
+                      value={moneyText(row.comp_dollars)}
                       onChange={(e) => setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, comp_dollars: e.target.value } : r)))}
                       onBlur={(e) => void patchRow(Number(row.id), { comp_dollars: money(e.target.value) })}
                     />

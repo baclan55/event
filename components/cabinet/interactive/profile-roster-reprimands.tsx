@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { PublicUser } from '@/lib/authShared';
 import { AUDIT_LABELS } from '@/lib/auditShared';
 import { NavIcon } from '@/components/NavIcons';
-import { Avatar, DateField, DEFAULT_LIMITS, ErrorText, matchesSearch, Modal, ReprimandBadge, ReprimandLegend, ReprimandSummary, request, SearchBox, Select, type Row } from './shared';
+import { Avatar, DateField, DEFAULT_LIMITS, ErrorText, matchesSearch, Modal, ReprimandBadge, ReprimandLegend, ReprimandSummary, request, RoleName, SearchBox, Select, type Row } from './shared';
 import {
   ProfileAchievementsPanel,
   catalogFromPayload,
@@ -602,14 +602,25 @@ export function RosterInteractive({
     },
   ])).values()].sort((a, b) => a.priority - b.priority);
 
-  const memberRow = (member: Row, candidate = false) => (
+  function formatRolesColored(roles: Row[] | undefined) {
+  const list = roles || [];
+  if (!list.length) return 'Без роли';
+  return list.map((r, i) => (
+    <span key={String(r.id || r.name || i)}>
+      {i > 0 ? ' · ' : null}
+      <RoleName name={r.name} color={r.color} />
+    </span>
+  ));
+}
+
+const memberRow = (member: Row, candidate = false) => (
     <div className="roster-row" key={member.id}>
       {canViewProfiles && !candidate ? (
         <a className="who member-profile-trigger who-clickable" href={`/app/profile/${member.id}`}>
           <Avatar row={member} />
           <span className="member-copy">
             <span className="nickname">{member.nickname}</span>
-            <span className="role-tag">{(member.roles || []).map((r: Row) => r.name).join(' · ') || 'Без роли'}{member.discord_username ? ` · ${member.discord_username}` : ''}</span>
+            <span className="role-tag">{formatRolesColored(member.roles)}{member.discord_username ? ` · ${member.discord_username}` : ''}</span>
           </span>
         </a>
       ) : (
@@ -617,7 +628,7 @@ export function RosterInteractive({
           <Avatar row={member} />
           <span className="member-copy">
             <span className="nickname">{member.nickname}</span>
-            <span className="role-tag">{candidate ? 'Кандидат' : (member.roles || []).map((r: Row) => r.name).join(' · ') || 'Без роли'}{member.discord_username ? ` · ${member.discord_username}` : ''}</span>
+            <span className="role-tag">{candidate ? 'Кандидат' : formatRolesColored(member.roles)}{member.discord_username ? ` · ${member.discord_username}` : ''}</span>
           </span>
         </div>
       )}
@@ -742,7 +753,9 @@ function MemberProfileBody({ data, onChanged }: { data: { user: Row; reprimands:
     <>
       <div className="profile-hero compact">
         <Avatar row={user} size={64} />
-        <div className="profile-main"><h2>{user.nickname}</h2><div className="role-tag">{(user.roles || []).map((r: Row) => r.name).join(' · ') || 'Без роли'}</div></div>
+        <div className="profile-main"><h2>{user.nickname}</h2><div className="role-tag">{(user.roles || []).length ? (user.roles as Row[]).map((r: Row, i: number) => (
+          <span key={String(r.id || r.name || i)}>{i > 0 ? ' · ' : null}<RoleName name={r.name} color={r.color} /></span>
+        )) : 'Без роли'}</div></div>
         <div className="profile-weekly"><div className="stat-value">{user.weekly_events || 0}</div><div className="stat-label">мп за неделю</div></div>
       </div>
       <ErrorText value={error} />
