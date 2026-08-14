@@ -225,18 +225,18 @@ export function DiscordEventsInteractive() {
 
   return (
     <>
-      <div className="toolbar">
+      <div className="toolbar devent-toolbar">
         <div className="toolbar-left">
           Сборы МП из Discord-канала
           {total ? ` · ${total} всего` : ''}
         </div>
-        <div className="row-actions" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="toolbar-right devent-toolbar-actions">
           <SearchBox
             value={query}
             onChange={setQuery}
             placeholder="Название, ID, участник…"
           />
-          <div style={{ minWidth: 200 }}>
+          <div className="devent-toolbar-status">
             <Select
               value={status}
               onChange={(v) => {
@@ -253,26 +253,28 @@ export function DiscordEventsInteractive() {
               ]}
             />
           </div>
-          {caps.delete ? (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              disabled={busyDedupe}
-              onClick={() => void requestDedupe()}
-            >
-              {busyDedupe ? 'Очистка…' : 'Удалить дубликаты'}
-            </button>
-          ) : null}
-          {canResync ? (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              disabled={busyResync || jobBusy}
-              onClick={() => void requestResync()}
-            >
-              {jobBusy ? 'Пересборка…' : 'Пересобрать МП'}
-            </button>
-          ) : null}
+          <div className="devent-toolbar-btns">
+            {caps.delete ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                disabled={busyDedupe}
+                onClick={() => void requestDedupe()}
+              >
+                {busyDedupe ? 'Очистка…' : 'Удалить дубликаты'}
+              </button>
+            ) : null}
+            {canResync ? (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={busyResync || jobBusy}
+                onClick={() => void requestResync()}
+              >
+                {jobBusy ? 'Пересборка…' : 'Пересобрать МП'}
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 

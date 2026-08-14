@@ -95,6 +95,54 @@
   margin-bottom:8px;
   padding:12px 14px;
 }
+.devent-toolbar{
+  align-items:flex-start;
+}
+.devent-toolbar-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  flex:1 1 420px;
+  min-width:0;
+  flex-wrap:nowrap;
+}
+.devent-toolbar-actions .search-input{
+  flex:1 1 160px;
+  min-width:140px;
+  max-width:260px;
+}
+.devent-toolbar-status{
+  flex:0 1 168px;
+  min-width:140px;
+  max-width:200px;
+}
+.devent-toolbar-btns{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex:0 0 auto;
+  flex-wrap:nowrap;
+}
+@media (max-width:900px){
+  .devent-toolbar-actions{
+    flex-wrap:wrap;
+    justify-content:flex-start;
+    width:100%;
+    flex:1 1 100%;
+  }
+  .devent-toolbar-actions .search-input{
+    flex:1 1 200px;
+    max-width:none;
+  }
+  .devent-toolbar-status{
+    flex:1 1 160px;
+    max-width:none;
+  }
+  .devent-toolbar-btns{
+    margin-left:auto;
+  }
+}
 .devent-card-top{
   display:flex;
   align-items:flex-start;
