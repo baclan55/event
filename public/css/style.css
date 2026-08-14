@@ -667,11 +667,34 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .mde-discord-pop-actions{ display:flex; justify-content:flex-end; gap:8px; margin-bottom:14px; }
 
 .mde-textarea{
-  display:block; width:100%; min-height:180px; max-height:460px; resize:vertical;
+  display:block; width:100%; min-height:198px; max-height:506px; resize:vertical;
   border:none; border-radius:0; background:none; line-height:1.6; font-family:inherit;
 }
 .mde-textarea:focus{ outline:none; box-shadow:none; }
-.mde-preview{ min-height:180px; max-height:460px; overflow-y:auto; padding:14px 16px; }
+.mde-preview{ min-height:198px; max-height:506px; overflow-y:auto; padding:14px 16px; }
+.mde-color-wrap{ position:relative; }
+.mde-btn-color{
+  color:var(--accent-light);
+  text-decoration:underline;
+  text-decoration-color:var(--pink);
+  text-underline-offset:2px;
+}
+.mde-color-pop{
+  position:absolute; left:0; top:calc(100% + 6px); z-index:20;
+  display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;
+  padding:8px; min-width:160px;
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px;
+  box-shadow:var(--shadow-pop);
+}
+.mde-color-swatch{
+  width:24px; height:24px; padding:0; border:0; border-radius:6px;
+  background:transparent; cursor:pointer;
+}
+.mde-color-swatch span{
+  display:block; width:100%; height:100%; border-radius:6px;
+  border:1px solid rgba(255,255,255,.18);
+}
+.mde-color-swatch:hover span{ outline:2px solid var(--accent-light); outline-offset:1px; }
 .mde-preview .empty-state{ padding:14px 0; }
 
 /* "Чип" ссылки на канал Discord — то, что реально попадает в отображаемый
@@ -731,6 +754,29 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .md-body table{ width:100%; border-collapse:collapse; margin:0 0 .85em; font-size:.95em; }
 .md-body th, .md-body td{ border:1px solid var(--border); padding:6px 10px; text-align:left; }
 .md-body th{ background:var(--bg-card-2); color:var(--text-heading); }
+.md-body img{ max-width:100%; height:auto; border-radius:10px; margin:.4em 0; }
+.md-body mark, .md-body .md-mark{
+  background:rgba(251,191,36,.28); color:var(--text-heading);
+  padding:.05em .25em; border-radius:4px;
+}
+.md-body u{ text-decoration:underline; text-underline-offset:2px; }
+.md-body .md-color{ font-weight:inherit; }
+.md-body sub{ font-size:.8em; }
+.md-body sup{ font-size:.8em; }
+.md-body kbd{
+  font-family:var(--font-mono); font-size:.85em;
+  padding:1px 6px; border-radius:5px;
+  border:1px solid var(--border); background:var(--bg-card-2); color:var(--text-heading);
+}
+.md-body .md-task{
+  display:inline-flex; align-items:flex-start; gap:8px;
+  margin:0; cursor:default; color:inherit; font:inherit; text-transform:none;
+}
+.md-body .md-task input{ margin-top:.2em; }
+.md-body li.md-task-item{ list-style:none; margin-left:-1.1em; }
+.md-body dl{ margin:0 0 .85em; }
+.md-body dt{ font-weight:700; color:var(--text-heading); }
+.md-body dd{ margin:0 0 .55em 1.1em; color:var(--text-body); }
 
 .form-row-2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 @media (max-width:560px){ .form-row-2{ grid-template-columns:1fr; } }
@@ -1336,7 +1382,7 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
 .modal-dialog .ui-select.is-open{ z-index:30; }
 .modal-dialog.wide{ width:min(600px, 100%); max-width:100%; }
 .modal-dialog.xl{ width:min(980px, 100%); max-width:100%; }
-.modal-dialog.editor{ width:min(840px, 100%); max-width:100%; }
+.modal-dialog.editor{ width:min(1008px, 100%); max-width:100%; }
 .role-checklist-compact{ max-height:none; }
 .perm-grid{
   display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px;
@@ -1376,11 +1422,11 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
   color:var(--text-body); cursor:pointer; margin:0;
 }
 .perm-flag.muted{ color:var(--text-muted); cursor:default; font-weight:500; }
-/* Редактор текстов: поле Markdown +20% по высоте */
+/* Редактор текстов: поле Markdown шире (+20%) и выше (+10%) */
 .modal-dialog.editor .mde-textarea,
 .modal-dialog.editor .mde-preview{
-  min-height:216px;
-  max-height:552px;
+  min-height:238px;
+  max-height:607px;
 }
 .modal-dialog h2{ font-size:19px; text-align:center; margin-bottom:4px; }
 .modal-sub{ text-align:center; color:var(--text-muted); font-size:12px; margin-bottom:18px; }
@@ -1746,7 +1792,12 @@ button.linkish{
 .site-page-head p{ color:var(--text-muted); font-size:13.5px; }
 
 .qform{ max-width:640px; margin:0 auto; padding:24px 24px 60px; display:flex; flex-direction:column; gap:14px; }
-.qform-card{ background:var(--bg-card); border:1px solid var(--border-soft); border-radius:var(--radius-lg); padding:22px 24px; }
+.qform-card{
+  background:var(--bg-card);
+  border:1px solid rgba(255,255,255,.045);
+  border-radius:var(--radius-md);
+  padding:18px 18px;
+}
 .qform-row{ align-items:stretch; }
 .qform-row > .qform-card{ min-width:0; }
 .qform-label{ display:block; font-size:14.5px; font-weight:700; color:var(--text-heading); margin-bottom:5px; }
@@ -1754,7 +1805,18 @@ button.linkish{
 .qform-hint{ font-size:12px; color:var(--text-muted); margin-bottom:10px; }
 .qform-hint-row{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
 .qform-hint-row .qform-hint{ margin-bottom:0; }
-.qform-card .input{ margin-top:2px; width:100%; }
+.qform-card .input,
+.qform-card textarea.input{
+  margin-top:2px; width:100%;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:8px;
+  padding:9px 11px;
+}
+.qform-card .input:focus,
+.qform-card textarea.input:focus{
+  border-color:rgba(167,139,250,.55);
+  box-shadow:0 0 0 2px var(--accent-soft);
+}
 .qform-card .field-hint{ margin-top:8px; }
 .qform .error-text{ text-align:center; }
 .qform > .btn{ width:100%; }

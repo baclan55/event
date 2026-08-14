@@ -53,7 +53,12 @@
 .site-page-head p{ color:var(--text-muted); font-size:13.5px; }
 
 .qform{ max-width:640px; margin:0 auto; padding:24px 24px 60px; display:flex; flex-direction:column; gap:14px; }
-.qform-card{ background:var(--bg-card); border:1px solid var(--border-soft); border-radius:var(--radius-lg); padding:22px 24px; }
+.qform-card{
+  background:var(--bg-card);
+  border:1px solid rgba(255,255,255,.045);
+  border-radius:var(--radius-md);
+  padding:18px 18px;
+}
 .qform-row{ align-items:stretch; }
 .qform-row > .qform-card{ min-width:0; }
 .qform-label{ display:block; font-size:14.5px; font-weight:700; color:var(--text-heading); margin-bottom:5px; }
@@ -61,7 +66,18 @@
 .qform-hint{ font-size:12px; color:var(--text-muted); margin-bottom:10px; }
 .qform-hint-row{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
 .qform-hint-row .qform-hint{ margin-bottom:0; }
-.qform-card .input{ margin-top:2px; width:100%; }
+.qform-card .input,
+.qform-card textarea.input{
+  margin-top:2px; width:100%;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:8px;
+  padding:9px 11px;
+}
+.qform-card .input:focus,
+.qform-card textarea.input:focus{
+  border-color:rgba(167,139,250,.55);
+  box-shadow:0 0 0 2px var(--accent-soft);
+}
 .qform-card .field-hint{ margin-top:8px; }
 .qform .error-text{ text-align:center; }
 .qform > .btn{ width:100%; }

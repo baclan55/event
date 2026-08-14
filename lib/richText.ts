@@ -72,39 +72,207 @@ function isDiscordChannelUrl(rawUrl) {
 // span (текст внутри остаётся, просто перестаёт быть ссылкой), если href —
 // не ссылка на Discord. Используется и в новом (Markdown), и в старом
 // (legacy HTML) пайплайне ниже — правило одно и то же для обоих форматов.
+// Discord-ссылки → чип; обычные http(s) → безопасная ссылка; остальное → текст.
 function transformDiscordAnchor(tagName, attribs) {
-  if (isDiscordChannelUrl(attribs.href)) {
+  const href = String(attribs.href == null ? '' : attribs.href).trim();
+  if (isDiscordChannelUrl(href)) {
     return {
       tagName: 'a',
       attribs: {
-        href: String(attribs.href).trim(),
+        href,
         target: '_blank',
         rel: 'noopener noreferrer nofollow',
         class: 'discord-chip',
       },
     };
   }
+  try {
+    const u = new URL(href);
+    if (u.protocol === 'https:' || u.protocol === 'http:') {
+      return {
+        tagName: 'a',
+        attribs: {
+          href,
+          target: '_blank',
+          rel: 'noopener noreferrer nofollow',
+        },
+      };
+    }
+  } catch {
+    /* ignore */
+  }
   return { tagName: 'span', attribs: {} };
 }
 
 // ============================================================================
-// НОВЫЙ формат — Markdown (см. public/js/markdownEditor.js).
+// НОВЫЙ формат — Markdown (см. MarkdownEditor).
 // ============================================================================
 
-// html:false — сырой HTML в исходнике не парсится, а экранируется как
-// обычный текст (это и есть первая линия защиты: даже если кто-то напишет
-// "<script>..." прямо в Markdown-поле, на выходе будет "&lt;script&gt;...",
-// а не исполняемый тег). linkify — голые ссылки (например, просто вставленный
-// discord.gg/приглашение без markdown-скобок) тоже становятся кликабельными.
-// breaks — одиночный перенос строки (Enter) становится <br>, без breaks
-// markdown-it сжал бы его в пробел — так и раньше в этом редакторе Enter
-// был обычным переносом строки, а не новым абзацем.
+const NAMED_COLORS = {
+  red: '#f87171',
+  orange: '#fb923c',
+  amber: '#fbbf24',
+  yellow: '#facc15',
+  green: '#34d399',
+  cyan: '#22d3ee',
+  blue: '#60a5fa',
+  purple: '#a78bfa',
+  pink: '#e879c0',
+  white: '#f5f3fb',
+  muted: '#8a83a3',
+  accent: '#a78bfa',
+};
+
+function resolveColorToken(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (!value) return null;
+  if (NAMED_COLORS[value]) return NAMED_COLORS[value];
+  if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) return value;
+  return null;
+}
+
+function isSafeCssColor(value) {
+  const v = String(value || '').trim();
+  return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)
+    || /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i.test(v);
+}
+
+/** `{#ff0000}текст{/}` или `{red}текст{/}` — цветной span. */
+function colorPlugin(md) {
+  function tokenize(state, silent) {
+    const start = state.pos;
+    if (state.src.charCodeAt(start) !== 0x7B /* { */) return false;
+
+    const open = /^(?:\{#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\}|\{([a-z]{2,12})\})/.exec(state.src.slice(start));
+    if (!open) return false;
+    const color = resolveColorToken(open[1] ? `#${open[1]}` : open[2]);
+    if (!color) return false;
+
+    const contentStart = start + open[0].length;
+    const closeIdx = state.src.indexOf('{/}', contentStart);
+    if (closeIdx < 0) return false;
+    // Не пересекаем границу абзаца — цвет только inline.
+    if (state.src.slice(contentStart, closeIdx).includes('\n')) return false;
+
+    if (!silent) {
+      const tokenOpen = state.push('md_color_open', 'span', 1);
+      tokenOpen.attrs = [['style', `color:${color}`], ['class', 'md-color']];
+      const tokenText = state.push('text', '', 0);
+      tokenText.content = state.src.slice(contentStart, closeIdx);
+      state.push('md_color_close', 'span', -1);
+    }
+
+    state.pos = closeIdx + 3;
+    return true;
+  }
+
+  md.inline.ruler.before('emphasis', 'md_color', tokenize);
+  md.renderer.rules.md_color_open = (tokens, idx) => {
+    const style = tokens[idx].attrGet('style') || '';
+    const cls = tokens[idx].attrGet('class') || 'md-color';
+    return `<span class="${cls}" style="${style}">`;
+  };
+  md.renderer.rules.md_color_close = () => '</span>';
+}
+
+/** `==текст==` → <mark> */
+function markPlugin(md) {
+  function tokenize(state, silent) {
+    const start = state.pos;
+    if (state.src.slice(start, start + 2) !== '==') return false;
+    if (start + 4 > state.posMax) return false;
+
+    let end = -1;
+    for (let i = start + 2; i < state.posMax - 1; i += 1) {
+      if (state.src[i] === '\n') return false;
+      if (state.src.slice(i, i + 2) === '==') {
+        end = i;
+        break;
+      }
+    }
+    if (end < 0 || end === start + 2) return false;
+
+    if (!silent) {
+      state.push('mark_open', 'mark', 1);
+      const tokenText = state.push('text', '', 0);
+      tokenText.content = state.src.slice(start + 2, end);
+      state.push('mark_close', 'mark', -1);
+    }
+    state.pos = end + 2;
+    return true;
+  }
+  md.inline.ruler.before('emphasis', 'md_mark', tokenize);
+}
+
+/** `++текст++` → <u> */
+function underlinePlugin(md) {
+  function tokenize(state, silent) {
+    const start = state.pos;
+    if (state.src.slice(start, start + 2) !== '++') return false;
+    let end = -1;
+    for (let i = start + 2; i < state.posMax - 1; i += 1) {
+      if (state.src[i] === '\n') return false;
+      if (state.src.slice(i, i + 2) === '++') {
+        end = i;
+        break;
+      }
+    }
+    if (end < 0 || end === start + 2) return false;
+    if (!silent) {
+      state.push('u_open', 'u', 1);
+      const tokenText = state.push('text', '', 0);
+      tokenText.content = state.src.slice(start + 2, end);
+      state.push('u_close', 'u', -1);
+    }
+    state.pos = end + 2;
+    return true;
+  }
+  md.inline.ruler.before('emphasis', 'md_underline', tokenize);
+}
+
+/** `- [ ]` / `- [x]` → чекбоксы в списках. */
+function taskListPlugin(md) {
+  md.core.ruler.after('inline', 'md_task_lists', (state) => {
+    for (const token of state.tokens) {
+      if (token.type !== 'inline' || !token.children?.length) continue;
+      const first = token.children[0];
+      if (!first || first.type !== 'text') continue;
+      const m = /^\[([ xX])\]\s+/.exec(first.content);
+      if (!m) continue;
+      const checked = m[1].toLowerCase() === 'x';
+      first.content = first.content.slice(m[0].length);
+      const open = new state.Token('html_inline', '', 0);
+      open.content = `<label class="md-task"><input type="checkbox" disabled${checked ? ' checked' : ''}/><span>`;
+      const close = new state.Token('html_inline', '', 0);
+      close.content = '</span></label>';
+      token.children = [open, ...token.children, close];
+      // помечаем родительский li
+      // ищем ближайший list_item_open до этого inline — через tokens обход снаружи
+    }
+    for (let i = 0; i < state.tokens.length; i += 1) {
+      const t = state.tokens[i];
+      if (t.type !== 'list_item_open') continue;
+      const inline = state.tokens[i + 2];
+      if (inline?.type === 'inline' && inline.children?.[0]?.type === 'html_inline'
+        && String(inline.children[0].content).includes('md-task')) {
+        t.attrJoin('class', 'md-task-item');
+      }
+    }
+  });
+}
+
+// html:true — нужны <span style="color"> / чекбоксы задач; XSS режет sanitize-html.
 const md = new MarkdownIt({
-  html: false,
+  html: true,
   linkify: true,
   breaks: true,
-  typographer: false,
+  typographer: true,
 });
+md.enable(['table', 'strikethrough']);
+md.use(colorPlugin);
+md.use(markPlugin);
+md.use(underlinePlugin);
+md.use(taskListPlugin);
 
 // Глубина цитирования в начале строки (`>`, `> >`, `>>` …).
 function blockquoteDepth(line) {
@@ -154,38 +322,81 @@ function fixNestedBlockquoteLazyContinuation(text) {
   return out.join('\n');
 }
 
-// Теги, которые может породить рендер Markdown, плюс 'span' — то, во что
-// превращается не-discord-ссылка (см. transformDiscordAnchor). Картинки
-// (![]())  сознательно НЕ разрешены: для картинок в разделах уже есть
-// отдельная, контролируемая загрузка (см. "Картинка" в contentSection.js/
-// rules.js) — разрешать ещё и произвольные внешние картинки прямо в тексте
-// значило бы разрешить хотлинк на что угодно в обход этого контроля.
+// Теги, которые может породить рендер Markdown (+ безопасные inline-цвета).
+// Картинки разрешены только по http(s) — внешний хотлинк, без javascript:.
 const MARKDOWN_ALLOWED_TAGS = [
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'p', 'br', 'hr',
-  'strong', 'em', 's', 'del',
-  'span', 'a',
+  'strong', 'b', 'em', 'i', 's', 'del', 'u', 'mark', 'sub', 'sup', 'kbd', 'abbr',
+  'span', 'a', 'img',
   'ul', 'ol', 'li',
   'blockquote',
   'code', 'pre',
-  'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption',
+  'dl', 'dt', 'dd',
+  'figure', 'figcaption',
+  'label', 'input',
 ];
 
 const MARKDOWN_SANITIZE_OPTIONS = {
   allowedTags: MARKDOWN_ALLOWED_TAGS,
   allowedAttributes: {
-    a: ['href', 'target', 'rel', 'class'],
-    // class="language-xxx" — то, что markdown-it ставит на <code> внутри
-    // блоков ```кода с указанным языком (```js ... ```). Подсветки синтаксиса
-    // у нас нет, но сам класс безобиден и полезен, если она появится позже.
+    a: ['href', 'target', 'rel', 'class', 'title'],
     code: ['class'],
+    span: ['style', 'class'],
+    mark: ['class'],
+    img: ['src', 'alt', 'title'],
+    th: ['align', 'colspan', 'rowspan'],
+    td: ['align', 'colspan', 'rowspan'],
+    ol: ['start', 'type'],
+    li: ['class'],
+    label: ['class'],
+    input: ['type', 'checked', 'disabled'],
+    abbr: ['title'],
   },
   allowedClasses: {
     a: ['discord-chip'],
     code: [/^language-[\w-]*$/],
+    span: ['md-color'],
+    mark: ['md-mark'],
+    li: ['md-task-item'],
+    label: ['md-task'],
   },
   allowedSchemes: ['https', 'http'],
-  transformTags: { a: transformDiscordAnchor },
+  allowedSchemesByTag: {
+    img: ['https', 'http'],
+    a: ['https', 'http'],
+  },
+  allowedStyles: {
+    span: {
+      color: [/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, /^rgba?\(/i],
+      'background-color': [/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, /^rgba?\(/i],
+    },
+  },
+  transformTags: {
+    a: transformDiscordAnchor,
+    span: (tagName, attribs) => {
+      const style = String(attribs.style || '');
+      const colorMatch = /(?:^|;)\s*color\s*:\s*([^;]+)/i.exec(style);
+      const bgMatch = /(?:^|;)\s*background-color\s*:\s*([^;]+)/i.exec(style);
+      const parts = [];
+      if (colorMatch && isSafeCssColor(colorMatch[1])) parts.push(`color:${colorMatch[1].trim()}`);
+      if (bgMatch && isSafeCssColor(bgMatch[1])) parts.push(`background-color:${bgMatch[1].trim()}`);
+      if (!parts.length) return { tagName: 'span', attribs: {} };
+      return {
+        tagName: 'span',
+        attribs: { class: 'md-color', style: parts.join(';') },
+      };
+    },
+    input: (tagName, attribs) => {
+      if (String(attribs.type || '').toLowerCase() !== 'checkbox') {
+        return { tagName: 'span', attribs: {} };
+      }
+      const next = { type: 'checkbox', disabled: 'disabled' };
+      if (attribs.checked != null || attribs.checked === '') next.checked = 'checked';
+      return { tagName: 'input', attribs: next };
+    },
+  },
   disallowedTagsMode: 'discard',
 };
 
@@ -357,4 +568,11 @@ function rawBodyForEdit(rawBody) {
   return looksLikeLegacyHtml(body) ? legacyHtmlToMarkdown(body) : body;
 }
 
-export { renderBody, rawBodyForEdit, normalizeMarkdownSource, renderMarkdown, isDiscordChannelUrl };
+export {
+  renderBody,
+  rawBodyForEdit,
+  normalizeMarkdownSource,
+  renderMarkdown,
+  isDiscordChannelUrl,
+  NAMED_COLORS,
+};

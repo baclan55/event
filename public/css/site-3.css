@@ -32,11 +32,11 @@
 .mde-discord-pop-actions{ display:flex; justify-content:flex-end; gap:8px; margin-bottom:14px; }
 
 .mde-textarea{
-  display:block; width:100%; min-height:180px; max-height:460px; resize:vertical;
+  display:block; width:100%; min-height:198px; max-height:506px; resize:vertical;
   border:none; border-radius:0; background:none; line-height:1.6; font-family:inherit;
 }
 .mde-textarea:focus{ outline:none; box-shadow:none; }
-.mde-preview{ min-height:180px; max-height:460px; overflow-y:auto; padding:14px 16px; }
+.mde-preview{ min-height:198px; max-height:506px; overflow-y:auto; padding:14px 16px; }
 .mde-preview .empty-state{ padding:14px 0; }
 
 /* "Чип" ссылки на канал Discord — то, что реально попадает в отображаемый
