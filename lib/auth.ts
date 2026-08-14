@@ -7,6 +7,7 @@ import {
   permissionsFromRole,
   profileViewCapsFromRole,
   profileOwnViewCapsFromRole,
+  statsCapsFromRole,
   userHasAnyRole,
   userHasPermission,
   userHasRoleIn,
@@ -16,6 +17,7 @@ import {
   type PermissionLevel,
   type ProfileViewCap,
   type RoleUser,
+  type StatsCap,
 } from '@/lib/roleAccess';
 import {
   defaultDashboardBlocks,
@@ -66,6 +68,7 @@ export type DbUser = RoleUser & {
   editPermissions: Permission[];
   gmpCaps: GmpCap[];
   eventCaps: EventCap[];
+  statsCaps: StatsCap[];
   profileViewCaps: ProfileViewCap[];
   profileOwnViewCaps: ProfileViewCap[];
   is_event_helper?: boolean;
@@ -116,6 +119,16 @@ function aggregateEventCaps(roles: DbRole[]): EventCap[] {
   const set = new Set<EventCap>();
   for (const role of roles) {
     for (const cap of eventCapsFromRole(role.name, role.permissions)) {
+      set.add(cap);
+    }
+  }
+  return [...set];
+}
+
+function aggregateStatsCaps(roles: DbRole[]): StatsCap[] {
+  const set = new Set<StatsCap>();
+  for (const role of roles) {
+    for (const cap of statsCapsFromRole(role.name, role.permissions)) {
       set.add(cap);
     }
   }
@@ -184,6 +197,7 @@ function cloneUser(user: DbUser): DbUser {
     : aggregateEditPermissions(roles);
   const gmpCaps = Array.isArray(user.gmpCaps) ? [...user.gmpCaps] : aggregateGmpCaps(roles);
   const eventCaps = Array.isArray(user.eventCaps) ? [...user.eventCaps] : aggregateEventCaps(roles);
+  const statsCaps = Array.isArray(user.statsCaps) ? [...user.statsCaps] : aggregateStatsCaps(roles);
   const profileViewCaps = Array.isArray(user.profileViewCaps)
     ? [...user.profileViewCaps]
     : aggregateProfileViewCaps(roles);
@@ -199,6 +213,7 @@ function cloneUser(user: DbUser): DbUser {
     editPermissions,
     gmpCaps,
     eventCaps,
+    statsCaps,
     profileViewCaps,
     profileOwnViewCaps,
     is_event_helper: user.is_event_helper ?? flags.isEventHelper,
@@ -230,6 +245,9 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
   const eventCaps = Array.isArray(u.eventCaps) && u.eventCaps.length
     ? u.eventCaps
     : aggregateEventCaps(roles);
+  const statsCaps = Array.isArray(u.statsCaps) && u.statsCaps.length
+    ? u.statsCaps
+    : aggregateStatsCaps(roles);
   const profileViewCaps = Array.isArray(u.profileViewCaps)
     ? u.profileViewCaps
     : aggregateProfileViewCaps(roles);
@@ -261,6 +279,7 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
     editPermissions,
     gmpCaps,
     eventCaps,
+    statsCaps,
     profileViewCaps,
     profileOwnViewCaps,
     isBlocked: !!u.is_blocked,
@@ -330,6 +349,7 @@ export async function loadUserById(userId: number): Promise<DbUser | null> {
   user.editPermissions = aggregateEditPermissions(roles);
   user.gmpCaps = aggregateGmpCaps(roles);
   user.eventCaps = aggregateEventCaps(roles);
+  user.statsCaps = aggregateStatsCaps(roles);
   user.profileViewCaps = aggregateProfileViewCaps(roles);
   user.profileOwnViewCaps = aggregateProfileOwnViewCaps(roles);
   const flags = aggregateRoleFlags(roles);

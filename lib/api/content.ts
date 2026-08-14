@@ -115,11 +115,14 @@ export const handleContent: ApiHandler = async ({ key, request, params, method, 
     if (user instanceof NextResponse) return user;
     if (key === 'rules' && method === 'GET') {
       const result = await query<Record<string, unknown>>(
-        'SELECT id,position,title,body,image_id,updated_at FROM rules ORDER BY position,id',
+        `SELECT id,position,title,body,image_id,updated_at,
+                COALESCE(archived, FALSE) AS archived
+         FROM rules ORDER BY archived ASC, position,id`,
       );
       return NextResponse.json({
         rules: result.rows.map((row) => ({
           ...row,
+          archived: !!row.archived,
           body: renderBody(row.body),
           bodyRaw: rawBodyForEdit(row.body),
         })),
@@ -189,17 +192,30 @@ export const handleContent: ApiHandler = async ({ key, request, params, method, 
     }
     const title = String(body.title || '').trim();
     if (!title) return jsonError('Укажите заголовок правила.', 400);
-    await query('UPDATE rules SET title=$1,body=$2,updated_at=now() WHERE id=$3', [
-      title,
-      normalizeMarkdownSource(String(body.body || '')),
-      parseId(params.id),
-    ]);
+    const archived = typeof body.archived === 'boolean' ? body.archived : null;
+    if (archived == null) {
+      await query('UPDATE rules SET title=$1,body=$2,updated_at=now() WHERE id=$3', [
+        title,
+        normalizeMarkdownSource(String(body.body || '')),
+        parseId(params.id),
+      ]);
+    } else {
+      await query(
+        'UPDATE rules SET title=$1,body=$2,archived=$3,updated_at=now() WHERE id=$4',
+        [
+          title,
+          normalizeMarkdownSource(String(body.body || '')),
+          archived,
+          parseId(params.id),
+        ],
+      );
+    }
     await writeAudit({
       actorId: user.id,
       action: 'rule.update',
       entityType: 'rule',
       entityId: params.id,
-      details: { title },
+      details: { title, ...(archived == null ? {} : { archived }) },
     });
     return ok();
   }

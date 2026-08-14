@@ -1,13 +1,33 @@
 /** Классификация ролей и блоки дашборда (не функциональные permissions). */
 
-export const DASHBOARD_BLOCKS = ['stats', 'top_admin', 'top_helper'] as const;
+export const DASHBOARD_BLOCKS = [
+  'mp_today',
+  'mp_week',
+  'today_events',
+  'recommended_mp',
+  'roster_stats',
+  'top_admin',
+  'top_helper',
+] as const;
 export type DashboardBlock = (typeof DASHBOARD_BLOCKS)[number];
 
 export const DASHBOARD_BLOCK_LABELS: Record<DashboardBlock, string> = {
-  stats: 'Сводка по составу',
+  mp_today: 'МП за сегодня',
+  mp_week: 'МП за неделю',
+  today_events: 'Мероприятия сегодня',
+  recommended_mp: 'Рекомендуемые для проведения МП',
+  roster_stats: 'Сводка по составу',
   top_admin: 'Топ администраторов за неделю',
   top_helper: 'Топ хелперов за неделю',
 };
+
+const LEGACY_STATS_KEYS: DashboardBlock[] = [
+  'mp_today',
+  'mp_week',
+  'today_events',
+  'recommended_mp',
+  'roster_stats',
+];
 
 export type RoleMeta = {
   isEventHelper: boolean;
@@ -18,15 +38,28 @@ export type RoleMeta = {
 };
 
 export function defaultDashboardBlocks(): Record<DashboardBlock, boolean> {
-  return { stats: true, top_admin: true, top_helper: true };
+  return {
+    mp_today: true,
+    mp_week: true,
+    today_events: true,
+    recommended_mp: true,
+    roster_stats: true,
+    top_admin: true,
+    top_helper: true,
+  };
 }
 
 export function normalizeDashboardBlocks(raw: unknown): Record<DashboardBlock, boolean> {
   const base = defaultDashboardBlocks();
   if (!raw || typeof raw !== 'object') return base;
   const source = raw as Record<string, unknown>;
+  const legacyStats = typeof source.stats === 'boolean' ? source.stats : null;
   for (const key of DASHBOARD_BLOCKS) {
-    if (typeof source[key] === 'boolean') base[key] = source[key];
+    if (typeof source[key] === 'boolean') {
+      base[key] = source[key];
+    } else if (legacyStats != null && LEGACY_STATS_KEYS.includes(key)) {
+      base[key] = legacyStats;
+    }
   }
   return base;
 }

@@ -104,6 +104,8 @@ CREATE TABLE IF NOT EXISTS rules (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE rules ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_rules_archived ON rules(archived, position);
 
 -- Система выговоров. Разделена на два тира по роли сотрудника (см.
 -- src/utils/tier.js и src/utils/reprimandRules.js):

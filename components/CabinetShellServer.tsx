@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PublicUser } from '@/lib/authShared';
 import { NavIcon } from '@/components/NavIcons';
 import { ProfileGate } from '@/components/ProfileGate';
@@ -8,6 +8,8 @@ import { ConfirmHost } from '@/components/cabinet/interactive/shared';
 
 type NavItem = { key: string; label: string };
 type NavGroup = { label: string; items: NavItem[] };
+
+const NAV_SCROLL_KEY = 'cabinet-nav-scroll';
 
 /** Чистый HTML-шелл кабинета — без client JS / AuthProvider. */
 export function CabinetShellServer({
@@ -29,10 +31,54 @@ export function CabinetShellServer({
   const [accountOpen, setAccountOpen] = useState(false);
   const [topbarHidden, setTopbarHidden] = useState(false);
   const [topbarScrolled, setTopbarScrolled] = useState(false);
-  const active = (key: string) =>
-    pathname === `/app/${key}`
-    || pathname.startsWith(`/app/${key}/`)
-    || (key === 'dashboard' && (pathname === '/app' || pathname === '/app/dashboard'));
+  const navScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const active = (key: string) => {
+    if (key === 'dashboard') {
+      return pathname === '/app' || pathname === '/app/dashboard';
+    }
+    const href = `/app/${key}`;
+    if (pathname === href) return true;
+    if (pathname.startsWith(`${href}/`)) {
+      // «Обзор» статистики не подсвечиваем на дочерних страницах.
+      if (key === 'statistics') return false;
+      return true;
+    }
+    return false;
+  };
+
+  function persistNavScroll() {
+    const el = navScrollRef.current;
+    if (!el) return;
+    try {
+      sessionStorage.setItem(NAV_SCROLL_KEY, String(el.scrollTop));
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }
+
+  useEffect(() => {
+    const el = navScrollRef.current;
+    if (!el) return;
+    try {
+      const raw = sessionStorage.getItem(NAV_SCROLL_KEY);
+      if (raw != null) {
+        const y = Number(raw);
+        if (Number.isFinite(y) && y > 0) {
+          el.scrollTop = y;
+          // После гидрации/лейаута ещё раз — иначе браузер может успеть сбросить.
+          requestAnimationFrame(() => {
+            el.scrollTop = y;
+          });
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    const onScroll = () => persistNavScroll();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
 
   useEffect(() => {
     let lastY = window.scrollY;
@@ -84,7 +130,7 @@ export function CabinetShellServer({
           <NavIcon name="home" />
           <span>На сайт</span>
         </a>
-        <div className="nav-scroll">
+        <div className="nav-scroll" ref={navScrollRef}>
           {navGroups.map((group) => (
             <nav className="nav-group" key={group.label} aria-label={group.label}>
               <div className="nav-label">{group.label}</div>
@@ -93,7 +139,10 @@ export function CabinetShellServer({
                   key={item.key}
                   href={`/app/${item.key}`}
                   className={`nav-item${active(item.key) ? ' active' : ''}`}
-                  onClick={() => setSidebarOpen(false)}
+                  onClick={() => {
+                    persistNavScroll();
+                    setSidebarOpen(false);
+                  }}
                 >
                   <NavIcon name={item.key} />
                   <span>{item.label}</span>

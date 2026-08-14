@@ -1,9 +1,9 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
 import { describeLogEntry } from '@/lib/auditShared';
-import { askConfirm, Avatar, ErrorText, MarkdownFormField, Modal, request, type Row } from './shared';
+import { askConfirm, Avatar, ErrorText, MarkdownFormField, matchesSearch, Modal, request, SearchBox, type Row } from './shared';
 
 export function OwnerInteractive({ canManageOwners }: { canManageOwners: boolean }) {
   const [users, setUsers] = useState<Row[]>([]);
@@ -152,6 +152,21 @@ export function RulesInteractive({ initialRules, canEdit }: { initialRules: Row[
   const [rules, setRules] = useState(initialRules);
   const [editing, setEditing] = useState<Row | null | undefined>(undefined);
   const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
+  const [tab, setTab] = useState<'active' | 'archive'>('active');
+
+  const tabRules = useMemo(
+    () => rules.filter((rule) => (tab === 'archive' ? !!rule.archived : !rule.archived)),
+    [rules, tab],
+  );
+
+  const filtered = useMemo(
+    () => tabRules.filter((rule) => matchesSearch([rule.title], query)),
+    [tabRules, query],
+  );
+
+  const activeCount = rules.filter((rule) => !rule.archived).length;
+  const archiveCount = rules.filter((rule) => !!rule.archived).length;
 
   async function reload() {
     const data = await request('/api/rules');
@@ -161,7 +176,11 @@ export function RulesInteractive({ initialRules, canEdit }: { initialRules: Row[
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const payload = { title: form.get('title'), body: form.get('body') };
+    const payload = {
+      title: form.get('title'),
+      body: form.get('body'),
+      archived: !!editing?.archived,
+    };
     try {
       let id = editing?.id;
       if (id) await request(`/api/rules/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -181,17 +200,35 @@ export function RulesInteractive({ initialRules, canEdit }: { initialRules: Row[
     catch (err) { setError((err as Error).message); }
   }
 
+  async function setArchived(rule: Row, archived: boolean) {
+    try {
+      await request(`/api/rules/${rule.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: rule.title,
+          body: rule.bodyRaw || '',
+          archived,
+        }),
+      });
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
   async function move(id: number, direction: -1 | 1) {
-    const index = rules.findIndex((rule) => rule.id === id);
+    const index = tabRules.findIndex((rule) => rule.id === id);
     const nextIndex = index + direction;
-    if (index < 0 || nextIndex < 0 || nextIndex >= rules.length) return;
-    const next = [...rules];
-    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
-    setRules(next);
+    if (index < 0 || nextIndex < 0 || nextIndex >= tabRules.length) return;
+    const nextTab = [...tabRules];
+    [nextTab[index], nextTab[nextIndex]] = [nextTab[nextIndex], nextTab[index]];
+    const other = rules.filter((rule) => (tab === 'archive' ? !rule.archived : !!rule.archived));
+    const nextAll = tab === 'archive' ? [...other, ...nextTab] : [...nextTab, ...other];
+    setRules(nextAll);
     try {
       await request('/api/rules/reorder', {
         method: 'PUT',
-        body: JSON.stringify({ order: next.map((rule) => rule.id) }),
+        body: JSON.stringify({ order: nextAll.map((rule) => rule.id) }),
       });
     } catch (err) {
       setRules(rules);
@@ -209,11 +246,90 @@ export function RulesInteractive({ initialRules, canEdit }: { initialRules: Row[
 
   return (
     <>
-      <div className="toolbar"><div className="toolbar-left">{rules.length} правил</div>{canEdit && <button className="btn btn-primary btn-sm" onClick={() => setEditing(null)}><NavIcon name="plus" /> Добавить правило</button>}</div>
+      <div className="toolbar">
+        <div className="toolbar-left" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="segmented">
+            <button type="button" className={tab === 'active' ? 'active' : ''} onClick={() => setTab('active')}>
+              Активные ({activeCount})
+            </button>
+            <button type="button" className={tab === 'archive' ? 'active' : ''} onClick={() => setTab('archive')}>
+              Архив ({archiveCount})
+            </button>
+          </div>
+          <span>{filtered.length} из {tabRules.length}</span>
+          <SearchBox value={query} onChange={setQuery} placeholder="Поиск по названию…" />
+        </div>
+        {canEdit && tab === 'active' && (
+          <button className="btn btn-primary btn-sm" onClick={() => setEditing(null)}>
+            <NavIcon name="plus" /> Добавить правило
+          </button>
+        )}
+      </div>
       <ErrorText value={error} />
-      {rules.map((rule, index) => <details className="rules-card" key={rule.id}><summary className="rules-card-header"><div className="rules-thumb">{rule.image_id ? <img src={`/media/${rule.image_id}`} alt="" /> : <NavIcon name="image" />}</div><div className="rules-title">{rule.title}</div>{canEdit && <div className="rules-card-actions" onClick={(event) => event.preventDefault()}><button className="icon-btn" disabled={index === 0} title="Выше" onClick={() => void move(rule.id, -1)}>↑</button><button className="icon-btn" disabled={index === rules.length - 1} title="Ниже" onClick={() => void move(rule.id, 1)}>↓</button><button className="icon-btn" onClick={() => setEditing(rule)}><NavIcon name="edit" /></button><button className="icon-btn danger" onClick={() => void remove(rule.id)}><NavIcon name="trash" /></button></div>}</summary><div className="rules-panel" style={{ display: 'block' }}><div className="rules-panel-inner"><div className="rules-panel-text md-body" dangerouslySetInnerHTML={{ __html: rule.bodyHtml || rule.body || '' }} /></div></div></details>)}
-      {!rules.length && <div className="empty-state"><h3>Правил пока нет</h3></div>}
-      {editing !== undefined && <Modal title={editing ? 'Редактирование правила' : 'Новое правило'} onClose={() => setEditing(undefined)} editor><form onSubmit={save}><ErrorText value={error} /><div className="field"><label>Заголовок</label><input className="input" name="title" required defaultValue={editing?.title || ''} /></div><div className="field"><label>Текст (Markdown)</label><MarkdownFormField name="body" initialValue={editing?.bodyRaw || ''} /></div><div className="field"><label>Картинка</label><input className="input" type="file" name="image" accept="image/*" />{editing?.image_id && <button className="btn btn-ghost btn-sm" type="button" onClick={() => void removeRuleImage(editing.id)}><NavIcon name="trash" /> Удалить текущую</button>}</div><div className="modal-actions"><button className="btn btn-ghost" type="button" onClick={() => setEditing(undefined)}>Отмена</button><button className="btn btn-primary">Сохранить</button></div></form></Modal>}
+      {filtered.map((rule) => {
+        const index = tabRules.findIndex((item) => item.id === rule.id);
+        return (
+          <details className="rules-card" key={rule.id}>
+            <summary className="rules-card-header">
+              <div className="rules-thumb">{rule.image_id ? <img src={`/media/${rule.image_id}`} alt="" /> : <NavIcon name="image" />}</div>
+              <div className="rules-title">{rule.title}</div>
+              {canEdit && (
+                <div className="rules-card-actions" onClick={(event) => event.preventDefault()}>
+                  <button className="icon-btn" disabled={index === 0} title="Выше" onClick={() => void move(rule.id, -1)}>↑</button>
+                  <button className="icon-btn" disabled={index === tabRules.length - 1} title="Ниже" onClick={() => void move(rule.id, 1)}>↓</button>
+                  <button
+                    className="icon-btn"
+                    title={rule.archived ? 'Вернуть в активные' : 'В архив'}
+                    onClick={() => void setArchived(rule, !rule.archived)}
+                  >
+                    {rule.archived ? '↩' : '⤓'}
+                  </button>
+                  <button className="icon-btn" onClick={() => setEditing(rule)}><NavIcon name="edit" /></button>
+                  <button className="icon-btn danger" onClick={() => void remove(rule.id)}><NavIcon name="trash" /></button>
+                </div>
+              )}
+            </summary>
+            <div className="rules-panel" style={{ display: 'block' }}>
+              <div className="rules-panel-inner">
+                <div className="rules-panel-text md-body" dangerouslySetInnerHTML={{ __html: rule.bodyHtml || rule.body || '' }} />
+              </div>
+            </div>
+          </details>
+        );
+      })}
+      {!filtered.length && (
+        <div className="empty-state">
+          <h3>
+            {query.trim()
+              ? 'Ничего не найдено'
+              : tab === 'archive'
+                ? 'Архив пуст'
+                : 'Активных правил пока нет'}
+          </h3>
+        </div>
+      )}
+      {editing !== undefined && (
+        <Modal title={editing ? 'Редактирование правила' : 'Новое правило'} onClose={() => setEditing(undefined)} editor>
+          <form onSubmit={save}>
+            <ErrorText value={error} />
+            <div className="field"><label>Заголовок</label><input className="input" name="title" required defaultValue={editing?.title || ''} /></div>
+            <div className="field"><label>Текст (Markdown)</label><MarkdownFormField name="body" initialValue={editing?.bodyRaw || ''} /></div>
+            <div className="field">
+              <label>Картинка</label>
+              <input className="input" type="file" name="image" accept="image/*" />
+              {editing?.image_id && (
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => void removeRuleImage(editing.id)}>
+                  <NavIcon name="trash" /> Удалить текущую
+                </button>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-ghost" type="button" onClick={() => setEditing(undefined)}>Отмена</button>
+              <button className="btn btn-primary">Сохранить</button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </>
   );
 }

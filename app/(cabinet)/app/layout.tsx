@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser, publicUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { runtimeEnv } from '@/lib/runtimeEnv';
-import { userHasAnyRole, userHasPermission } from '@/lib/roleAccess';
+import { userHasAnyRole, userHasPermission, userHasStatsCap, type StatsCap } from '@/lib/roleAccess';
 import { CabinetShellServer } from '@/components/CabinetShellServer';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +30,13 @@ const TITLES: Record<string, string> = {
   '/app/payouts': 'Выплаты',
   '/app/payouts/settings': 'Ставки выплат',
   '/app/profile-moderation': 'Модерация профиля',
+  '/app/statistics': 'Статистика',
+  '/app/statistics/events': 'Проведение мероприятий',
+  '/app/statistics/users': 'Пользователи',
+  '/app/statistics/achievements': 'Достижения',
+  '/app/statistics/gmp': 'ГМП',
+  '/app/statistics/applications': 'Заявки и набор',
+  '/app/statistics/reprimands': 'Выговоры',
   '/app/blocked': 'Доступ закрыт',
   '/app/pending': 'Ожидание роли',
 };
@@ -56,6 +63,13 @@ const SUBTITLES: Record<string, string> = {
   '/app/payouts': 'Недельные выплаты хелперам',
   '/app/payouts/settings': 'Цены МП/ГМП, минимум и штрафы по ролям',
   '/app/profile-moderation': 'Заявки на смену имени, фамилии и StaticID',
+  '/app/statistics': 'Сводные показатели отдела',
+  '/app/statistics/events': 'Проведение МП: объёмы и топы',
+  '/app/statistics/users': 'Состав, роли и статусы',
+  '/app/statistics/achievements': 'Выдачи и популярные достижения',
+  '/app/statistics/gmp': 'Большие мероприятия',
+  '/app/statistics/applications': 'Набор и заявки',
+  '/app/statistics/reprimands': 'Дисциплинарная статистика',
 };
 
 function titleForPath(pathname: string) {
@@ -101,6 +115,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     editPermissions: user.editPermissions,
     gmpCaps: user.gmpCaps,
     eventCaps: user.eventCaps,
+    statsCaps: user.statsCaps,
   };
   const hasRole = userHasAnyRole(roleCtx);
   if (!user.isBlocked && !hasRole && pathname !== '/app/pending') {
@@ -152,6 +167,23 @@ export default async function CabinetLayout({ children }: { children: React.Reac
   if (pathname === '/app/gmp' && !canSeeGmpNav) {
     redirect('/app/dashboard');
   }
+  if (pathname === '/app/statistics' || pathname.startsWith('/app/statistics/')) {
+    if (!userHasPermission(roleCtx, 'view_statistics')) {
+      redirect('/app/dashboard');
+    }
+  }
+
+  const statsNavItems: Array<[string, string, boolean]> = (
+    [
+      ['statistics', 'Обзор', 'overview'],
+      ['statistics/events', 'Проведение МП', 'events'],
+      ['statistics/users', 'Пользователи', 'users'],
+      ['statistics/achievements', 'Достижения', 'achievements'],
+      ['statistics/gmp', 'ГМП', 'gmp'],
+      ['statistics/applications', 'Заявки', 'applications'],
+      ['statistics/reprimands', 'Выговоры', 'reprimands'],
+    ] as Array<[string, string, StatsCap]>
+  ).map(([key, label, cap]) => [key, label, userHasStatsCap(roleCtx, cap)]);
 
   const navGroups = [
     {
@@ -187,6 +219,10 @@ export default async function CabinetLayout({ children }: { children: React.Reac
         ['application-history', 'История заявок', userHasPermission(roleCtx, 'application_history')],
         ['candidates', 'Кандидаты', userHasPermission(roleCtx, 'candidates')],
       ],
+    },
+    {
+      label: 'Статистика',
+      items: statsNavItems,
     },
     {
       label: 'Управление',

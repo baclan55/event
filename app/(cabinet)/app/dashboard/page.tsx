@@ -13,6 +13,7 @@ export default async function DashboardPage() {
       todayMpCount={data.todayMpCount}
       weekMpCount={data.weekMpCount}
       todayMp={data.todayMp}
+      recommendedMp={data.recommendedMp}
     />
   );
 }

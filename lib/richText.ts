@@ -273,6 +273,68 @@ md.use(colorPlugin);
 md.use(markPlugin);
 md.use(underlinePlugin);
 md.use(taskListPlugin);
+md.use(spoilerPlugin);
+
+/** Спойлер: ??? Заголовок … ??? → <details> */
+function spoilerPlugin(md) {
+  function spoiler(state, startLine, endLine, silent) {
+    const start = state.bMarks[startLine] + state.tShift[startLine];
+    const max = state.eMarks[startLine];
+    const line = state.src.slice(start, max);
+    if (!line.startsWith('???')) return false;
+    if (line.trim() === '???') return false; // closing alone is not opener
+
+    let title = line.slice(3).trim();
+    if (title.toLowerCase().startsWith('spoiler')) {
+      title = title.slice(7).trim();
+    }
+    if (!title) title = 'Спойлер';
+
+    let nextLine = startLine + 1;
+    let found = false;
+    while (nextLine < endLine) {
+      const ls = state.bMarks[nextLine] + state.tShift[nextLine];
+      const le = state.eMarks[nextLine];
+      const raw = state.src.slice(ls, le).trim();
+      if (raw === '???') {
+        found = true;
+        break;
+      }
+      nextLine += 1;
+    }
+    if (!found) return false;
+    if (silent) return true;
+
+    const oldParent = state.parentType;
+    const oldLineMax = state.lineMax;
+    state.parentType = 'spoiler';
+    state.lineMax = nextLine;
+
+    const tokenOpen = state.push('spoiler_open', 'details', 1);
+    tokenOpen.block = true;
+    tokenOpen.markup = '???';
+    tokenOpen.map = [startLine, nextLine + 1];
+    tokenOpen.attrSet('class', 'md-spoiler');
+
+    const sumOpen = state.push('spoiler_summary_open', 'summary', 1);
+    sumOpen.block = true;
+    const sumText = state.push('inline', '', 0);
+    sumText.content = title;
+    sumText.children = [];
+    state.push('spoiler_summary_close', 'summary', -1);
+
+    state.md.block.tokenize(state, startLine + 1, nextLine);
+
+    state.push('spoiler_close', 'details', -1);
+
+    state.parentType = oldParent;
+    state.lineMax = oldLineMax;
+    state.line = nextLine + 1;
+    return true;
+  }
+
+  md.block.ruler.before('fence', 'spoiler', spoiler, { alt: ['paragraph', 'reference', 'blockquote', 'list'] });
+}
 
 // Глубина цитирования в начале строки (`>`, `> >`, `>>` …).
 function blockquoteDepth(line) {
@@ -336,6 +398,7 @@ const MARKDOWN_ALLOWED_TAGS = [
   'dl', 'dt', 'dd',
   'figure', 'figcaption',
   'label', 'input',
+  'details', 'summary',
 ];
 
 const MARKDOWN_SANITIZE_OPTIONS = {
@@ -353,6 +416,8 @@ const MARKDOWN_SANITIZE_OPTIONS = {
     label: ['class'],
     input: ['type', 'checked', 'disabled'],
     abbr: ['title'],
+    details: ['class', 'open'],
+    summary: [],
   },
   allowedClasses: {
     a: ['discord-chip'],
@@ -361,6 +426,7 @@ const MARKDOWN_SANITIZE_OPTIONS = {
     mark: ['md-mark'],
     li: ['md-task-item'],
     label: ['md-task'],
+    details: ['md-spoiler'],
   },
   allowedSchemes: ['https', 'http'],
   allowedSchemesByTag: {

@@ -13,7 +13,8 @@ const svgProps = {
 };
 
 export function NavIcon({ name }: { name: string }) {
-  switch (name) {
+  const key = name.includes('/') ? name.split('/')[0] : name;
+  switch (key) {
     case 'home':
       return (
         <svg {...svgProps}>
@@ -161,6 +162,16 @@ export function NavIcon({ name }: { name: string }) {
           <path d="M12 15V8" />
           <path d="M16 15v-5" />
           <path d="M8 7h.01M12 5h.01M16 6h.01" />
+        </svg>
+      );
+    case 'statistics':
+      return (
+        <svg {...svgProps}>
+          <path d="M4 19V5" />
+          <path d="M4 19h16" />
+          <path d="M8 15v-6" />
+          <path d="M12 15V9" />
+          <path d="M16 15v-3" />
         </svg>
       );
     case 'profile-moderation':

@@ -21,6 +21,12 @@ const REQUIRED_TABLES = [
   'gmp_marks',
 ] as const;
 
+/** Точечные патчи: всегда при старте, даже если полная schema.sql отключена. */
+const RUNTIME_PATCHES = [
+  `ALTER TABLE rules ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE`,
+  `CREATE INDEX IF NOT EXISTS idx_rules_archived ON rules(archived, position)`,
+] as const;
+
 function resolveSchemaPath(): string | null {
   const candidates = [
     path.join(process.cwd(), 'lib/db/schema.sql'),
@@ -46,6 +52,24 @@ async function verifySchema(db: Pool) {
   }
 }
 
+/** Лёгкие ALTER/INDEX — без полного schema.sql. */
+export async function applyRuntimePatches(db: Pool) {
+  for (const sql of RUNTIME_PATCHES) {
+    try {
+      await db.query(sql);
+    } catch (err) {
+      // Таблицы ещё нет — полная миграция поднимет; иначе пробрасываем.
+      const message = (err as Error).message || '';
+      if (/does not exist|не существует/i.test(message)) {
+        console.warn('[server] Runtime patch пропущен (таблица ещё не создана):', message);
+        continue;
+      }
+      throw err;
+    }
+  }
+  console.log('[server] Runtime-патчи БД применены.');
+}
+
 export async function applySchemaOnStart(db: Pool) {
   const file = resolveSchemaPath();
   if (!file) {
@@ -58,6 +82,7 @@ export async function applySchemaOnStart(db: Pool) {
     try {
       await db.query(sql);
       await verifySchema(db);
+      await applyRuntimePatches(db);
       console.log(`[server] Схема БД применена (${path.basename(file)}).`);
       return;
     } catch (err) {

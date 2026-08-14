@@ -31,6 +31,12 @@ export type DashboardTodayMp = {
   count: number;
 };
 
+export type DashboardRecommendedMp = {
+  title: string;
+  lastAt: string | null;
+  total: number;
+};
+
 export async function loadDashboard() {
   await abandonStaleOpenGathers();
   const tz = weekTimeZone();
@@ -55,7 +61,7 @@ export async function loadDashboard() {
 
   const daySql = sqlInCurrentDay('e.message_created_at', 1);
   const weekSql = sqlInCurrentWeek('e.message_created_at', 1);
-  const [todayTotal, weekTotal, todayTitles] = await Promise.all([
+  const [todayTotal, weekTotal, todayTitles, recommended] = await Promise.all([
     query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
        FROM discord_gather_events e
@@ -77,11 +83,40 @@ export async function loadDashboard() {
        ORDER BY COUNT(*) DESC, title ASC`,
       [tz],
     ).catch(() => ({ rows: [] as { title: string; count: string }[] })),
+    query<{ title: string; last_at: string | null; total: string }>(
+      `WITH catalog AS (
+         SELECT COALESCE(NULLIF(TRIM(r.title), ''), 'Без названия') AS title
+         FROM rules r
+         WHERE COALESCE(r.archived, FALSE) = FALSE
+       ),
+       held AS (
+         SELECT lower(COALESCE(NULLIF(TRIM(e.title), ''), 'Без названия')) AS title_key,
+                MAX(e.message_created_at) AS last_at,
+                COUNT(*)::bigint AS total,
+                COUNT(*) FILTER (WHERE ${daySql})::bigint AS today_count
+         FROM discord_gather_events e
+         WHERE e.status = 'completed'
+         GROUP BY 1
+       )
+       SELECT c.title, h.last_at, COALESCE(h.total, 0)::text AS total
+       FROM catalog c
+       LEFT JOIN held h ON h.title_key = lower(c.title)
+       WHERE COALESCE(h.today_count, 0) = 0
+       ORDER BY h.last_at ASC NULLS FIRST, c.title ASC
+       LIMIT 5`,
+      [tz],
+    ).catch(() => ({ rows: [] as { title: string; last_at: string | null; total: string }[] })),
   ]);
 
   const todayMp: DashboardTodayMp[] = todayTitles.rows.map((row) => ({
     title: String(row.title || 'Без названия'),
     count: Number(row.count) || 0,
+  }));
+
+  const recommendedMp: DashboardRecommendedMp[] = recommended.rows.map((row) => ({
+    title: String(row.title || 'Без названия'),
+    lastAt: row.last_at ? String(row.last_at) : null,
+    total: Number(row.total) || 0,
   }));
 
   return {
@@ -90,6 +125,7 @@ export async function loadDashboard() {
     todayMpCount: Number(todayTotal.rows[0]?.count || 0),
     weekMpCount: Number(weekTotal.rows[0]?.count || 0),
     todayMp,
+    recommendedMp,
   };
 }
 
@@ -170,10 +206,13 @@ export async function loadContent(section: string, viewer?: PublicUser) {
 
 export async function loadRules() {
   const r = await query<Record<string, unknown>>(
-    `SELECT id, position, title, body, image_id, updated_at FROM rules ORDER BY position, id`
+    `SELECT id, position, title, body, image_id, updated_at,
+            COALESCE(archived, FALSE) AS archived
+     FROM rules ORDER BY archived ASC, position, id`
   );
   return r.rows.map((x) => ({
     ...x,
+    archived: !!x.archived,
     bodyHtml: renderBody(x.body),
     bodyRaw: rawBodyForEdit(x.body),
   }));

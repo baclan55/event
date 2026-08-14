@@ -12,10 +12,13 @@ import {
   normalizeGmpAccess,
   normalizeProfileViewAccess,
   normalizeRolePermissions,
+  normalizeStatsAccess,
   PERMISSION_LABELS,
   PERMISSIONS,
   PROFILE_VIEW_CAP_LABELS,
   PROFILE_VIEW_CAPS,
+  STATS_CAP_LABELS,
+  STATS_CAPS,
   VIEW_ONLY_PERMISSIONS,
   type EventCap,
   type EventsPermissionAccess,
@@ -25,6 +28,8 @@ import {
   type PermissionAccess,
   type ProfileViewAccess,
   type ProfileViewCap,
+  type StatsCap,
+  type StatsPermissionAccess,
 } from '@/lib/roleAccess';
 import {
   DASHBOARD_BLOCKS,
@@ -141,6 +146,24 @@ export function RolesInteractive({
         next.view = next.view || EVENT_CAPS.some((key) => next[key]);
       }
       return { ...prev, manage_events: next };
+    });
+  }
+
+  function setStatsCap(cap: StatsCap | 'view', value: boolean) {
+    setDraftPerms((prev) => {
+      const current = normalizeStatsAccess(prev.view_statistics);
+      const next: StatsPermissionAccess = { ...current, edit: false };
+      if (cap === 'view') {
+        next.view = value;
+        if (!value) {
+          for (const key of STATS_CAPS) next[key] = false;
+        }
+      } else {
+        next[cap] = value;
+        if (value) next.view = true;
+        next.view = next.view || STATS_CAPS.some((key) => next[key]);
+      }
+      return { ...prev, view_statistics: next };
     });
   }
 
@@ -537,6 +560,36 @@ export function RolesInteractive({
                                 onChange={(e) => setEventsCap(cap, e.target.checked)}
                               />
                               {EVENT_CAP_LABELS[cap]}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (key === 'view_statistics') {
+                    const stats = normalizeStatsAccess(draftPerms.view_statistics);
+                    return (
+                      <div className="perm-card perm-card-gmp" key={key}>
+                        <div className="perm-card-title">{PERMISSION_LABELS[key]}</div>
+                        <div className="perm-card-flags">
+                          <label className="perm-flag">
+                            <input
+                              type="checkbox"
+                              checked={!!stats.view}
+                              disabled={!canEdit}
+                              onChange={(e) => setStatsCap('view', e.target.checked)}
+                            />
+                            Просмотр раздела
+                          </label>
+                          {STATS_CAPS.map((cap) => (
+                            <label className="perm-flag" key={cap}>
+                              <input
+                                type="checkbox"
+                                checked={!!stats[cap]}
+                                disabled={!canEdit}
+                                onChange={(e) => setStatsCap(cap, e.target.checked)}
+                              />
+                              {STATS_CAP_LABELS[cap]}
                             </label>
                           ))}
                         </div>

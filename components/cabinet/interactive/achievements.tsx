@@ -273,7 +273,7 @@ export function AchievementsInteractive() {
                       }}
                     />
                     <label className="btn btn-ghost btn-sm">
-                      {uploading === index ? '…' : 'Файл'}
+                      {uploading === index ? '…' : 'Прикрепить файл'}
                       <input
                         type="file"
                         accept="image/*"

@@ -60,6 +60,7 @@ export const PERMISSIONS = [
   'manage_payouts',
   'moderate_profile',
   'view_profile',
+  'view_statistics',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -147,6 +148,41 @@ export const PROFILE_VIEW_CAP_LABELS: Record<ProfileViewCap, string> = {
   audit: 'Журнал действий',
 };
 
+/** Страницы раздела «Статистика» (хранятся в permissions.view_statistics). */
+export const STATS_CAPS = [
+  'overview',
+  'events',
+  'users',
+  'achievements',
+  'gmp',
+  'applications',
+  'reprimands',
+] as const;
+
+export type StatsCap = (typeof STATS_CAPS)[number];
+
+export type StatsPermissionAccess = PermissionAccess & Record<StatsCap, boolean>;
+
+export const STATS_CAP_LABELS: Record<StatsCap, string> = {
+  overview: 'Обзор',
+  events: 'Проведение мероприятий',
+  users: 'Пользователи',
+  achievements: 'Достижения',
+  gmp: 'ГМП',
+  applications: 'Заявки и набор',
+  reprimands: 'Выговоры',
+};
+
+export const STATS_CAP_PATHS: Record<StatsCap, string> = {
+  overview: '/app/statistics',
+  events: '/app/statistics/events',
+  users: '/app/statistics/users',
+  achievements: '/app/statistics/achievements',
+  gmp: '/app/statistics/gmp',
+  applications: '/app/statistics/applications',
+  reprimands: '/app/statistics/reprimands',
+};
+
 export function emptyProfileTabCaps(): ProfileTabCaps {
   return {
     reprimands: false,
@@ -174,6 +210,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   manage_payouts: 'Выплаты хелперам',
   moderate_profile: 'Модерация игровых данных',
   view_profile: 'Просмотр профиля',
+  view_statistics: 'Статистика',
 };
 
 /** У каких функций нет смысла в «редактировании» — только просмотр. */
@@ -181,6 +218,7 @@ export const VIEW_ONLY_PERMISSIONS: ReadonlySet<Permission> = new Set([
   'view_audit',
   'view_profile',
   'application_history',
+  'view_statistics',
 ]);
 
 export const PERMISSION_FALLBACK_ROLES: Record<Permission, readonly string[]> = {
@@ -200,6 +238,7 @@ export const PERMISSION_FALLBACK_ROLES: Record<Permission, readonly string[]> = 
   manage_payouts: EDIT_ROLES,
   moderate_profile: REPRIMANDS_ROLES,
   view_profile: [],
+  view_statistics: OWNER_PANEL_ROLES,
 };
 
 export type RolePermissions = Partial<Record<Permission, PermissionAccess | boolean>>;
@@ -215,6 +254,7 @@ export type RoleUser = {
   eventCaps?: EventCap[];
   profileViewCaps?: ProfileViewCap[];
   profileOwnViewCaps?: ProfileViewCap[];
+  statsCaps?: StatsCap[];
 };
 
 export function emptyPermissionAccess(): PermissionAccess {
@@ -314,6 +354,43 @@ export function eventCapsFromAccess(access: EventsPermissionAccess): EventCap[] 
   return EVENT_CAPS.filter((cap) => access[cap]);
 }
 
+export function emptyStatsAccess(): StatsPermissionAccess {
+  return {
+    view: false,
+    edit: false,
+    overview: false,
+    events: false,
+    users: false,
+    achievements: false,
+    gmp: false,
+    applications: false,
+    reprimands: false,
+  };
+}
+
+export function normalizeStatsAccess(raw: unknown): StatsPermissionAccess {
+  const base = normalizePermissionAccess(raw);
+  const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const hasExplicitCaps = STATS_CAPS.some((cap) => cap in source);
+  const caps = emptyStatsAccess();
+  caps.view = base.view;
+  caps.edit = false;
+
+  if (hasExplicitCaps) {
+    for (const cap of STATS_CAPS) caps[cap] = !!source[cap];
+  } else if (base.view || base.edit) {
+    for (const cap of STATS_CAPS) caps[cap] = true;
+  }
+
+  const anyCap = STATS_CAPS.some((cap) => caps[cap]);
+  caps.view = caps.view || anyCap;
+  return caps;
+}
+
+export function statsCapsFromAccess(access: StatsPermissionAccess): StatsCap[] {
+  return STATS_CAPS.filter((cap) => access[cap]);
+}
+
 export function emptyProfileViewAccess(): ProfileViewAccess {
   return {
     view: false,
@@ -399,7 +476,9 @@ export function normalizeRolePermissions(raw: unknown): Record<Permission, Permi
           ? normalizeEventsAccess(source[key])
           : key === 'view_profile'
             ? normalizeProfileViewAccess(source[key])
-            : normalizePermissionAccess(source[key]);
+            : key === 'view_statistics'
+              ? normalizeStatsAccess(source[key])
+              : normalizePermissionAccess(source[key]);
       if (VIEW_ONLY_PERMISSIONS.has(key)) base[key].edit = false;
     } else if (key === 'manage_events') {
       // Раньше раздел был открыт всем с ролью — сохраняем просмотр до явной настройки.
@@ -426,7 +505,9 @@ function accessFromRole(name: string, rawPermissions: unknown): Record<Permissio
           ? normalizeEventsAccess({ view: true, edit: full })
           : key === 'view_profile'
             ? normalizeProfileViewAccess(null, { legacyOpen: true })
-            : { view: true, edit: full };
+            : key === 'view_statistics'
+              ? normalizeStatsAccess({ view: true })
+              : { view: true, edit: full };
     } else if (key === 'manage_events') {
       result[key] = normalizeEventsAccess({ view: true });
     } else if (key === 'view_profile') {
@@ -476,6 +557,7 @@ export function roleCtxFromPublic(user: {
   eventCaps?: EventCap[];
   profileViewCaps?: ProfileViewCap[];
   profileOwnViewCaps?: ProfileViewCap[];
+  statsCaps?: StatsCap[];
 }): RoleUser {
   return {
     is_owner: !!user.isOwner,
@@ -486,6 +568,7 @@ export function roleCtxFromPublic(user: {
     eventCaps: user.eventCaps || [],
     profileViewCaps: user.profileViewCaps || [],
     profileOwnViewCaps: user.profileOwnViewCaps || [],
+    statsCaps: user.statsCaps || [],
   };
 }
 
@@ -497,6 +580,11 @@ export function gmpCapsFromRole(name: string, rawPermissions: unknown): GmpCap[]
 export function eventCapsFromRole(name: string, rawPermissions: unknown): EventCap[] {
   const access = accessFromRole(name, rawPermissions);
   return eventCapsFromAccess(normalizeEventsAccess(access.manage_events));
+}
+
+export function statsCapsFromRole(name: string, rawPermissions: unknown): StatsCap[] {
+  const access = accessFromRole(name, rawPermissions);
+  return statsCapsFromAccess(normalizeStatsAccess(access.view_statistics));
 }
 
 export function profileViewCapsFromRole(name: string, rawPermissions: unknown): ProfileViewCap[] {
@@ -607,6 +695,22 @@ export function userHasEventCap(
   return false;
 }
 
+export function userHasStatsCap(
+  user: RoleUser | null | undefined,
+  cap: StatsCap,
+): boolean {
+  if (!user) return false;
+  if (user.is_owner) return true;
+  if (Array.isArray(user.statsCaps) && user.statsCaps.includes(cap)) return true;
+  if (
+    (!Array.isArray(user.statsCaps) || user.statsCaps.length === 0)
+    && userHasPermission(user, 'view_statistics', 'view')
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export function userHasPermission(
   user: RoleUser | null | undefined,
   permission: Permission,
@@ -641,6 +745,13 @@ export function userHasPermission(
     permission === 'manage_events'
     && Array.isArray(user.eventCaps)
     && user.eventCaps.length > 0
+  ) {
+    return true;
+  }
+  if (
+    permission === 'view_statistics'
+    && Array.isArray(user.statsCaps)
+    && user.statsCaps.length > 0
   ) {
     return true;
   }

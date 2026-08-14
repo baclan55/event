@@ -79,6 +79,10 @@ async function ensureReady(): Promise<void> {
       if (shouldApplySchemaOnStart()) {
         const { applySchemaOnStart } = await import('@/lib/applySchema');
         await applySchemaOnStart(db);
+      } else {
+        // Даже без полной schema.sql — точечные патчи (archived и т.п.).
+        const { applyRuntimePatches } = await import('@/lib/applySchema');
+        await applyRuntimePatches(db);
       }
       try {
         const weekly = await import('@/lib/weeklyReset');

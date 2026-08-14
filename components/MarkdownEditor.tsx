@@ -90,6 +90,7 @@ export function MarkdownEditor({ value, onChange }: { value: string; onChange: (
         <button className="mde-btn" type="button" title="Картинка" onClick={() => wrap('![', '](https://)', 'описание')}>🖼</button>
         <button className="mde-btn" type="button" title="Таблица" onClick={() => insertBlock('| A | B |\n| --- | --- |\n| 1 | 2 |\n')}>▤</button>
         <button className="mde-btn" type="button" title="Разделитель" onClick={() => insertBlock('\n---\n')}>—</button>
+        <button className="mde-btn" type="button" title="Спойлер" onClick={() => insertBlock('??? Заголовок спойлера\nскрытый текст\n???\n')}>▸</button>
         <span className="mde-sep" />
         <div className="mde-color-wrap">
           <button
