@@ -39,11 +39,7 @@ export function CabinetShellServer({
     }
     const href = `/app/${key}`;
     if (pathname === href) return true;
-    if (pathname.startsWith(`${href}/`)) {
-      // «Обзор» статистики не подсвечиваем на дочерних страницах.
-      if (key === 'statistics') return false;
-      return true;
-    }
+    if (pathname.startsWith(`${href}/`)) return true;
     return false;
   };
 

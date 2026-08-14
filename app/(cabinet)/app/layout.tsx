@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser, publicUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { runtimeEnv } from '@/lib/runtimeEnv';
-import { userHasAnyRole, userHasPermission, userHasStatsCap, type StatsCap } from '@/lib/roleAccess';
+import { userHasAnyRole, userHasPermission } from '@/lib/roleAccess';
 import { CabinetShellServer } from '@/components/CabinetShellServer';
 
 export const dynamic = 'force-dynamic';
@@ -173,17 +173,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     }
   }
 
-  const statsNavItems: Array<[string, string, boolean]> = (
-    [
-      ['statistics', 'Обзор', 'overview'],
-      ['statistics/events', 'Проведение МП', 'events'],
-      ['statistics/users', 'Пользователи', 'users'],
-      ['statistics/achievements', 'Достижения', 'achievements'],
-      ['statistics/gmp', 'ГМП', 'gmp'],
-      ['statistics/applications', 'Заявки', 'applications'],
-      ['statistics/reprimands', 'Выговоры', 'reprimands'],
-    ] as Array<[string, string, StatsCap]>
-  ).map(([key, label, cap]) => [key, label, userHasStatsCap(roleCtx, cap)]);
+  const canSeeStatistics = userHasPermission(roleCtx, 'view_statistics');
 
   const navGroups = [
     {
@@ -191,6 +181,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
       items: [
         ['dashboard', 'Главная', true],
         ['profile', 'Моя страница', true],
+        ['statistics', 'Статистика', canSeeStatistics],
       ],
     },
     {
@@ -219,10 +210,6 @@ export default async function CabinetLayout({ children }: { children: React.Reac
         ['application-history', 'История заявок', userHasPermission(roleCtx, 'application_history')],
         ['candidates', 'Кандидаты', userHasPermission(roleCtx, 'candidates')],
       ],
-    },
-    {
-      label: 'Статистика',
-      items: statsNavItems,
     },
     {
       label: 'Управление',
