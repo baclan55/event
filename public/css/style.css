@@ -1821,6 +1821,47 @@ button.linkish{
 .qform .error-text{ text-align:center; }
 .qform > .btn{ width:100%; }
 
+.site-toast{
+  position:fixed; left:50%; bottom:28px; z-index:400;
+  transform:translateX(-50%);
+  display:flex; align-items:center; gap:12px;
+  max-width:min(440px, calc(100vw - 24px));
+  padding:14px 14px 14px 16px;
+  border-radius:14px;
+  border:1px solid var(--border-soft);
+  background:var(--bg-card);
+  box-shadow:var(--shadow-pop);
+  animation:site-toast-in .28s ease both;
+}
+.site-toast-ok{
+  border-color:rgba(52,211,153,.35);
+  background:linear-gradient(180deg, rgba(52,211,153,.14), var(--bg-card));
+}
+.site-toast-error{
+  border-color:rgba(248,113,113,.35);
+  background:linear-gradient(180deg, rgba(248,113,113,.12), var(--bg-card));
+}
+.site-toast-text{
+  flex:1; min-width:0;
+  font-size:14px; font-weight:600; line-height:1.4;
+  color:var(--text-heading);
+}
+.site-toast-error .site-toast-text{ color:#fecaca; }
+.site-toast-close{
+  flex-shrink:0; width:28px; height:28px;
+  border:0; border-radius:8px;
+  background:transparent; color:var(--text-muted);
+  font-size:18px; line-height:1; cursor:pointer;
+}
+.site-toast-close:hover{ background:var(--bg-hover); color:var(--text-heading); }
+@keyframes site-toast-in{
+  from{ opacity:0; transform:translate(-50%, 12px); }
+  to{ opacity:1; transform:translate(-50%, 0); }
+}
+@media (prefers-reduced-motion: reduce){
+  .site-toast{ animation:none; }
+}
+
 /* --- ссылка "Как найти свой Discord ID?" рядом с полем Discord в заявке --- */
 .qform-hint-link{
   display:inline-flex; align-items:center; gap:5px;
