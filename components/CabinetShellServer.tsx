@@ -122,15 +122,17 @@ export function CabinetShellServer({
             <button type="button" className="icon-btn menu-toggle" aria-label="Открыть меню" aria-expanded={sidebarOpen} onClick={() => { setAccountOpen(false); setSidebarOpen(true); }}><NavIcon name="menu" /></button>
             <div><h1>{title}</h1><div className="sub">{subtitle}</div></div>
           </div>
-          <button type="button" className="account-widget" aria-expanded={accountOpen} onClick={() => setAccountOpen(!accountOpen)}>
-            <div className="avatar">{user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : (user.nickname || '?').slice(0, 1)}</div>
-            <span className="name">{user.nickname}</span>
-            <span className="chev">⌄</span>
-          </button>
-          {accountOpen && <div className="card account-dropdown">
-            <a className="nav-item" href="/app/profile" onClick={() => setAccountOpen(false)}><NavIcon name="profile" /><span>Моя страница</span></a>
-            <a className="nav-item" href="/api/auth/logout"><NavIcon name="logout" /><span>Выйти</span></a>
-          </div>}
+          <div className="account-menu">
+            <button type="button" className="account-widget" aria-expanded={accountOpen} onClick={() => setAccountOpen(!accountOpen)}>
+              <div className="avatar">{user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : (user.nickname || '?').slice(0, 1)}</div>
+              <span className="name">{user.nickname}</span>
+              <span className="chev">⌄</span>
+            </button>
+            {accountOpen && <div className="card account-dropdown">
+              <a className="nav-item" href="/app/profile" onClick={() => setAccountOpen(false)}><NavIcon name="profile" /><span>Моя страница</span></a>
+              <a className="nav-item" href="/api/auth/logout"><NavIcon name="logout" /><span>Выйти</span></a>
+            </div>}
+          </div>
         </header>
         <div className="content">{children}</div>
       </main>

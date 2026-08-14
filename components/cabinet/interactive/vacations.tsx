@@ -203,12 +203,12 @@ export function VacationsInteractive({
               <div className="vac-cal-weekdays">{['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => <div key={day}>{day}</div>)}</div>
               <div className="vac-cal-grid">{weeks.map((week) => {
                 const { segments, lanes } = segmentsForWeek(week);
-                return <div className="vac-week" key={iso(week[0])}>
+                return <div className="vac-week" key={iso(week[0])} style={{ ['--lanes' as string]: Math.max(lanes, 1) }}>
                   <div className="vac-week-cells">{week.map((day) => {
                     const entries = dayRows(day);
                     return <div className={`vac-day-cell${day.getMonth() !== month.getMonth() ? ' is-muted' : ''}`} key={iso(day)}>
                       <div className={`vac-day-num${iso(day) === iso(today) ? ' is-today' : ''}`}>{day.getDate()}</div>
-                      <div className="vac-day-bars-space" style={{ height: lanes * 21 }} />
+                      <div className="vac-day-bars-space" />
                       <div className={`vac-day-occupancy${entries.length >= 3 ? ' is-near' : ''}`}>{entries.length}/3</div>
                     </div>;
                   })}</div>

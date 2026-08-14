@@ -216,9 +216,15 @@ img{ max-width:100%; display:block; }
 .account-widget .name{ font-size:13.5px; font-weight:700; color:var(--text-heading); }
 .account-widget .chev{ color:var(--text-muted); }
 .topbar-titles{ display:flex; align-items:center; gap:12px; }
+.account-menu{
+  position:relative;
+  flex-shrink:0;
+  align-self:center;
+}
 .account-dropdown{
-  position:absolute; right:32px; top:72px; z-index:60; min-width:210px; padding:8px;
-  box-shadow:0 18px 48px rgba(0,0,0,.42);
+  position:absolute; right:0; top:calc(100% + 8px); left:auto;
+  z-index:60; min-width:200px; width:max-content; max-width:min(240px, calc(100vw - 28px));
+  padding:8px; box-shadow:0 18px 48px rgba(0,0,0,.42);
 }
 .account-dropdown .nav-item{ width:100%; }
 
@@ -1131,15 +1137,46 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
    Личный кабинет: вкладка "Отпуска" — календарь на месяц + сайдбар
    "Сегодня" + подача заявки + рассмотрение (см. public/js/sections/vacations.js)
    ============================================================================= */
-.vac-layout{ display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,320px); gap:20px; align-items:start; }
-@media (max-width:900px){ .vac-layout{ grid-template-columns:1fr; } }
+.vac-layout{ display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,320px); gap:20px; align-items:start; min-width:0; }
+@media (max-width:900px){ .vac-layout{ grid-template-columns:minmax(0,1fr); } }
 
 .vac-cal-header{ display:flex; align-items:center; gap:10px; margin-bottom:16px; }
 .vac-cal-title{ font-size:16px; font-weight:800; min-width:150px; text-align:center; }
 .vac-cal-spacer{ flex:1; }
 
-.vac-cal-scroll{ overflow-x:auto; margin:0 -4px; padding:0 4px; }
-.vac-cal-inner{ min-width:640px; }
+.vac-cal-scroll{
+  overflow-x:auto; margin:0 -4px; padding:0 4px;
+  max-width:100%; min-width:0;
+  -webkit-overflow-scrolling:touch;
+}
+.vac-cal-inner{ min-width:640px; width:100%; }
+.vac-layout > .card{ min-width:0; max-width:100%; }
+
+@media (max-width:720px){
+  .vac-cal-inner{ min-width:0; }
+  .vac-cal-scroll{ margin:0; padding:0; overflow-x:visible; }
+  .vac-cal-header{ flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+  .vac-cal-title{ min-width:0; flex:1 1 auto; font-size:14px; }
+  .vac-cal-spacer{ display:none; }
+  .vac-cal-weekdays{
+    padding:0 0 6px; font-size:9px; letter-spacing:0; text-align:center;
+  }
+  .vac-day-cell{
+    min-height:68px; padding:4px 2px 4px;
+  }
+  .vac-day-num{ font-size:11px; line-height:16px; height:16px; }
+  .vac-day-num.is-today{ width:18px; height:16px; }
+  .vac-day-occupancy{ font-size:8px; height:12px; }
+  .vac-day-bars-space{ height:calc(var(--lanes, 1) * 18px); }
+  .vac-week-bars{ top:22px; grid-auto-rows:18px; }
+  .vac-bar{
+    margin:0 1px; padding:1px 3px; height:15px;
+    font-size:8.5px; gap:2px;
+  }
+  .vac-bar-dot{ width:4px; height:4px; }
+  .vac-legend{ gap:10px 14px; margin-top:12px; padding-top:10px; }
+  .vac-legend-item{ font-size:11px; }
+}
 
 .vac-cal-weekdays{
   display:grid; grid-template-columns:repeat(7,1fr);
@@ -1441,7 +1478,6 @@ button.linkish{
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;
   }
   .content{ padding:14px 14px 36px; }
-  .account-dropdown{ right:12px; top:auto; margin-top:8px; }
   body.sidebar-open{ overflow:hidden; touch-action:none; }
 }
 
