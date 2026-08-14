@@ -47,7 +47,6 @@ export function ApplicationsInteractive({
       item.discord,
       item.static_id,
       item.first_name,
-      item.last_name,
       item.age,
       item.avg_online,
       item.motivation,
@@ -193,7 +192,7 @@ export function ApplicationsInteractive({
                 </h4>
                 <div className="rule-text">
                   <b>Discord:</b> {item.discord}<br />
-                  <b>Имя:</b> {item.first_name || '—'} · <b>Фамилия:</b> {item.last_name || '—'} · <b>StaticID:</b> {item.static_id || '—'}<br />
+                  <b>Имя:</b> {item.first_name || '—'} · <b>StaticID:</b> {item.static_id || '—'}<br />
                   <b>Возраст:</b> {item.age} · <b>Онлайн:</b> {item.avg_online}<br />
                   <b>Время в игре:</b> {item.time_period}<br />
                   <b>Опыт:</b> {item.experience}<br />
