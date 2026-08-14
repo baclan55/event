@@ -1,4 +1,4 @@
-﻿import type { Metadata } from 'next';
+﻿import type { Metadata, Viewport } from 'next';
 import '@/app/globals.css';
 
 export const metadata: Metadata = {
@@ -6,18 +6,24 @@ export const metadata: Metadata = {
   description: 'Портал ивент-отдела',
 };
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
+
 /** Кабинет и сайт — без AuthProvider: иначе QUIC/HTTP3 валит JS и React сносит SSR. */
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ru">
       <head>
-        <link rel="stylesheet" href="/css/site-1.css?v=43" />
-        <link rel="stylesheet" href="/css/site-2.css?v=43" />
-        <link rel="stylesheet" href="/css/site-3.css?v=43" />
-        <link rel="stylesheet" href="/css/site-4.css?v=43" />
-        <link rel="stylesheet" href="/css/site-5.css?v=43" />
-        <link rel="stylesheet" href="/css/site-6.css?v=43" />
-        <link rel="stylesheet" href="/css/site-7.css?v=43" />
+        <link rel="stylesheet" href="/css/site-1.css?v=44" />
+        <link rel="stylesheet" href="/css/site-2.css?v=44" />
+        <link rel="stylesheet" href="/css/site-3.css?v=44" />
+        <link rel="stylesheet" href="/css/site-4.css?v=44" />
+        <link rel="stylesheet" href="/css/site-5.css?v=44" />
+        <link rel="stylesheet" href="/css/site-6.css?v=44" />
+        <link rel="stylesheet" href="/css/site-7.css?v=44" />
       </head>
       <body>
         <script

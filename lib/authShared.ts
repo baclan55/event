@@ -15,6 +15,8 @@ export type PublicUser = {
   roleName: string | null;
   rolePriority: number | null;
   roles: string[];
+  /** Роли с цветом для UI (профиль, сайдбар и т.п.). */
+  roleDetails: { name: string; color: string }[];
   permissions: Permission[];
   editPermissions: Permission[];
   gmpCaps: GmpCap[];

@@ -52,10 +52,26 @@ export function CabinetShellServer({
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  useEffect(() => {
+    document.body.classList.toggle('sidebar-open', sidebarOpen);
+    return () => document.body.classList.remove('sidebar-open');
+  }, [sidebarOpen]);
+
+  useEffect(() => {
+    if (!sidebarOpen && !accountOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setSidebarOpen(false);
+      setAccountOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sidebarOpen, accountOpen]);
+
   return (
     <div id="app">
       <div className="bg-decor" />
-      <button aria-label="Закрыть меню" className={`sidebar-scrim${sidebarOpen ? ' show' : ''}`} onClick={() => setSidebarOpen(false)} />
+      <button type="button" aria-label="Закрыть меню" className={`sidebar-scrim${sidebarOpen ? ' show' : ''}`} onClick={() => setSidebarOpen(false)} />
       <aside className={`sidebar${sidebarOpen ? ' open' : ''}`}>
         <div className="brand">
           <div className="brand-mark">ED</div>
@@ -103,16 +119,16 @@ export function CabinetShellServer({
       <main className="main">
         <header className={`topbar${topbarHidden ? ' topbar-hidden' : ''}${topbarScrolled ? ' topbar-scrolled' : ''}`}>
           <div className="topbar-titles">
-            <button type="button" className="icon-btn menu-toggle" aria-label="Открыть меню" onClick={() => setSidebarOpen(true)}><NavIcon name="menu" /></button>
+            <button type="button" className="icon-btn menu-toggle" aria-label="Открыть меню" aria-expanded={sidebarOpen} onClick={() => { setAccountOpen(false); setSidebarOpen(true); }}><NavIcon name="menu" /></button>
             <div><h1>{title}</h1><div className="sub">{subtitle}</div></div>
           </div>
-          <button type="button" className="account-widget" onClick={() => setAccountOpen(!accountOpen)}>
+          <button type="button" className="account-widget" aria-expanded={accountOpen} onClick={() => setAccountOpen(!accountOpen)}>
             <div className="avatar">{user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : (user.nickname || '?').slice(0, 1)}</div>
             <span className="name">{user.nickname}</span>
             <span className="chev">⌄</span>
           </button>
           {accountOpen && <div className="card account-dropdown">
-            <a className="nav-item" href="/app/profile"><NavIcon name="profile" /><span>Моя страница</span></a>
+            <a className="nav-item" href="/app/profile" onClick={() => setAccountOpen(false)}><NavIcon name="profile" /><span>Моя страница</span></a>
             <a className="nav-item" href="/api/auth/logout"><NavIcon name="logout" /><span>Выйти</span></a>
           </div>}
         </header>

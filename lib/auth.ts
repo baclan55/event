@@ -34,6 +34,7 @@ export type DbRole = {
   id: number;
   name: string;
   priority: number;
+  color?: string | null;
   permissions?: Record<string, boolean> | null;
   is_event_helper?: boolean;
   is_administrator?: boolean;
@@ -255,6 +256,7 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
     roleName: u.role_name,
     rolePriority: u.role_priority != null ? u.role_priority : null,
     roles: roles.map((r) => r.name),
+    roleDetails: roles.map((r) => ({ name: r.name, color: String(r.color || '') })),
     permissions,
     editPermissions,
     gmpCaps,
@@ -298,6 +300,7 @@ export async function loadUserById(userId: number): Promise<DbUser | null> {
                   'id', rr.id,
                   'name', rr.name,
                   'priority', rr.priority,
+                  'color', COALESCE(rr.color, ''),
                   'permissions', COALESCE(rr.permissions, '{}'::jsonb),
                   'is_event_helper', COALESCE(rr.is_event_helper, FALSE),
                   'is_administrator', COALESCE(rr.is_administrator, FALSE),

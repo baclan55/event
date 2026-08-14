@@ -1,4 +1,15 @@
 
+.mde-toolbar{
+  display:flex; align-items:center; gap:4px; flex-wrap:wrap;
+  padding:7px 8px; background:var(--bg-card-2); border-bottom:1px solid var(--border);
+}
+.mde-btn{
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:29px; height:28px; padding:0 7px; border-radius:7px; border:1px solid transparent;
+  background:none; color:var(--text-body); font-family:inherit; font-size:13px; font-weight:700;
+  cursor:pointer;
+}
+.mde-btn:hover{ background:var(--bg-hover); color:var(--text-heading); }
 .mde-btn-bold{ font-weight:800; }
 .mde-btn-italic{ font-style:italic; }
 .mde-btn-strike{ text-decoration:line-through; }
@@ -269,22 +280,3 @@
   line-height:1.2;
 }
 .profile-name-line{ display:flex; align-items:center; gap:8px; }
-.profile-main .role-tag{
-  margin-top:4px;
-  font-size:12.5px;
-  line-height:1.4;
-  color:rgba(226,222,245,.72);
-}
-.profile-main .role-tag + .role-tag{ margin-top:6px; }
-.profile-weekly-group{
-  display:flex;
-  gap:10px;
-  align-items:stretch;
-  flex-wrap:wrap;
-  justify-content:flex-end;
-  margin-left:auto;
-}
-.profile-weekly{
-  text-align:right;
-  min-width:110px;
-}

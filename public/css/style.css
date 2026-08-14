@@ -1411,22 +1411,40 @@ button.linkish{
    Отзывчивость: сайдбар прячется на узких экранах
    ============================================================================= */
 .menu-toggle{ display:none; }
+.sidebar-scrim{ border:0; padding:0; display:none; }
+/* #app > .sidebar задаёт z-index:2 — на мобилке нужны селекторы той же
+   специфичности, иначе меню оказывается ПОД scrim и клики не работают. */
 @media (max-width:900px){
-  .sidebar{
-    position:fixed; left:0; top:0; z-index:50; transform:translateX(-105%);
-    transition:transform .18s ease; box-shadow:var(--shadow-pop);
+  #app > .sidebar{
+    position:fixed; left:0; top:0; z-index:50; width:min(var(--sidebar-w), 86vw);
+    max-width:320px; height:100dvh; transform:translateX(-105%);
+    transition:transform .18s ease, visibility .18s ease;
+    box-shadow:var(--shadow-pop);
+    pointer-events:none; visibility:hidden;
   }
-  .sidebar.open{ transform:translateX(0); }
-  .menu-toggle{ display:inline-flex; }
-  .topbar{ padding:18px 18px 14px; align-items:center; }
-  .content{ padding:18px 18px 40px; }
-  .sidebar-scrim{
-    display:none; position:fixed; inset:0; background:rgba(6,5,12,.6); z-index:40;
+  #app > .sidebar.open{
+    transform:translateX(0);
+    pointer-events:auto; visibility:visible;
   }
-  .sidebar-scrim.show{ display:block; }
+  #app > .sidebar-scrim{
+    display:none; position:fixed; inset:0; z-index:40;
+    background:rgba(6,5,12,.6); border:0; padding:0; cursor:pointer;
+  }
+  #app > .sidebar-scrim.show{ display:block; }
+  .menu-toggle{ display:inline-flex; width:40px; height:40px; }
+  .topbar{
+    position:sticky; padding:14px 14px 12px; align-items:center; gap:10px;
+  }
+  .topbar-titles{ min-width:0; flex:1; gap:8px; }
+  .topbar-titles > div{ min-width:0; }
+  .topbar-titles .sub{
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;
+  }
+  .content{ padding:14px 14px 36px; }
+  .account-dropdown{ right:12px; top:auto; margin-top:8px; }
+  body.sidebar-open{ overflow:hidden; touch-action:none; }
 }
 
-.sidebar-scrim{ border:0; padding:0; }
 .access-card{
   max-width:520px; margin:72px auto; padding:36px;
   background:var(--bg-card); border:1px solid var(--border-soft); border-radius:var(--radius-lg);
@@ -1437,11 +1455,29 @@ button.linkish{
 }
 .blocked-icon svg{ width:30px; height:30px; }
 @media (max-width:560px){
-  .topbar-titles h1{ font-size:20px; }
-  .card-pad{ padding:20px; }
-  .roster-row{ flex-wrap:wrap; }
+  .topbar-titles h1{ font-size:18px; margin-bottom:2px; }
+  .account-widget{ padding:4px; }
+  .account-widget .name,
+  .account-widget .chev{ display:none; }
+  .card-pad{ padding:16px; }
+  .roster-row{ flex-wrap:wrap; gap:10px; }
+  .roster-row .row-actions{ margin-left:auto; }
   .audit-row, .audit-main{ align-items:flex-start; flex-direction:column; gap:4px; }
   .audit-meta{ text-align:left; }
+  .toolbar{ gap:10px; }
+  .toolbar-right, .toolbar .row-actions{ width:100%; }
+  .toolbar-right .btn, .toolbar .row-actions .btn{ flex:1 1 auto; }
+  .search-input{ min-width:0; width:100%; flex:1 1 100%; }
+  .btn{ max-width:100%; }
+  .modal-actions .btn{ min-width:0; }
+  .gmp-table-wrap,
+  .payout-table-wrap,
+  .table-scroll{
+    margin-left:-6px; margin-right:-6px; padding-left:6px; padding-right:6px;
+    -webkit-overflow-scrolling:touch;
+  }
+  .rule-card .row-actions,
+  .vacation-card .row-actions{ width:100%; }
 }
 
 /* =============================================================================

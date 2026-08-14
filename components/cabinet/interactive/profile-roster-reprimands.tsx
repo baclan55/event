@@ -234,7 +234,14 @@ export function ProfileInteractive({
             <h2>{user.nickname || user.firstName || 'Без имени'}</h2>
           </div>
           <div className="role-tag">
-            {user.roles.join(' · ') || 'Без роли'}
+            {user.roleDetails?.length
+              ? user.roleDetails.map((r, i) => (
+                  <span key={`${r.name}-${i}`}>
+                    {i > 0 ? ' · ' : null}
+                    <RoleName name={r.name} color={r.color} />
+                  </span>
+                ))
+              : user.roles.join(' · ') || 'Без роли'}
             {user.discordUsername ? ` · ${user.discordUsername}` : ''}
           </div>
           <div className="role-tag" style={{ marginTop: 6 }}>
