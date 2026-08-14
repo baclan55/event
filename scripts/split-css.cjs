@@ -65,6 +65,13 @@ for (const [index, chunk] of chunks.entries()) {
   console.log(`${filename}: ${Buffer.byteLength(chunk)} bytes`);
 }
 
+// site-extra.css — ручные стили (статистика и т.п.), split не перезаписывает.
+if (!fs.existsSync('public/css/site-extra.css')) {
+  console.warn('public/css/site-extra.css отсутствует — стили статистики могут пропасть.');
+} else {
+  console.log(`public/css/site-extra.css: сохранён (${fs.statSync('public/css/site-extra.css').size} bytes)`);
+}
+
 sharp('public/img/mountains-bg.jpg')
   .resize({ width: 700 })
   .jpeg({ quality: 20, mozjpeg: true })

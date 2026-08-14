@@ -134,19 +134,63 @@ function LineChart({ title, points }: { title: string; points: Point[] }) {
           <svg viewBox={`0 0 ${w} ${h}`} className="stats-line-svg" role="img" aria-label={title}>
             {ticks.map((tick) => (
               <g key={tick.label + tick.y}>
-                <line x1={padL} x2={w - padR} y1={tick.y} y2={tick.y} className="stats-grid-line" />
-                <text x={padL - 8} y={tick.y + 4} textAnchor="end" className="stats-axis-text">{tick.label}</text>
+                <line
+                  x1={padL}
+                  x2={w - padR}
+                  y1={tick.y}
+                  y2={tick.y}
+                  className="stats-grid-line"
+                  stroke="rgba(255,255,255,.08)"
+                  strokeWidth="1"
+                />
+                <text
+                  x={padL - 8}
+                  y={tick.y + 4}
+                  textAnchor="end"
+                  className="stats-axis-text"
+                  fill="rgba(180,180,200,.85)"
+                  fontSize="11"
+                >
+                  {tick.label}
+                </text>
               </g>
             ))}
-            {area ? <polygon points={area} className="stats-area-fill" /> : null}
-            <polyline fill="none" className="stats-line-stroke" points={polyline} />
+            {area ? (
+              <polygon points={area} className="stats-area-fill" fill="rgba(124,92,252,.16)" />
+            ) : null}
+            <polyline
+              fill="none"
+              className="stats-line-stroke"
+              points={polyline}
+              stroke="#a78bfa"
+              strokeWidth="2.5"
+            />
             {coords.map((c) => (
-              <circle key={`${c.label}-${c.x}`} cx={c.x} cy={c.y} r="3.5" className="stats-line-dot">
+              <circle
+                key={`${c.label}-${c.x}`}
+                cx={c.x}
+                cy={c.y}
+                r="3.5"
+                className="stats-line-dot"
+                fill="#7c5cfc"
+                stroke="#1a1528"
+                strokeWidth="1.5"
+              >
                 <title>{`${c.label}: ${c.v}`}</title>
               </circle>
             ))}
             {xLabels.map((c) => (
-              <text key={`x-${c.x}-${c.label}`} x={c.x} y={h - 8} textAnchor="middle" className="stats-axis-text">{c.label}</text>
+              <text
+                key={`x-${c.x}-${c.label}`}
+                x={c.x}
+                y={h - 8}
+                textAnchor="middle"
+                className="stats-axis-text"
+                fill="rgba(180,180,200,.85)"
+                fontSize="11"
+              >
+                {c.label}
+              </text>
             ))}
           </svg>
         </div>
