@@ -333,7 +333,18 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     ideas: String(body.ideas || '').trim(),
     motivation: String(body.motivation || '').trim(),
   };
-  if (Object.values(fields).some((value) => !value)) {
+  const requiredFilled = [
+    fields.nicknameStatic,
+    fields.firstName,
+    fields.staticId,
+    fields.age,
+    fields.avgOnline,
+    fields.timePeriod,
+    fields.experience,
+    fields.ideas,
+    fields.motivation,
+  ].every(Boolean);
+  if (!requiredFilled) {
     return jsonError('Заполните все поля анкеты.', 400);
   }
   if (!isValidStaticId(fields.staticId)) {

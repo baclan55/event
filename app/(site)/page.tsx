@@ -4,6 +4,21 @@ import { runtimeEnv } from '@/lib/runtimeEnv';
 
 export const dynamic = 'force-dynamic';
 
+const offers = [
+  'Опыт работы в команде мероприятий и помощь в организации ивентов',
+  'Влияние на развитие форматов — предлагайте идеи и концепции',
+  'Свои мероприятия, которые увидит весь сервер',
+  'Карьерный рост внутри отдела',
+  'Дружный коллектив, который поддержит',
+  'Поощрения за труд и активность',
+];
+
+const needs = [
+  'Адекватность и стрессоустойчивость',
+  'Креативное мышление и инициативность',
+  'Желание помогать и развивать мероприятия',
+];
+
 export default async function HomePage() {
   let user = null;
   try {
@@ -16,71 +31,77 @@ export default async function HomePage() {
 
   return (
     <>
-      <section className="site-hero">
+      <section className="site-hero site-hero-home">
         <div className="site-hero-bg" aria-hidden>
           <img src="/img/mountains-bg-sm.jpg?v=3" alt="" fetchPriority="high" />
         </div>
-        <h1>Events Denver</h1>
-        <p className="site-hero-sub">{subtitle}</p>
-        <div className="site-hero-actions">
-          {user ? (
-            <a className="btn btn-primary" href="/app/dashboard">Открыть кабинет</a>
-          ) : (
-            <a className="btn btn-primary" href="/api/auth/discord?consent=1">Войти через Discord</a>
-          )}
-          {applyOpen ? (
-            <a className="btn btn-ghost" href="/apply">Оставить заявку</a>
-          ) : (
-            <span className="btn btn-ghost" style={{ opacity: 0.6, cursor: 'default' }}>Набор закрыт</span>
-          )}
+        <div className="site-hero-inner">
+          <h1 className="site-hero-brand">Events Denver</h1>
+          <p className="site-hero-sub">{subtitle}</p>
+          <div className="site-hero-actions">
+            {user ? (
+              <a className="btn btn-primary" href="/app/dashboard">Открыть кабинет</a>
+            ) : (
+              <a className="btn btn-primary" href="/api/auth/discord?consent=1">Войти через Discord</a>
+            )}
+            {applyOpen ? (
+              <a className="btn btn-ghost site-hero-ghost" href="/apply">Оставить заявку</a>
+            ) : (
+              <span className="btn btn-ghost site-hero-ghost is-disabled">Набор закрыт</span>
+            )}
+          </div>
         </div>
       </section>
-      <section className="site-section">
-        <p className="site-lead">
-          Хотите стать частью команды, которая создаёт атмосферу сервера?
-        </p>
-        <p className="site-lead-sub">
-          Тогда у Вас есть отличная возможность попробовать себя в роли Event Helper
-          и внести свой вклад в развитие мероприятий!
-        </p>
 
-        <h2 className="site-h2">Что мы предлагаем вам?</h2>
-        <ul className="site-list">
-          <li>Опыт работы в команде мероприятий и помощь администрации в организации ивентов</li>
-          <li>Возможность влиять на развитие мероприятий — предлагать новые форматы, идеи и концепции ивентов</li>
-          <li>Возможность реализовывать собственные идеи и мероприятия, которые увидят все игроки сервера</li>
-          <li>Карьерный рост внутри команды</li>
-          <li>Дружный и весёлый коллектив, который всегда поможет и поддержит</li>
-          <li>Поощрения за ваш труд и активность</li>
-        </ul>
+      <div className="site-home">
+        <section className="site-block site-block-intro">
+          <h2 className="site-block-title">Станьте частью атмосферы сервера</h2>
+          <p className="site-block-text">
+            Попробуйте себя в роли Event Helper и внесите вклад в развитие мероприятий Denver.
+          </p>
+        </section>
 
-        <h2 className="site-h2">Что требуется от вас?</h2>
-        <ul className="site-list">
-          <li>Адекватность и стрессоустойчивость</li>
-          <li>Креативное мышление и инициативность</li>
-          <li>Желание помогать и развивать мероприятия</li>
-        </ul>
+        <section className="site-block">
+          <h2 className="site-block-title">Что мы предлагаем</h2>
+          <ol className="site-offer-list">
+            {offers.map((item, index) => (
+              <li key={item}>
+                <span className="site-offer-num">{String(index + 1).padStart(2, '0')}</span>
+                <span className="site-offer-text">{item}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
 
-        <h2 className="site-h2">Важная информация</h2>
-        <p className="site-note">
-          Event Helper не является администратором. Вы можете состоять в семье, фракции
-          и продолжать игровую деятельность.
-        </p>
-        <p className="site-note">
-          Также не забываем, что грамотная заявка — это ваша визитная карточка.
-          Чем лучше будет оформлена ваша заявка, тем больше шансов у Вас появляется!
-        </p>
+        <section className="site-block">
+          <h2 className="site-block-title">Что нужно от вас</h2>
+          <ul className="site-need-list">
+            {needs.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
 
-        <div className="site-callout">
-          <h3>Хотите стать частью команды?</h3>
-          <div className="site-callout-underline" />
+        <section className="site-block site-block-aside">
+          <h2 className="site-block-title">Важно знать</h2>
+          <p className="site-block-text">
+            Event Helper не администратор: можно оставаться в семье, фракции и продолжать игру.
+          </p>
+          <p className="site-block-text">
+            Грамотная заявка — ваша визитная карточка. Чем она сильнее, тем выше шансы.
+          </p>
+        </section>
+
+        <section className="site-block site-block-cta">
+          <h2 className="site-block-title">Готовы присоединиться?</h2>
+          <p className="site-block-text">Оставьте заявку — после проверки с вами свяжется руководство.</p>
           {applyOpen ? (
             <a className="btn btn-primary" href="/apply">Подать заявку</a>
           ) : (
-            <p className="role-tag">Набор в отдел сейчас закрыт.</p>
+            <p className="site-cta-closed">Набор в отдел сейчас закрыт.</p>
           )}
-        </div>
-      </section>
+        </section>
+      </div>
     </>
   );
 }

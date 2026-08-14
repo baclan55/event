@@ -1,19 +1,10 @@
 
 
 /* --- Hero ---
-   Раньше блок был высотой в весь экран (min-height:100vh) с текстом по
-   центру — из-за этого на первом экране был виден только заголовок с
-   кнопками, а всё остальное (что мы предлагаем/требуем, важная информация)
-   пряталось ниже без явной подсказки прокрутить. Фон при этом был
-   background-attachment:fixed, из-за чего затемняющий градиент считался
-   относительно окна браузера, а не самого блока — при скролле граница
-   между картинкой горы и следующим блоком "плыла" и было видно нестыковку
-   цвета (просвечивающий фон). Ниже — компактный герой без fixed-фона:
-   градиент теперь всегда красиво доходит до чёрного точно к низу блока,
-   независимо от прокрутки, а сам блок занимает намного меньше высоты. */
+   Полноширинный визуальный план с горами; бренд — главный сигнал первого экрана.
+   Без fixed-фона: градиент привязан к блоку и стыкуется с фоном страницы. */
 .site-hero{
   position:relative; padding:84px 24px 60px; text-align:center; overflow:hidden;
-  /* Картинка задаётся inline на главной (data-uri) — CF обрывает /img/mountains-bg.jpg */
   background-color: var(--bg-page);
   background-size:cover; background-position:center;
 }
@@ -31,7 +22,6 @@
 .site-hero-sub{ max-width:560px; margin:0 auto 28px; color:var(--text-body); font-size:14.5px; }
 .site-hero-actions{ display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
 
-/* --- Контентные секции ниже hero --- */
 .site-section{ max-width:760px; margin:0 auto; padding:38px 24px 20px; }
 .site-lead{ text-align:center; font-weight:700; color:var(--text-heading); font-size:15.5px; margin-bottom:4px; }
 .site-lead-sub{
@@ -45,7 +35,6 @@
 .site-note{
   color:var(--text-body); font-size:14px; line-height:1.55; margin:0 0 12px;
 }
-
 .site-callout{ margin-top:26px; }
 .site-callout h3{ font-size:16px; margin-bottom:8px; }
 .site-callout-underline{ width:36px; height:3px; border-radius:2px; background:var(--red); margin-bottom:18px; }
@@ -65,13 +54,17 @@
 
 .qform{ max-width:640px; margin:0 auto; padding:24px 24px 60px; display:flex; flex-direction:column; gap:14px; }
 .qform-card{ background:var(--bg-card); border:1px solid var(--border-soft); border-radius:var(--radius-lg); padding:22px 24px; }
+.qform-row{ align-items:stretch; }
+.qform-row > .qform-card{ min-width:0; }
 .qform-label{ display:block; font-size:14.5px; font-weight:700; color:var(--text-heading); margin-bottom:5px; }
 .qform-required{ color:var(--accent-light); margin-left:3px; }
 .qform-hint{ font-size:12px; color:var(--text-muted); margin-bottom:10px; }
 .qform-hint-row{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
 .qform-hint-row .qform-hint{ margin-bottom:0; }
-.qform-card .input{ margin-top:2px; }
+.qform-card .input{ margin-top:2px; width:100%; }
+.qform-card .field-hint{ margin-top:8px; }
 .qform .error-text{ text-align:center; }
+.qform > .btn{ width:100%; }
 
 /* --- ссылка "Как найти свой Discord ID?" рядом с полем Discord в заявке --- */
 .qform-hint-link{
@@ -114,6 +107,28 @@
 .qform-check-label input[type="checkbox"],
 .field .qform-check-label input[type="checkbox"]{
   margin-top:2px;
+}
+.qform-consent{
+  padding:16px 18px;
+  background:linear-gradient(180deg, rgba(124,92,252,.08), var(--bg-card));
+  border-color:rgba(167,139,250,.22);
+}
+.qform-consent .qform-check-label{
+  margin:0;
+  align-items:center;
+  gap:14px;
+  width:100%;
+  font-size:13.5px;
+  font-weight:600;
+  color:var(--text-heading);
+  line-height:1.45;
+}
+.qform-consent .qform-check-label span{ flex:1; min-width:0; }
+.qform-consent .qform-check-label input[type="checkbox"]{
+  margin-top:0;
+  flex-shrink:0;
+  width:20px;
+  height:20px;
 }
 .auth-card .qform-check-label{ font-size:12.5px; color:var(--text-muted); margin-bottom:18px; }
 
