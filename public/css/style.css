@@ -1835,3 +1835,95 @@ button.linkish{
   .qform{ padding:18px 16px 48px; }
   .qform-card{ padding:18px 18px; }
 }
+
+/* =============================================================================
+   Главная: публичный подиум «Топ-3 недели» (администраторы + хелперы вместе,
+   без фракций/ролей на карточке — только аватар, имя и МП за неделю).
+   ============================================================================= */
+.top3-section{ text-align:center; }
+.top3-title{ margin-bottom:4px; }
+.top3-sub{
+  color:var(--text-muted); font-size:13.5px; line-height:1.5;
+  max-width:480px; margin:0 auto 30px;
+}
+
+.top3-podium{
+  display:flex; align-items:flex-end; justify-content:center;
+  gap:18px; padding-top:36px;
+}
+
+.top3-item{
+  display:flex; flex-direction:column; align-items:center;
+  width:148px; flex:0 0 auto; text-align:center;
+}
+.top3-item-1{ order:2; width:172px; }
+.top3-item-2{ order:1; }
+.top3-item-3{ order:3; }
+
+.top3-avatar-wrap{ position:relative; margin-bottom:12px; }
+.top3-crown{
+  position:absolute; top:-24px; left:50%; transform:translateX(-50%);
+  width:30px; height:30px; fill:var(--amber);
+  filter:drop-shadow(0 2px 5px rgba(0,0,0,.45));
+}
+
+.top3-avatar{
+  display:flex; align-items:center; justify-content:center;
+  border-radius:50%; overflow:hidden; flex-shrink:0;
+  background:var(--bg-card-2); color:var(--text-heading);
+  font-weight:800; font-size:20px;
+  width:66px; height:66px; border:3px solid var(--border-strong);
+  box-shadow:0 0 0 3px var(--bg-page);
+}
+.top3-avatar img{ width:100%; height:100%; object-fit:cover; }
+
+.top3-item-1 .top3-avatar{
+  width:96px; height:96px; font-size:28px; border:4px solid var(--amber);
+  box-shadow:0 0 0 4px var(--bg-page), 0 0 26px rgba(251,191,36,.4);
+}
+.top3-item-2 .top3-avatar{ border-color:#c4c8db; box-shadow:0 0 0 3px var(--bg-page), 0 0 16px rgba(196,200,219,.25); }
+.top3-item-3 .top3-avatar{ border-color:#d98a4e; box-shadow:0 0 0 3px var(--bg-page), 0 0 16px rgba(217,138,78,.25); }
+
+.top3-name{
+  font-weight:700; font-size:14px; color:var(--text-heading);
+  margin-bottom:14px; max-width:100%;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.top3-item-1 .top3-name{ font-size:15px; }
+
+.top3-card{
+  box-sizing:border-box; width:100%;
+  background:var(--bg-card); border:1px solid var(--border-soft);
+  border-radius:var(--radius-lg); box-shadow:var(--shadow-card);
+  padding:14px 10px 16px;
+}
+.top3-item-1 .top3-card{
+  padding:20px 12px 22px;
+  background:linear-gradient(180deg, rgba(251,191,36,.16) 0%, var(--bg-card) 65%);
+  border-color:rgba(251,191,36,.4);
+}
+
+.top3-rank{ font-size:12px; font-weight:800; color:var(--text-muted); letter-spacing:.02em; margin-bottom:6px; }
+.top3-score{ font-size:24px; font-weight:800; font-family:var(--font-mono); color:var(--text-heading); }
+.top3-item-1 .top3-score{ font-size:30px; color:var(--amber); }
+.top3-item-2 .top3-score{ color:#c4c8db; }
+.top3-item-3 .top3-score{ color:#d98a4e; }
+.top3-score-label{
+  margin-top:4px; font-size:10px; font-weight:600; color:var(--text-muted);
+  text-transform:uppercase; letter-spacing:.04em;
+}
+
+@media (max-width:640px){
+  .top3-podium{ gap:8px; padding-top:30px; }
+  .top3-item{ width:31%; }
+  .top3-item-1{ width:36%; }
+  .top3-avatar{ width:54px; height:54px; font-size:16px; }
+  .top3-item-1 .top3-avatar{ width:76px; height:76px; font-size:22px; }
+  .top3-name{ font-size:12px; }
+  .top3-item-1 .top3-name{ font-size:13px; }
+  .top3-card{ padding:10px 6px 12px; }
+  .top3-item-1 .top3-card{ padding:16px 8px 18px; }
+  .top3-score{ font-size:18px; }
+  .top3-item-1 .top3-score{ font-size:22px; }
+  .top3-score-label{ font-size:8.5px; }
+}

@@ -1,6 +1,8 @@
 import { getCurrentUser, publicUser } from '@/lib/auth';
 import { isApplicationsOpen } from '@/lib/cabinetData';
 import { runtimeEnv } from '@/lib/runtimeEnv';
+import { getTopStaff } from '@/lib/topStaff';
+import { TopStaffPodium } from '@/components/TopStaffPodium';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +15,7 @@ export default async function HomePage() {
   }
   const subtitle = runtimeEnv('APP_SUBTITLE') || 'Ивент-отдел сервера Denver';
   const applyOpen = await isApplicationsOpen();
+  const topStaff = await getTopStaff(3);
 
   return (
     <>
@@ -35,6 +38,7 @@ export default async function HomePage() {
           )}
         </div>
       </section>
+      <TopStaffPodium members={topStaff} />
       <section className="site-section">
         <p className="site-lead">
           Хотите стать частью команды, которая создаёт атмосферу сервера?
