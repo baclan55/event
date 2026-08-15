@@ -7,6 +7,7 @@ import { api } from '@/lib/client/api';
 const REQUIRED_KEYS = [
   'nicknameStatic',
   'firstName',
+  'lastName',
   'staticId',
   'age',
   'avgOnline',
@@ -65,7 +66,6 @@ export function ApplyForm() {
     try {
       await api.post('/api/applications', {
         ...form,
-        lastName: '',
         consent,
       });
       setForm({});
@@ -116,20 +116,37 @@ export function ApplyForm() {
           </div>
         </div>
 
-        <div className="qform-card">
-          <label className="qform-label" htmlFor="apply-firstname">
-            Ваше имя
-            <span className="qform-required">*</span>
-          </label>
-          <input
-            id="apply-firstname"
-            className="input"
-            required
-            maxLength={60}
-            autoComplete="given-name"
-            value={form.firstName || ''}
-            onChange={(e) => setField('firstName', e.target.value)}
-          />
+        <div className="form-row-2 qform-row">
+          <div className="qform-card">
+            <label className="qform-label" htmlFor="apply-firstname">
+              Имя (ник)
+              <span className="qform-required">*</span>
+            </label>
+            <input
+              id="apply-firstname"
+              className="input"
+              required
+              maxLength={60}
+              autoComplete="given-name"
+              value={form.firstName || ''}
+              onChange={(e) => setField('firstName', e.target.value)}
+            />
+          </div>
+          <div className="qform-card">
+            <label className="qform-label" htmlFor="apply-lastname">
+              Фамилия
+              <span className="qform-required">*</span>
+            </label>
+            <input
+              id="apply-lastname"
+              className="input"
+              required
+              maxLength={60}
+              autoComplete="family-name"
+              value={form.lastName || ''}
+              onChange={(e) => setField('lastName', e.target.value)}
+            />
+          </div>
         </div>
 
         {REST_FIELDS.map(([key, label]) => {

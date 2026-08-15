@@ -112,7 +112,7 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
         if (taken.rows[0]) return jsonError('Этот Discord ID уже привязан к другому участнику.', 400);
       }
       const result = await query<{ id: number }>(
-        'INSERT INTO users(nickname,first_name,weekly_events,note,discord_id) VALUES($1,$1,$2,$3,$4) RETURNING id',
+        'INSERT INTO users(nickname,weekly_events,note,discord_id) VALUES($1,$2,$3,$4) RETURNING id',
         [nickname, Number(body.weeklyEvents) || 0, String(body.note || ''), discordId],
       );
       if (roleIds.length) {
@@ -185,7 +185,7 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
       await query('UPDATE users SET discord_id=$1 WHERE id=$2', [discordId, targetId]);
     }
     await query(
-      `UPDATE users SET nickname=$1, first_name=$1,
+      `UPDATE users SET nickname=$1,
        weekly_events=COALESCE($2::integer,weekly_events), note=$3 WHERE id=$4`,
       [
         nickname,

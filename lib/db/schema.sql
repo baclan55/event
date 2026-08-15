@@ -400,6 +400,7 @@ WHERE name IN (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS static_id TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS game_profile_confirmed BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_users_static_id ON users(static_id) WHERE static_id IS NOT NULL;
 
 -- Заявка: имя/фамилия/static id

@@ -63,10 +63,14 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
     });
     if (hit) return jsonError('Указанный StaticID находится в чёрном списке.', 403);
 
-    const hasProfile = !!(user.first_name && user.static_id && (!needLast || user.last_name));
+    const hasProfile = !!(user.game_profile_confirmed
+      && user.first_name
+      && user.static_id
+      && (!needLast || user.last_name));
     if (!hasProfile) {
       await query(
-        'UPDATE users SET first_name=$1, last_name=$2, static_id=$3, nickname=$1 WHERE id=$4',
+        `UPDATE users SET first_name=$1, last_name=$2, static_id=$3, nickname=$1,
+         game_profile_confirmed=TRUE WHERE id=$4`,
         [validated.firstName, validated.lastName || null, validated.staticId, user.id],
       );
       await writeAudit({

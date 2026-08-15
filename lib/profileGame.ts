@@ -37,7 +37,10 @@ export function isGameProfileComplete(user: {
   isEventHelper?: boolean;
   isAdministrator?: boolean;
   isOwner?: boolean;
+  /** Подтверждение через обязательное окно (ProfileGate). */
+  gameProfileConfirmed?: boolean | null;
 }): boolean {
+  if (!user.gameProfileConfirmed) return false;
   const first = (user.firstName || '').trim();
   const last = (user.lastName || '').trim();
   const staticId = (user.staticId || '').trim();
@@ -74,6 +77,7 @@ export function publicNeedsProfileGate(user: PublicUser & {
   staticId?: string | null;
   isEventHelper?: boolean;
   isAdministrator?: boolean;
+  gameProfileConfirmed?: boolean | null;
 }): boolean {
   return !isGameProfileComplete({
     firstName: user.firstName,
@@ -82,5 +86,6 @@ export function publicNeedsProfileGate(user: PublicUser & {
     isEventHelper: user.isEventHelper,
     isAdministrator: user.isAdministrator,
     isOwner: user.isOwner,
+    gameProfileConfirmed: user.gameProfileConfirmed,
   });
 }

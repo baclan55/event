@@ -63,6 +63,7 @@ export type DbUser = RoleUser & {
   first_name?: string | null;
   last_name?: string | null;
   static_id?: string | null;
+  game_profile_confirmed?: boolean | null;
   roles: DbRole[];
   permissions: Permission[];
   editPermissions: Permission[];
@@ -260,6 +261,7 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
   const firstName = u.first_name ?? null;
   const lastName = u.last_name ?? null;
   const staticId = u.static_id ?? null;
+  const gameProfileConfirmed = !!u.game_profile_confirmed;
   return {
     id: u.id,
     // Отображаемое имя = игровое «Имя»; nickname в БД синхронизируется с ним.
@@ -290,12 +292,14 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
     isEventHelper,
     isAdministrator,
     dashboardBlocks: u.dashboard_blocks || flags.dashboardBlocks,
+    gameProfileConfirmed,
     profileComplete: isGameProfileComplete({
       firstName,
       lastName,
       staticId,
       isEventHelper,
       isAdministrator,
+      gameProfileConfirmed,
     }),
   };
 }
@@ -313,6 +317,7 @@ export async function loadUserById(userId: number): Promise<DbUser | null> {
             u.is_owner, u.is_admin, u.weekly_events, u.note,
             u.is_blocked, u.blocked_at,
             u.first_name, u.last_name, u.static_id,
+            COALESCE(u.game_profile_confirmed, FALSE) AS game_profile_confirmed,
             u.role_id, r.name AS role_name, r.priority AS role_priority,
             COALESCE(
               (SELECT json_agg(json_build_object(

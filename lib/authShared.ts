@@ -33,4 +33,6 @@ export type PublicUser = {
   isAdministrator: boolean;
   dashboardBlocks: Record<DashboardBlock, boolean>;
   profileComplete: boolean;
+  /** Пользователь подтвердил игровые данные через обязательное окно. */
+  gameProfileConfirmed: boolean;
 };

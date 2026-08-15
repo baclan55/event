@@ -29,6 +29,22 @@ const RUNTIME_PATCHES = [
   `UPDATE payout_role_settings
    SET verbal_penalty_pct = 50, strict_penalty_pct = 100, updated_at = now()
    WHERE verbal_penalty_pct = 0 AND strict_penalty_pct = 0`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS game_profile_confirmed BOOLEAN NOT NULL DEFAULT FALSE`,
+  // Уже заполненные профили не блокируем повторным окном.
+  `UPDATE users SET game_profile_confirmed = TRUE
+   WHERE game_profile_confirmed = FALSE
+     AND COALESCE(TRIM(first_name), '') <> ''
+     AND static_id ~ '^\\d{2,6}$'
+     AND (
+       COALESCE(TRIM(last_name), '') <> ''
+       OR EXISTS (
+         SELECT 1 FROM user_roles ur
+         JOIN roles r ON r.id = ur.role_id
+         WHERE ur.user_id = users.id
+           AND COALESCE(r.is_administrator, FALSE) = TRUE
+           AND COALESCE(r.is_event_helper, FALSE) = FALSE
+       )
+     )`,
 ] as const;
 
 function resolveSchemaPath(): string | null {

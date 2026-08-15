@@ -336,6 +336,7 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
   const requiredFilled = [
     fields.nicknameStatic,
     fields.firstName,
+    fields.lastName,
     fields.staticId,
     fields.age,
     fields.avgOnline,
