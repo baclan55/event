@@ -48,12 +48,14 @@ export function ProfileGate({ user }: { user: PublicUser }) {
       <div className="modal-dialog wide" role="dialog" aria-modal="true" aria-labelledby="profile-gate-title">
         <h2 id="profile-gate-title">Игровые данные</h2>
         <p className="modal-sub">
-          После получения роли укажите ник{needLast ? ', фамилию' : ''} и StaticID — без этого кабинет недоступен.
+          {needLast
+            ? 'Укажите имя, фамилию и StaticID — без этого кабинет недоступен.'
+            : 'Укажите имя и StaticID — без этого кабинет недоступен.'}
         </p>
         <form onSubmit={submit}>
           {error ? <p className="error-text">{error}</p> : null}
           <div className="field">
-            <label>Ник (имя)</label>
+            <label>Имя</label>
             <input className="input" required maxLength={60} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
           </div>
           {needLast ? (

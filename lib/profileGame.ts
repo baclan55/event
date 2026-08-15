@@ -7,13 +7,12 @@ export type GameProfileFields = {
   staticId: string | null;
 };
 
-/** Фамилия не нужна только чистым администраторам (без флага «Ивент хелпер»). */
+/** Фамилия обязательна только для ивент-хелперов. Администраторам достаточно ника и StaticID. */
 export function requiresLastName(user: {
   isEventHelper?: boolean;
   isAdministrator?: boolean;
 }): boolean {
-  if (user.isAdministrator && !user.isEventHelper) return false;
-  return true;
+  return !!user.isEventHelper;
 }
 
 /**

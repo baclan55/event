@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { PublicUser } from '@/lib/authShared';
 import { auditActionLabel, describeLogEntry } from '@/lib/auditShared';
+import { requiresLastName } from '@/lib/profileGame';
 import { NavIcon } from '@/components/NavIcons';
 import { Avatar, DateField, DEFAULT_LIMITS, ErrorText, matchesSearch, Modal, ReprimandBadge, ReprimandLegend, ReprimandSummary, request, RoleName, SearchBox, Select, type Row } from './shared';
 import {
@@ -62,7 +63,10 @@ export function ProfileInteractive({
   const [eventTotalPages, setEventTotalPages] = useState(1);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const needLast = !(user.isAdministrator && !user.isEventHelper);
+  const needLast = requiresLastName({
+    isEventHelper: user.isEventHelper,
+    isAdministrator: user.isAdministrator,
+  });
   const [audit, setAudit] = useState(initialAudit);
   const [auditActions, setAuditActions] = useState<string[]>([]);
   const [filterAction, setFilterAction] = useState('');

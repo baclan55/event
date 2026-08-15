@@ -31,18 +31,18 @@ const RUNTIME_PATCHES = [
    WHERE verbal_penalty_pct = 0 AND strict_penalty_pct = 0`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS game_profile_confirmed BOOLEAN NOT NULL DEFAULT FALSE`,
   // Уже заполненные профили не блокируем повторным окном.
+  // Хелперам нужна фамилия; администраторам (без хелпера) — только имя + StaticID.
   `UPDATE users SET game_profile_confirmed = TRUE
    WHERE game_profile_confirmed = FALSE
      AND COALESCE(TRIM(first_name), '') <> ''
      AND static_id ~ '^\\d{2,6}$'
      AND (
        COALESCE(TRIM(last_name), '') <> ''
-       OR EXISTS (
+       OR NOT EXISTS (
          SELECT 1 FROM user_roles ur
          JOIN roles r ON r.id = ur.role_id
          WHERE ur.user_id = users.id
-           AND COALESCE(r.is_administrator, FALSE) = TRUE
-           AND COALESCE(r.is_event_helper, FALSE) = FALSE
+           AND COALESCE(r.is_event_helper, FALSE) = TRUE
        )
      )`,
 ] as const;
