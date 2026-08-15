@@ -37,8 +37,8 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
                 COALESCE(s.min_mp, 0) AS min_mp,
                 COALESCE(s.fixed_mc, 0) AS fixed_mc,
                 COALESCE(s.fixed_dollars, 0) AS fixed_dollars,
-                COALESCE(s.verbal_penalty_pct, 0) AS verbal_penalty_pct,
-                COALESCE(s.strict_penalty_pct, 0) AS strict_penalty_pct
+                COALESCE(s.verbal_penalty_pct, 50) AS verbal_penalty_pct,
+                COALESCE(s.strict_penalty_pct, 100) AS strict_penalty_pct
          FROM roles r
          LEFT JOIN payout_role_settings s ON s.role_id = r.id
          WHERE r.include_in_helper_payouts = TRUE
@@ -277,19 +277,33 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
         `UPDATE payout_row_reprimands SET counted=$2 WHERE row_id=$1 AND type=$3`,
         [rowId, counted, kind],
       );
-      await recomputeRowEvents(rowId, user.id);
+      const recomputed = await recomputeRowEvents(rowId, user.id);
       await writePayoutLog(weekId, user.id, 'reprimand.type_toggle', {
         rowId,
         nickname: prev.rows[0].nickname,
         kind,
         counted,
+        eventsMc: recomputed?.events_mc,
+        eventsDollars: recomputed?.events_dollars,
         changes: [{
-          label: kind === 'verbal' ? 'Учёт устных выговоров' : 'Учёт строгих выговоров',
+          label: kind === 'verbal' ? 'Учёт устных выговоров (−50% за шт.)' : 'Учёт строгих выговоров (−100% за шт.)',
           before,
           after: counted,
         }],
+        summary: `${prev.rows[0].nickname}: ${kind === 'verbal' ? 'устные' : 'строгие'} ${counted ? 'учтены' : 'сняты'} → ${recomputed?.events_mc ?? '—'} MC / ${recomputed?.events_dollars ?? '—'} $`,
       });
-      return ok({ updated: true });
+      return ok({
+        updated: true,
+        row: {
+          id: rowId,
+          count_verbal: kind === 'verbal' ? counted : prev.rows[0].count_verbal,
+          count_strict: kind === 'strict' ? counted : prev.rows[0].count_strict,
+          events_mc: recomputed?.events_mc,
+          events_dollars: recomputed?.events_dollars,
+          fixed_mc: recomputed?.fixed_mc,
+          fixed_dollars: recomputed?.fixed_dollars,
+        },
+      });
     }
 
     if (action === 'toggle_reprimand') {
@@ -302,10 +316,14 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
         [rowId, reprimandId],
       );
       const kind = hit.rows[0]?.type;
-      const prev = await query<{ nickname: string }>(
-        'SELECT nickname FROM payout_rows WHERE id=$1 AND week_id=$2',
+      const prev = await query<{ nickname: string; count_verbal: boolean; count_strict: boolean }>(
+        `SELECT nickname,
+                COALESCE(count_verbal, TRUE) AS count_verbal,
+                COALESCE(count_strict, TRUE) AS count_strict
+         FROM payout_rows WHERE id=$1 AND week_id=$2`,
         [rowId, weekId],
       );
+      let recomputed: Awaited<ReturnType<typeof recomputeRowEvents>> = null;
       if (kind === 'verbal' || kind === 'strict') {
         const col = kind === 'verbal' ? 'count_verbal' : 'count_strict';
         await query(`UPDATE payout_rows SET ${col}=$2 WHERE id=$1 AND week_id=$3`, [rowId, counted, weekId]);
@@ -313,7 +331,7 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
           `UPDATE payout_row_reprimands SET counted=$2 WHERE row_id=$1 AND type=$3`,
           [rowId, counted, kind],
         );
-        await recomputeRowEvents(rowId, user.id);
+        recomputed = await recomputeRowEvents(rowId, user.id);
       }
       await writePayoutLog(weekId, user.id, 'reprimand.toggle', {
         rowId,
@@ -321,13 +339,26 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
         nickname: prev.rows[0]?.nickname,
         kind,
         counted,
+        eventsMc: recomputed?.events_mc,
+        eventsDollars: recomputed?.events_dollars,
         changes: kind ? [{
-          label: kind === 'verbal' ? 'Учёт устных выговоров' : 'Учёт строгих выговоров',
+          label: kind === 'verbal' ? 'Учёт устных выговоров (−50% за шт.)' : 'Учёт строгих выговоров (−100% за шт.)',
           before: !counted,
           after: counted,
         }] : [],
       });
-      return ok({ updated: true });
+      return ok({
+        updated: true,
+        row: recomputed ? {
+          id: rowId,
+          count_verbal: kind === 'verbal' ? counted : prev.rows[0]?.count_verbal,
+          count_strict: kind === 'strict' ? counted : prev.rows[0]?.count_strict,
+          events_mc: recomputed.events_mc,
+          events_dollars: recomputed.events_dollars,
+          fixed_mc: recomputed.fixed_mc,
+          fixed_dollars: recomputed.fixed_dollars,
+        } : undefined,
+      });
     }
 
     if (action === 'update_row') {
@@ -500,19 +531,19 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
     if (!row.rows[0]) return jsonError('Строка не найдена.', 404);
 
     const r = row.rows[0];
-    const reps = await query<{ type: string }>(
-      `SELECT type FROM payout_row_reprimands WHERE row_id=$1`,
+    const reps = await query<{ type: string; counted: boolean }>(
+      `SELECT type, COALESCE(counted, TRUE) AS counted FROM payout_row_reprimands WHERE row_id=$1`,
       [rowId],
     );
-    const verbalCount = reps.rows.filter((x) => x.type === 'verbal').length;
-    const strictCount = reps.rows.filter((x) => x.type === 'strict').length;
+    const verbalCount = reps.rows.filter((x) => x.type === 'verbal' && x.counted).length;
+    const strictCount = reps.rows.filter((x) => x.type === 'strict' && x.counted).length;
 
     const computed = await computeUserPayoutForWeek(
       r.user_id,
       week.rows[0].week_start,
       {
-        countVerbal: !!r.count_verbal,
-        countStrict: !!r.count_strict,
+        countVerbal: true,
+        countStrict: true,
         verbalCount,
         strictCount,
       },

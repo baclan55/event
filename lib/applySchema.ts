@@ -25,6 +25,10 @@ const REQUIRED_TABLES = [
 const RUNTIME_PATCHES = [
   `ALTER TABLE rules ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE`,
   `CREATE INDEX IF NOT EXISTS idx_rules_archived ON rules(archived, position)`,
+  // Выплаты: устный −50%, строгий −100% (если ещё не задавали вручную).
+  `UPDATE payout_role_settings
+   SET verbal_penalty_pct = 50, strict_penalty_pct = 100, updated_at = now()
+   WHERE verbal_penalty_pct = 0 AND strict_penalty_pct = 0`,
 ] as const;
 
 function resolveSchemaPath(): string | null {

@@ -2,6 +2,9 @@ import { query } from '@/lib/db';
 import { weekTimeZone } from '@/lib/weekBounds';
 import { helperRoleAtNow } from '@/lib/roleHistory';
 
+export const DEFAULT_VERBAL_PENALTY_PCT = 50;
+export const DEFAULT_STRICT_PENALTY_PCT = 100;
+
 export type PayoutRoleSettings = {
   role_id: number;
   mp_rate_mc: number;
@@ -78,8 +81,8 @@ export async function loadRoleSettingsMap(): Promise<Map<number, PayoutRoleSetti
       min_mp: Math.max(0, Math.floor(num(row.min_mp))),
       fixed_mc: num(row.fixed_mc),
       fixed_dollars: num(row.fixed_dollars),
-      verbal_penalty_pct: num(row.verbal_penalty_pct),
-      strict_penalty_pct: num(row.strict_penalty_pct),
+      verbal_penalty_pct: num(row.verbal_penalty_pct, DEFAULT_VERBAL_PENALTY_PCT),
+      strict_penalty_pct: num(row.strict_penalty_pct, DEFAULT_STRICT_PENALTY_PCT),
     });
   }
   return map;
@@ -95,8 +98,8 @@ function emptySettings(roleId: number): PayoutRoleSettings {
     min_mp: 0,
     fixed_mc: 0,
     fixed_dollars: 0,
-    verbal_penalty_pct: 0,
-    strict_penalty_pct: 0,
+    verbal_penalty_pct: DEFAULT_VERBAL_PENALTY_PCT,
+    strict_penalty_pct: DEFAULT_STRICT_PENALTY_PCT,
   };
 }
 
@@ -600,29 +603,27 @@ export async function recomputeRowEvents(rowId: number, actorId?: number | null)
     week_id: number;
     user_id: number;
     week_start: string;
-    count_verbal: boolean;
-    count_strict: boolean;
   }>(
-    `SELECT pr.id, pr.week_id, pr.user_id, pw.week_start::text AS week_start,
-            COALESCE(pr.count_verbal, TRUE) AS count_verbal,
-            COALESCE(pr.count_strict, TRUE) AS count_strict
+    `SELECT pr.id, pr.week_id, pr.user_id, pw.week_start::text AS week_start
      FROM payout_rows pr
      JOIN payout_weeks pw ON pw.id = pr.week_id
      WHERE pr.id = $1`,
     [rowId],
   );
   const row = rows[0];
-  if (!row) return;
+  if (!row) return null;
 
-  const reps = await query<{ type: string }>(
-    'SELECT type FROM payout_row_reprimands WHERE row_id=$1',
+  const reps = await query<{ type: string; counted: boolean }>(
+    `SELECT type, COALESCE(counted, TRUE) AS counted
+     FROM payout_row_reprimands WHERE row_id=$1`,
     [rowId],
   );
-  const verbalCount = reps.rows.filter((r) => r.type === 'verbal').length;
-  const strictCount = reps.rows.filter((r) => r.type === 'strict').length;
+  // Только отмеченные галочками выговоры: устный −N×%, строгий −N×%.
+  const verbalCount = reps.rows.filter((r) => r.type === 'verbal' && r.counted).length;
+  const strictCount = reps.rows.filter((r) => r.type === 'strict' && r.counted).length;
   const computed = await computeUserPayoutForWeek(row.user_id, row.week_start, {
-    countVerbal: !!row.count_verbal,
-    countStrict: !!row.count_strict,
+    countVerbal: true,
+    countStrict: true,
     verbalCount,
     strictCount,
   });
@@ -654,7 +655,26 @@ export async function recomputeRowEvents(rowId: number, actorId?: number | null)
       computed.fixed_dollars,
     ],
   );
-  await writePayoutLog(row.week_id, actorId ?? null, 'row.recompute', { rowId, userId: row.user_id });
+  await writePayoutLog(row.week_id, actorId ?? null, 'row.recompute', {
+    rowId,
+    userId: row.user_id,
+    verbalCount,
+    strictCount,
+    eventsMc: computed.events_mc,
+    eventsDollars: computed.events_dollars,
+    summary: `Пересчёт: уст.${verbalCount}, стр.${strictCount} → ${computed.events_mc} MC / ${computed.events_dollars} $`,
+  });
+  return {
+    events_mc: computed.events_mc,
+    events_dollars: computed.events_dollars,
+    fixed_mc: computed.fixed_mc,
+    fixed_dollars: computed.fixed_dollars,
+    mp_count: computed.mp_count,
+    gmp_count: computed.gmp_count,
+    breakdown: computed.breakdown,
+    verbalCount,
+    strictCount,
+  };
 }
 
 export { buildExportCommands } from '@/lib/payoutExport';

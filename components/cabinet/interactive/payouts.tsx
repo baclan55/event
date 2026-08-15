@@ -306,14 +306,41 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
 
   async function toggleRepType(rowId: number, kind: 'verbal' | 'strict', counted: boolean) {
     if (!canEdit || locked) return;
+    setError('');
+    const flag = kind === 'verbal' ? 'count_verbal' : 'count_strict';
+    setRows((prev) => prev.map((r) => {
+      if (Number(r.id) !== rowId) return r;
+      const reps = ((r.reprimands || []) as Rep[]).map((rep) => (
+        rep.type === kind ? { ...rep, counted } : rep
+      ));
+      return { ...r, [flag]: counted, reprimands: reps };
+    }));
     try {
-      await request(`/api/payouts/${weekId}`, {
+      const data = await request(`/api/payouts/${weekId}`, {
         method: 'PATCH',
         body: JSON.stringify({ action: 'toggle_reprimand_type', rowId, kind, counted }),
       });
-      await load();
+      const updated = data.row as Row | undefined;
+      if (updated) {
+        setRows((prev) => prev.map((r) => (
+          Number(r.id) === rowId
+            ? {
+              ...r,
+              count_verbal: updated.count_verbal ?? r.count_verbal,
+              count_strict: updated.count_strict ?? r.count_strict,
+              events_mc: updated.events_mc ?? r.events_mc,
+              events_dollars: updated.events_dollars ?? r.events_dollars,
+              fixed_mc: updated.fixed_mc ?? r.fixed_mc,
+              fixed_dollars: updated.fixed_dollars ?? r.fixed_dollars,
+            }
+            : r
+        )));
+      } else {
+        await load();
+      }
     } catch (err) {
       setError((err as Error).message);
+      await load().catch(() => undefined);
     }
   }
 
@@ -438,6 +465,9 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
       ) : null}
 
       <ErrorText value={error} />
+      <div className="rp-legend" style={{ marginBottom: 12 }}>
+        Галочки выговоров сразу пересчитывают «За мероприятия»: устный −50% за каждый, строгий −100% за каждый (фикс не режется).
+      </div>
 
       <div className="payout-table-wrap">
         <table className="payout-table payout-table-wide">
@@ -522,22 +552,22 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
                     </button>
                   </td>
                   <td className="payout-reps">
-                    <label className="payout-rep-toggle" title="Учитывать устные выговоры">
+                    <label className="payout-rep-toggle" title="Устный: −50% к сумме за мероприятия за каждый учтённый">
                       <input
                         type="checkbox"
                         checked={row.count_verbal !== false}
-                        disabled={!canEdit || locked}
+                        disabled={!canEdit || locked || verbal.length === 0}
                         onChange={(e) => void toggleRepType(Number(row.id), 'verbal', e.target.checked)}
                       />
                       уст. {verbal.length}
                     </label>
                   </td>
                   <td className="payout-reps">
-                    <label className="payout-rep-toggle" title="Учитывать строгие выговоры">
+                    <label className="payout-rep-toggle" title="Строгий: −100% к сумме за мероприятия за каждый учтённый">
                       <input
                         type="checkbox"
                         checked={row.count_strict !== false}
-                        disabled={!canEdit || locked}
+                        disabled={!canEdit || locked || strict.length === 0}
                         onChange={(e) => void toggleRepType(Number(row.id), 'strict', e.target.checked)}
                       />
                       стр. {strict.length}

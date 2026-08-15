@@ -589,8 +589,8 @@ CREATE TABLE IF NOT EXISTS payout_role_settings (
   min_mp              INTEGER NOT NULL DEFAULT 0,
   fixed_mc            NUMERIC(12, 2) NOT NULL DEFAULT 0,
   fixed_dollars       NUMERIC(12, 2) NOT NULL DEFAULT 0,
-  verbal_penalty_pct  NUMERIC(6, 2) NOT NULL DEFAULT 0,
-  strict_penalty_pct  NUMERIC(6, 2) NOT NULL DEFAULT 0,
+  verbal_penalty_pct  NUMERIC(6, 2) NOT NULL DEFAULT 50,
+  strict_penalty_pct  NUMERIC(6, 2) NOT NULL DEFAULT 100,
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
