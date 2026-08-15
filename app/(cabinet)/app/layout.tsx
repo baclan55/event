@@ -121,6 +121,10 @@ export default async function CabinetLayout({ children }: { children: React.Reac
   if (!user.isBlocked && !hasRole && pathname !== '/app/pending') {
     redirect('/app/pending');
   }
+  // Роль уже есть — со страницы ожидания сразу на главную.
+  if (!user.isBlocked && hasRole && pathname === '/app/pending') {
+    redirect('/app/dashboard');
+  }
 
   const bare = user.isBlocked || !hasRole;
   if (bare) {
