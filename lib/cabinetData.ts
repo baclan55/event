@@ -223,7 +223,7 @@ export async function loadRoster() {
   const targets = await weeklyTargetsByRoleId();
   const weekCountSql = sqlCountWeeklyMpSubquery('u.discord_id', 1);
   const r = await query<Record<string, unknown>>(
-    `SELECT u.id, u.nickname, u.discord_username, u.avatar_image_id, u.avatar_url,
+    `SELECT u.id, u.nickname, u.discord_id, u.discord_username, u.avatar_image_id, u.avatar_url,
             CASE WHEN u.discord_id IS NULL THEN 0 ELSE COALESCE(${weekCountSql}, 0) END AS weekly_events,
             u.note, u.status, u.is_blocked, u.blocked_at,
             u.is_owner, u.is_admin, u.role_id, r.name AS role_name, r.priority AS role_priority

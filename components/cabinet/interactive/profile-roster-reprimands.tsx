@@ -602,7 +602,6 @@ export function RosterInteractive({
   const without = members.filter((m) => !m.role_id && m.status !== 'candidate' && matchMember(m));
   const withRoles = members.filter((m) => m.role_id && matchMember(m));
   const shown = tab === 'with' ? withRoles : tab === 'without' ? without : candidates;
-  const missingDiscord = members.filter((m) => !String(m.discord_id || '').trim()).length;
   const roleGroups = [...new Map(withRoles.map((member) => [
     member.role_id,
     {
@@ -677,11 +676,6 @@ const memberRow = (member: Row, candidate = false) => (
         <button className={tab === 'candidates' ? 'active' : ''} onClick={() => setTab('candidates')}>Кандидаты · {candidates.length}</button>
       </div>
       <ErrorText value={error} />
-      {missingDiscord > 0 ? (
-        <div className="rp-legend" style={{ marginBottom: 12 }}>
-          Без Discord ID: {missingDiscord}. Откройте карточку и укажите 17–20 цифр — иначе МП и вход через Discord не привяжутся.
-        </div>
-      ) : null}
       {tab === 'with'
         ? roleGroups.map((group) => <section key={group.id}><div className="role-group-label">{group.label} · {group.members.length}</div>{group.members.map((member) => memberRow(member))}</section>)
         : shown.map((member) => memberRow(member, tab === 'candidates'))}
