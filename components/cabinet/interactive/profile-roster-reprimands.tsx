@@ -602,6 +602,7 @@ export function RosterInteractive({
   const without = members.filter((m) => !m.role_id && m.status !== 'candidate' && matchMember(m));
   const withRoles = members.filter((m) => m.role_id && matchMember(m));
   const shown = tab === 'with' ? withRoles : tab === 'without' ? without : candidates;
+  const missingDiscord = members.filter((m) => !String(m.discord_id || '').trim()).length;
   const roleGroups = [...new Map(withRoles.map((member) => [
     member.role_id,
     {
@@ -643,6 +644,7 @@ const memberRow = (member: Row, candidate = false) => (
         </div>
       )}
       {candidate ? <span className="badge badge-amber">Ожидает обзвона</span> : <>
+        {!String(member.discord_id || '').trim() ? <span className="badge badge-amber">Нет Discord ID</span> : null}
         {member.is_blocked && <span className="badge badge-red">Заблокирован</span>}
         {(() => {
           const norm = member.weekly_target != null ? Number(member.weekly_target) : (target ?? null);
@@ -675,6 +677,11 @@ const memberRow = (member: Row, candidate = false) => (
         <button className={tab === 'candidates' ? 'active' : ''} onClick={() => setTab('candidates')}>Кандидаты · {candidates.length}</button>
       </div>
       <ErrorText value={error} />
+      {missingDiscord > 0 ? (
+        <div className="rp-legend" style={{ marginBottom: 12 }}>
+          Без Discord ID: {missingDiscord}. Откройте карточку и укажите 17–20 цифр — иначе МП и вход через Discord не привяжутся.
+        </div>
+      ) : null}
       {tab === 'with'
         ? roleGroups.map((group) => <section key={group.id}><div className="role-group-label">{group.label} · {group.members.length}</div>{group.members.map((member) => memberRow(member))}</section>)
         : shown.map((member) => memberRow(member, tab === 'candidates'))}
@@ -685,7 +692,20 @@ const memberRow = (member: Row, candidate = false) => (
           <form onSubmit={saveMember}>
             <ErrorText value={error} />
             <div className="field"><label>Имя</label><input className="input" name="nickname" required defaultValue={editing?.nickname || ''} /></div>
-            <div className="field"><label>Discord ID</label><input className="input" name="discordId" inputMode="numeric" placeholder="для привязки МП до входа на сайт" defaultValue={editing?.discord_id || ''} /><div className="field-hint">Если указать Discord ID заранее, старые сборы МП подтянутся к профилю после привязки или входа.</div></div>
+            <div className="field">
+              <label>Discord ID</label>
+              <input
+                className="input"
+                name="discordId"
+                inputMode="numeric"
+                required
+                pattern="\d{17,20}"
+                maxLength={20}
+                placeholder="123456789012345678"
+                defaultValue={editing?.discord_id || ''}
+              />
+              <div className="field-hint">Обязателен. 17–20 цифр. Не удаляется при сохранении пустого поля.</div>
+            </div>
             <div className="form-row-2">
               <div className="field">
                 <label>Роли</label>

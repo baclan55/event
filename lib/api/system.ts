@@ -46,14 +46,34 @@ async function login(
     await query(`UPDATE users SET discord_username=$1, avatar_url=$2,
       avatar_image_id=NULL, avatar_public_id=NULL WHERE id=$3`, [discordUser.username, avatarUrl, userId]);
   } else {
-    const count = await query<{ c: number }>('SELECT COUNT(*)::int AS c FROM users');
-    const grant = owner || count.rows[0].c === 0;
-    const role = grant ? await query<{ id: number }>('SELECT id FROM roles ORDER BY priority LIMIT 1') : { rows: [] };
-    const inserted = await query<{ id: number }>(
-      'INSERT INTO users(discord_id,discord_username,nickname,role_id,is_owner,is_admin,avatar_url) VALUES($1,$2,$2,$3,$4,$4,$5) RETURNING id',
-      [discordUser.id, discordUser.username, role.rows[0]?.id ?? null, grant, avatarUrl],
+    // Аккаунт создан в составе без Discord ID — привязать, а не плодить дубль.
+    const orphan = await query<{ id: number }>(
+      `SELECT u.id
+       FROM users u
+       JOIN applications a ON a.candidate_user_id = u.id OR a.applicant_id = u.id
+       WHERE (u.discord_id IS NULL OR TRIM(u.discord_id) = '')
+         AND regexp_replace(COALESCE(a.discord, ''), '[^0-9]', '', 'g') = $1
+       ORDER BY u.id
+       LIMIT 1`,
+      [discordUser.id],
     );
-    userId = inserted.rows[0].id;
+    if (orphan.rows[0]) {
+      userId = orphan.rows[0].id;
+      await query(
+        `UPDATE users SET discord_id=$1, discord_username=$2, avatar_url=$3,
+         avatar_image_id=NULL, avatar_public_id=NULL WHERE id=$4`,
+        [discordUser.id, discordUser.username, avatarUrl, userId],
+      );
+    } else {
+      const count = await query<{ c: number }>('SELECT COUNT(*)::int AS c FROM users');
+      const grant = owner || count.rows[0].c === 0;
+      const role = grant ? await query<{ id: number }>('SELECT id FROM roles ORDER BY priority LIMIT 1') : { rows: [] };
+      const inserted = await query<{ id: number }>(
+        'INSERT INTO users(discord_id,discord_username,nickname,role_id,is_owner,is_admin,avatar_url) VALUES($1,$2,$2,$3,$4,$4,$5) RETURNING id',
+        [discordUser.id, discordUser.username, role.rows[0]?.id ?? null, grant, avatarUrl],
+      );
+      userId = inserted.rows[0].id;
+    }
   }
   if (owner) await query('UPDATE users SET is_owner=TRUE,is_admin=TRUE WHERE id=$1', [userId]);
   // Старые Discord-сборы текущей недели — доначислить МП после первого входа.

@@ -101,16 +101,15 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
     const discordIdRaw = body.discordId != null ? String(body.discordId).replace(/\D/g, '') : '';
     const discordId = discordIdRaw || null;
     if (discordId && !/^\d{17,20}$/.test(discordId)) {
-      return jsonError('Некорректный Discord ID.', 400);
+      return jsonError('Некорректный Discord ID (17–20 цифр).', 400);
     }
 
     if (key === 'roster') {
+      if (!discordId) return jsonError('Укажите Discord ID.', 400);
       const assignError = await assertAssignableRoles(user, roleIds);
       if (assignError) return jsonError(assignError, 403);
-      if (discordId) {
-        const taken = await query<{ id: number }>('SELECT id FROM users WHERE discord_id=$1', [discordId]);
-        if (taken.rows[0]) return jsonError('Этот Discord ID уже привязан к другому участнику.', 400);
-      }
+      const taken = await query<{ id: number }>('SELECT id FROM users WHERE discord_id=$1', [discordId]);
+      if (taken.rows[0]) return jsonError('Этот Discord ID уже привязан к другому участнику.', 400);
       const result = await query<{ id: number }>(
         'INSERT INTO users(nickname,weekly_events,note,discord_id) VALUES($1,$2,$3,$4) RETURNING id',
         [nickname, Number(body.weeklyEvents) || 0, String(body.note || ''), discordId],
@@ -121,13 +120,11 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
         await replaceUserRoles(result.rows[0].id, roleIds);
         await evaluateAchievementsForUser(result.rows[0].id).catch(() => undefined);
       }
-      if (discordId) {
-        await reconcileWeeklyEventCredits(
-          query,
-          discordId,
-          runtimeEnv('WEEKLY_RESET_TZ') || 'Europe/Moscow',
-        ).catch(() => undefined);
-      }
+      await reconcileWeeklyEventCredits(
+        query,
+        discordId,
+        runtimeEnv('WEEKLY_RESET_TZ') || 'Europe/Moscow',
+      ).catch(() => undefined);
       await writeAudit({
         actorId: user.id,
         action: 'user.create',
@@ -139,8 +136,12 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
     }
 
     const targetId = parseId(params.id);
-    const target = await query<{ is_owner: boolean; role_priority: number | null }>(
-      `SELECT u.is_owner, r.priority AS role_priority
+    const target = await query<{
+      is_owner: boolean;
+      role_priority: number | null;
+      discord_id: string | null;
+    }>(
+      `SELECT u.is_owner, u.discord_id, r.priority AS role_priority
        FROM users u LEFT JOIN roles r ON r.id=u.role_id WHERE u.id=$1`,
       [targetId],
     );
@@ -174,15 +175,26 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
     const bl = await assertNotBlacklisted(targetId, roleIds);
     if (bl) return jsonError(bl, 403);
 
+    const prevDiscordId = String(target.rows[0].discord_id || '').trim() || null;
+    // Discord ID обязателен и не очищается пустым полем формы.
+    let nextDiscordId = prevDiscordId;
     if (body.discordId !== undefined) {
       if (discordId) {
-        const taken = await query<{ id: number }>(
-          'SELECT id FROM users WHERE discord_id=$1 AND id<>$2',
-          [discordId, targetId],
-        );
-        if (taken.rows[0]) return jsonError('Этот Discord ID уже привязан к другому участнику.', 400);
+        nextDiscordId = discordId;
+      } else if (!prevDiscordId) {
+        return jsonError('Укажите Discord ID.', 400);
       }
-      await query('UPDATE users SET discord_id=$1 WHERE id=$2', [discordId, targetId]);
+      // пустая строка при уже заполненном ID — оставляем прежний
+    }
+    if (!nextDiscordId) return jsonError('Укажите Discord ID.', 400);
+
+    if (nextDiscordId !== prevDiscordId) {
+      const taken = await query<{ id: number }>(
+        'SELECT id FROM users WHERE discord_id=$1 AND id<>$2',
+        [nextDiscordId, targetId],
+      );
+      if (taken.rows[0]) return jsonError('Этот Discord ID уже привязан к другому участнику.', 400);
+      await query('UPDATE users SET discord_id=$1 WHERE id=$2', [nextDiscordId, targetId]);
     }
     await query(
       `UPDATE users SET nickname=$1,
@@ -196,13 +208,11 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
     );
     await replaceUserRoles(targetId, roleIds);
     await evaluateAchievementsForUser(targetId).catch(() => undefined);
-    if (discordId) {
-      await reconcileWeeklyEventCredits(
-        query,
-        discordId,
-        runtimeEnv('WEEKLY_RESET_TZ') || 'Europe/Moscow',
-      ).catch(() => undefined);
-    }
+    await reconcileWeeklyEventCredits(
+      query,
+      nextDiscordId,
+      runtimeEnv('WEEKLY_RESET_TZ') || 'Europe/Moscow',
+    ).catch(() => undefined);
     await writeAudit({
       actorId: user.id,
       action: Array.isArray(body.roleIds) || body.roleId != null ? 'roles.update' : 'user.update',
@@ -211,7 +221,7 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
       details: {
         nickname,
         roleIds,
-        discordId: body.discordId !== undefined ? discordId : undefined,
+        discordId: nextDiscordId,
         isOwner: typeof body.isOwner === 'boolean' ? body.isOwner : undefined,
       },
     });

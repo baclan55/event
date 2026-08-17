@@ -45,6 +45,28 @@ const RUNTIME_PATCHES = [
            AND COALESCE(r.is_event_helper, FALSE) = TRUE
        )
      )`,
+  // Пустой discord_id — восстановить из связанной заявки, если ID никому не занят.
+  `UPDATE users u
+   SET discord_id = src.discord
+   FROM (
+     SELECT DISTINCT ON (uid) uid, discord
+     FROM (
+       SELECT a.candidate_user_id AS uid, regexp_replace(COALESCE(a.discord, ''), '[^0-9]', '', 'g') AS discord
+       FROM applications a
+       WHERE a.candidate_user_id IS NOT NULL
+       UNION ALL
+       SELECT a.applicant_id, regexp_replace(COALESCE(a.discord, ''), '[^0-9]', '', 'g')
+       FROM applications a
+       WHERE a.applicant_id IS NOT NULL
+     ) x
+     WHERE discord ~ '^[0-9]{17,20}$'
+     ORDER BY uid, discord
+   ) src
+   WHERE u.id = src.uid
+     AND (u.discord_id IS NULL OR TRIM(u.discord_id) = '')
+     AND NOT EXISTS (
+       SELECT 1 FROM users o WHERE o.discord_id = src.discord AND o.id <> u.id
+     )`,
 ] as const;
 
 function resolveSchemaPath(): string | null {
