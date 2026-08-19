@@ -209,6 +209,13 @@ export function NavIcon({ name }: { name: string }) {
       return <svg {...svgProps}><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="m21 15-4-4L5 20" /></svg>;
     case 'menu':
       return <svg {...svgProps}><path d="M4 7h16M4 12h16M4 17h16" /></svg>;
+    case 'pip':
+      return (
+        <svg {...svgProps}>
+          <rect x="3" y="4.5" width="18" height="14" rx="2" />
+          <rect x="12.5" y="11" width="6.5" height="4.7" rx="1" fill="currentColor" stroke="none" />
+        </svg>
+      );
     default:
       return (
         <svg {...svgProps}>

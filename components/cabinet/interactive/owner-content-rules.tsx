@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
 import { describeLogEntry } from '@/lib/auditShared';
 import { askConfirm, Avatar, ErrorText, MarkdownFormField, matchesSearch, Modal, request, SearchBox, type Row } from './shared';
@@ -148,12 +148,94 @@ export function ContentInteractive({
   );
 }
 
+/** Копирует подключённые на странице стили в отдельное окно (PiP или попап-фолбэк),
+ *  чтобы карточка правила там выглядела так же, как на сайте. */
+function copyStylesInto(win: Window) {
+  Array.from(document.styleSheets).forEach((sheet) => {
+    try {
+      const cssText = Array.from(sheet.cssRules).map((rule) => rule.cssText).join('\n');
+      const style = win.document.createElement('style');
+      style.textContent = cssText;
+      win.document.head.appendChild(style);
+    } catch {
+      if (sheet.href) {
+        const link = win.document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = sheet.href;
+        win.document.head.appendChild(link);
+      }
+    }
+  });
+  const extra = win.document.createElement('style');
+  extra.textContent = `
+    html,body{margin:0;height:100%;background:var(--bg-page);}
+    .rule-overlay{display:flex;flex-direction:column;height:100%;box-sizing:border-box;}
+    .rule-overlay-head{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border-soft);flex-shrink:0;}
+    .rule-overlay-thumb{width:44px;height:44px;border-radius:10px;overflow:hidden;flex-shrink:0;background:var(--bg-card-2);border:1px solid var(--border);}
+    .rule-overlay-thumb img{width:100%;height:100%;object-fit:cover;}
+    .rule-overlay-title{font-size:16px;font-weight:700;color:var(--text-heading);line-height:1.3;}
+    .rule-overlay-body{padding:14px 16px;overflow:auto;flex:1;}
+  `;
+  win.document.head.appendChild(extra);
+}
+
+/** Заполняет уже открытое окно оверлея содержимым конкретного правила. */
+function renderRuleInto(win: Window, rule: Row) {
+  win.document.title = String(rule.title || 'Правило') + ' — оверлей';
+  win.document.body.innerHTML =
+    '<div class="rule-overlay"><div class="rule-overlay-head">' +
+    (rule.image_id ? '<div class="rule-overlay-thumb"><img alt="" /></div>' : '') +
+    '<div class="rule-overlay-title"></div></div>' +
+    '<div class="rule-overlay-body md-body"></div></div>';
+  if (rule.image_id) {
+    const img = win.document.querySelector('.rule-overlay-thumb img') as HTMLImageElement | null;
+    if (img) img.src = `/media/${rule.image_id}`;
+  }
+  const titleEl = win.document.querySelector('.rule-overlay-title');
+  if (titleEl) titleEl.textContent = String(rule.title || '');
+  const bodyEl = win.document.querySelector('.rule-overlay-body');
+  if (bodyEl) bodyEl.innerHTML = rule.bodyHtml || rule.body || '';
+}
+
 export function RulesInteractive({ initialRules, canEdit }: { initialRules: Row[]; canEdit: boolean }) {
   const [rules, setRules] = useState(initialRules);
   const [editing, setEditing] = useState<Row | null | undefined>(undefined);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<'active' | 'archive'>('active');
+  const overlayRef = useRef<Window | null>(null);
+
+  /** Показывает правило в окне «поверх всех окон»: Document Picture-in-Picture там,
+   *  где он есть (Chrome/Edge/новый Firefox), и обычное отдельное окно — там, где нет
+   *  (Safari и т.д.; такое окно уже не «поверх всех», это ограничение самого браузера). */
+  async function openRuleOverlay(rule: Row) {
+    const dpip = (window as any).documentPictureInPicture;
+    if (dpip) {
+      try {
+        let win: Window | null = dpip.window;
+        if (!win) {
+          win = await dpip.requestWindow({ width: 380, height: 540 });
+          copyStylesInto(win as Window);
+        }
+        renderRuleInto(win as Window, rule);
+        return;
+      } catch {
+        // Пользователь запретил PiP или браузер отказал — уходим в фолбэк ниже.
+      }
+    }
+    let win = overlayRef.current;
+    if (!win || win.closed) {
+      win = window.open('', 'mp-rule-overlay', 'popup,width=380,height=540,noopener');
+      if (!win) {
+        setError('Браузер заблокировал всплывающее окно — разрешите всплывающие окна для этого сайта.');
+        return;
+      }
+      copyStylesInto(win);
+      overlayRef.current = win;
+    }
+    renderRuleInto(win, rule);
+    win.focus();
+  }
 
   const tabRules = useMemo(
     () => rules.filter((rule) => (tab === 'archive' ? !!rule.archived : !rule.archived)),
@@ -273,21 +355,30 @@ export function RulesInteractive({ initialRules, canEdit }: { initialRules: Row[
             <summary className="rules-card-header">
               <div className="rules-thumb">{rule.image_id ? <img src={`/media/${rule.image_id}`} alt="" /> : <NavIcon name="image" />}</div>
               <div className="rules-title">{rule.title}</div>
-              {canEdit && (
-                <div className="rules-card-actions" onClick={(event) => event.preventDefault()}>
-                  <button className="icon-btn" disabled={index === 0} title="Выше" onClick={() => void move(rule.id, -1)}>↑</button>
-                  <button className="icon-btn" disabled={index === tabRules.length - 1} title="Ниже" onClick={() => void move(rule.id, 1)}>↓</button>
-                  <button
-                    className="icon-btn"
-                    title={rule.archived ? 'Вернуть в активные' : 'В архив'}
-                    onClick={() => void setArchived(rule, !rule.archived)}
-                  >
-                    {rule.archived ? '↩' : '⤓'}
-                  </button>
-                  <button className="icon-btn" onClick={() => setEditing(rule)}><NavIcon name="edit" /></button>
-                  <button className="icon-btn danger" onClick={() => void remove(rule.id)}><NavIcon name="trash" /></button>
-                </div>
-              )}
+              <div className="rules-card-actions" onClick={(event) => event.preventDefault()}>
+                <button
+                  className="icon-btn"
+                  title="Показать поверх других окон"
+                  onClick={() => void openRuleOverlay(rule)}
+                >
+                  <NavIcon name="pip" />
+                </button>
+                {canEdit && (
+                  <>
+                    <button className="icon-btn" disabled={index === 0} title="Выше" onClick={() => void move(rule.id, -1)}>↑</button>
+                    <button className="icon-btn" disabled={index === tabRules.length - 1} title="Ниже" onClick={() => void move(rule.id, 1)}>↓</button>
+                    <button
+                      className="icon-btn"
+                      title={rule.archived ? 'Вернуть в активные' : 'В архив'}
+                      onClick={() => void setArchived(rule, !rule.archived)}
+                    >
+                      {rule.archived ? '↩' : '⤓'}
+                    </button>
+                    <button className="icon-btn" onClick={() => setEditing(rule)}><NavIcon name="edit" /></button>
+                    <button className="icon-btn danger" onClick={() => void remove(rule.id)}><NavIcon name="trash" /></button>
+                  </>
+                )}
+              </div>
             </summary>
             <div className="rules-panel" style={{ display: 'block' }}>
               <div className="rules-panel-inner">
