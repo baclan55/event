@@ -483,6 +483,18 @@ CREATE TABLE IF NOT EXISTS user_achievements (
 );
 CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id);
 
+-- Пропы (объекты сервера): название, картинка и ID для спавна в игре.
+CREATE TABLE IF NOT EXISTS props (
+  id         SERIAL PRIMARY KEY,
+  name       TEXT NOT NULL,
+  spawn_id   TEXT NOT NULL,
+  image_id   INTEGER REFERENCES images(id) ON DELETE SET NULL,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_props_name ON props(name);
+
 -- ГМП (большие мероприятия)
 CREATE TABLE IF NOT EXISTS gmp_events (
   id          SERIAL PRIMARY KEY,

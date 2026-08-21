@@ -218,6 +218,17 @@ export async function loadRules() {
   }));
 }
 
+export async function loadProps() {
+  const r = await query<Record<string, unknown>>(
+    `SELECT p.id, p.name, p.spawn_id, p.image_id, p.updated_at,
+            u.nickname AS created_by_name
+     FROM props p
+     LEFT JOIN users u ON u.id = p.created_by
+     ORDER BY p.name ASC, p.id ASC`
+  );
+  return r.rows;
+}
+
 export async function loadRoster() {
   const tz = weekTimeZone();
   const targets = await weeklyTargetsByRoleId();

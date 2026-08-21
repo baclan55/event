@@ -145,6 +145,14 @@ export function NavIcon({ name }: { name: string }) {
           <path d="M9.2 8.2h5.6" />
         </svg>
       );
+    case 'props':
+      return (
+        <svg {...svgProps}>
+          <path d="M12 3 20 7.5v9L12 21 4 16.5v-9L12 3Z" />
+          <path d="M4 7.5 12 12l8-4.5" />
+          <line x1="12" y1="12" x2="12" y2="21" />
+        </svg>
+      );
     case 'payouts':
       return (
         <svg {...svgProps}>
@@ -207,6 +215,8 @@ export function NavIcon({ name }: { name: string }) {
       return <svg {...svgProps}><path d="M12 5v14M5 12h14" /></svg>;
     case 'image':
       return <svg {...svgProps}><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="m21 15-4-4L5 20" /></svg>;
+    case 'copy':
+      return <svg {...svgProps}><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" /></svg>;
     case 'menu':
       return <svg {...svgProps}><path d="M4 7h16M4 12h16M4 17h16" /></svg>;
     case 'pip':

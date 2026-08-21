@@ -44,6 +44,11 @@ export const AUDIT_LABELS: Record<string, string> = {
   'blacklist.update': 'Изменена запись чёрного списка',
   'achievement.grant': 'Выдано достижение',
   'achievement.revoke': 'Снято достижение',
+  'prop.create': 'Добавлен проп',
+  'prop.update': 'Изменён проп',
+  'prop.delete': 'Удалён проп',
+  'prop.image.update': 'Обновлена картинка пропа',
+  'prop.image.delete': 'Удалена картинка пропа',
   'event.delete': 'Удалено мероприятие',
   'event.update': 'Изменено мероприятие',
   'week.create': 'Создана неделя выплат',
@@ -72,6 +77,7 @@ const FIELD_LABELS: Record<string, string> = {
   title: 'Название',
   body: 'Текст',
   name: 'Название',
+  spawnId: 'ID для спавна',
   color: 'Цвет',
   priority: 'Вес',
   events_mc: 'За мероприятия (MC)',
@@ -307,6 +313,7 @@ export function auditHref(entry: {
   if (entityType === 'role') return '/app/roles';
   if (entityType === 'reprimand') return '/app/reprimands';
   if (entityType === 'rule') return '/app/rules';
+  if (entityType === 'prop') return '/app/props';
   if (entityType === 'gmp') {
     return entityId ? `/app/gmp/${entityId}` : '/app/gmp';
   }
