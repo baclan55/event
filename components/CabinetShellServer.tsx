@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import type { PublicUser } from '@/lib/authShared';
 import { NavIcon } from '@/components/NavIcons';
 import { ProfileGate } from '@/components/ProfileGate';
@@ -131,18 +132,15 @@ export function CabinetShellServer({
             <nav className="nav-group" key={group.label} aria-label={group.label}>
               <div className="nav-label">{group.label}</div>
               {group.items.map((item) => (
-                <a
+                <Link
                   key={item.key}
                   href={`/app/${item.key}`}
                   className={`nav-item${active(item.key) ? ' active' : ''}`}
-                  onClick={() => {
-                    persistNavScroll();
-                    setSidebarOpen(false);
-                  }}
+                  onClick={() => setSidebarOpen(false)}
                 >
                   <NavIcon name={item.key} />
                   <span>{item.label}</span>
-                </a>
+                </Link>
               ))}
             </nav>
           ))}
