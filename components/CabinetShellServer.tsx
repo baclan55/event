@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import type { PublicUser } from '@/lib/authShared';
 import { NavIcon } from '@/components/NavIcons';
 import { ProfileGate } from '@/components/ProfileGate';
 import { ConfirmHost } from '@/components/cabinet/interactive/shared';
+import { titleForCabinetPath, subtitleForCabinetPath } from '@/lib/cabinetNav';
 
 type NavItem = { key: string; label: string };
 type NavGroup = { label: string; items: NavItem[] };
@@ -16,18 +18,26 @@ const NAV_SCROLL_KEY = 'cabinet-nav-scroll';
 export function CabinetShellServer({
   user,
   navGroups,
-  title,
-  subtitle,
-  pathname,
+  appTitle,
+  subtitleFallback,
   children,
 }: {
   user: PublicUser;
   navGroups: NavGroup[];
-  title: string;
-  subtitle: string;
-  pathname: string;
+  appTitle: string;
+  subtitleFallback: string;
   children: React.ReactNode;
 }) {
+  // Читаем путь реактивно на клиенте: этот шелл — общий layout для всех страниц
+  // /app/*, и при переходах между ними Next.js не перерендеривает layout заново
+  // (переиспользует прошлый рендер сервера), поэтому пропс с "путём" всегда был
+  // бы заморожен на моменте первой загрузки. usePathname() же обновляется сразу
+  // при любой клиентской навигации — так шапка и подсветка пункта меню синхронны
+  // с реально отображаемым разделом.
+  const pathname = usePathname();
+  const title = titleForCabinetPath(pathname);
+  const subtitle = subtitleForCabinetPath(pathname, appTitle, subtitleFallback);
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [topbarHidden, setTopbarHidden] = useState(false);

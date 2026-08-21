@@ -1,4 +1,35 @@
 
+input[type="file"].input::file-selector-button,
+.input[type="file"]::file-selector-button,
+input[type="file"].input::-webkit-file-upload-button,
+.input[type="file"]::-webkit-file-upload-button{
+  appearance:none; -webkit-appearance:none;
+  margin:0 12px 0 0;
+  padding:7px 12px;
+  border:1px solid var(--border);
+  border-radius:9px;
+  background:var(--bg-card-2);
+  color:var(--text-heading);
+  font:inherit;
+  font-size:12.5px;
+  font-weight:700;
+  cursor:pointer;
+}
+input[type="file"].input::file-selector-button:hover,
+.input[type="file"]::file-selector-button:hover,
+input[type="file"].input::-webkit-file-upload-button:hover,
+.input[type="file"]::-webkit-file-upload-button:hover{
+  background:var(--bg-hover);
+  border-color:var(--border-strong);
+}
+.file-pick{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:8px 12px; border-radius:9px;
+  border:1px solid var(--border); background:var(--bg-card-2);
+  color:var(--text-heading); font-size:12.5px; font-weight:700; cursor:pointer;
+}
+.file-pick:hover{ background:var(--bg-hover); }
+.file-pick input[type="file"]{ position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; }
 textarea.input{ resize:vertical; min-height:110px; line-height:1.6; }
 textarea.input.input-compact{ min-height:56px; line-height:1.4; }
 .input:focus, textarea.input:focus, select.input:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
@@ -281,39 +312,3 @@ a.top-row-link:hover{ background:var(--bg-card-2); }
   background:var(--accent); border-color:var(--accent);
   box-shadow:0 0 0 3px var(--accent-soft);
 }
-.role-check-item input[type="checkbox"]:checked::after,
-.field .role-check-item input[type="checkbox"]:checked::after,
-.qform-check-label input[type="checkbox"]:checked::after,
-.perm-flag input[type="checkbox"]:checked::after,
-.field .perm-flag input[type="checkbox"]:checked::after,
-.gmp-staff-row input[type="checkbox"]:checked::after,
-.field .gmp-staff-row input[type="checkbox"]:checked::after,
-.gmp-table input[type="checkbox"]:checked::after,
-.payout-table input[type="checkbox"]:checked::after,
-.payout-rep-toggle input[type="checkbox"]:checked::after{
-  content:""; position:absolute; left:5px; top:1px;
-  width:5px; height:9px; border:solid #fff; border-width:0 2px 2px 0;
-  transform:rotate(45deg);
-}
-.role-check-item input[type="checkbox"]:disabled,
-.field .role-check-item input[type="checkbox"]:disabled,
-.qform-check-label input[type="checkbox"]:disabled,
-.perm-flag input[type="checkbox"]:disabled,
-.field .perm-flag input[type="checkbox"]:disabled,
-.gmp-staff-row input[type="checkbox"]:disabled,
-.field .gmp-staff-row input[type="checkbox"]:disabled,
-.gmp-table input[type="checkbox"]:disabled,
-.payout-table input[type="checkbox"]:disabled,
-.payout-rep-toggle input[type="checkbox"]:disabled{
-  opacity:.45; cursor:not-allowed;
-}
-.error-text{ color:var(--red); font-size:12.5px; min-height:1.3em; margin:2px 0 6px; }
-
-/* Markdown-редактор (жирный/курсив/зачёркнутый/заголовок/списки/цитата/код +
-   ссылка на Discord + переключатель Написать/Просмотр) — см.
-   public/js/markdownEditor.js. Панель сверху, поле ввода снизу — оформлены
-   как единый блок в стиле .input, чтобы не выбиваться из остальных форм. */
-.mde{
-  border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--bg-input);
-}
-.mde:focus-within{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
