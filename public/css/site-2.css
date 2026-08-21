@@ -154,6 +154,17 @@ select.input option, select.input optgroup{
   display:flex; align-items:center; justify-content:center;
   color:var(--accent-light); font-size:18px;
 }
+/* Увеличенная превью-картинка для списка пропов (вкладка "Пропы") —
+   отдельные классы, чтобы не менять размер иконок достижений (.ach-icon). */
+.prop-icon-wrap{ width:64px; height:64px; flex-shrink:0; }
+.prop-icon{
+  width:64px; height:64px; border-radius:12px; object-fit:cover;
+  border:1px solid var(--border); background:var(--bg-input); display:block;
+}
+.prop-icon-empty{
+  display:flex; align-items:center; justify-content:center;
+  color:var(--accent-light); font-size:24px;
+}
 .ach-subtabs{ flex-wrap:wrap; }
 .ach-card-list{ display:flex; flex-direction:column; gap:10px; }
 .ach-card{

@@ -99,11 +99,11 @@ export function PropsInteractive({
       <ErrorText value={error} />
       {filtered.map((item) => (
         <div className="roster-row" key={item.id}>
-          <div className="ach-icon-wrap">
+          <div className="prop-icon-wrap">
             {item.image_id ? (
-              <img src={`/media/${item.image_id}`} alt="" className="ach-icon" />
+              <img src={`/media/${item.image_id}`} alt="" className="prop-icon" />
             ) : (
-              <span className="ach-icon ach-icon-empty"><NavIcon name="image" /></span>
+              <span className="prop-icon prop-icon-empty"><NavIcon name="image" /></span>
             )}
           </div>
           <div className="who">
