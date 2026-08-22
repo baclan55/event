@@ -9,6 +9,7 @@ import {
   ensurePayoutWeek,
   recomputeRowEvents,
   rebuildPayoutWeekRows,
+  setManualPayoutCounts,
   sqlWeekStart,
   writePayoutLog,
 } from '@/lib/payouts';
@@ -196,9 +197,23 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
       [weekId],
     );
     if (!week.rows[0]) return jsonError('Неделя не найдена.', 404);
-    if (week.rows[0].status === 'locked') return jsonError('Неделя заблокирована.', 400);
 
     const action = String(body.action || 'update_row');
+
+    // Разблокировку нужно пропускать даже для заблокированной недели — иначе снять
+    // блокировку станет невозможно (общая проверка ниже отклоняет любое действие).
+    if (action === 'unlock') {
+      await query(
+        `UPDATE payout_weeks SET status='ready', locked_at=NULL, locked_by=NULL, updated_at=now() WHERE id=$1`,
+        [weekId],
+      );
+      await writePayoutLog(weekId, user.id, 'week.unlock', {
+        summary: 'Неделя выплат снова открыта для правок',
+      });
+      return ok({ status: 'ready' });
+    }
+
+    if (week.rows[0].status === 'locked') return jsonError('Неделя заблокирована.', 400);
 
     if (action === 'lock') {
       await query(
@@ -209,17 +224,6 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
         summary: 'Неделя выплат закрыта для правок',
       });
       return ok({ status: 'locked' });
-    }
-
-    if (action === 'unlock') {
-      await query(
-        `UPDATE payout_weeks SET status='ready', locked_at=NULL, locked_by=NULL, updated_at=now() WHERE id=$1`,
-        [weekId],
-      );
-      await writePayoutLog(weekId, user.id, 'week.unlock', {
-        summary: 'Неделя выплат снова открыта для правок',
-      });
-      return ok({ status: 'ready' });
     }
 
     if (action === 'add_user') {
@@ -371,6 +375,23 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
       if (!current.rows[0]) return jsonError('Строка не найдена.', 404);
       const beforeRow = current.rows[0];
 
+      // МП/ГМП — ручной ввод количества: пересчитывает «за мероприятия» по ставкам
+      // текущей роли строки и помечает счётчики как изменённые вручную (не сбрасываются
+      // автопересборкой недели, только явным «Сбросить правки»).
+      const hasMpCount = body.mp_count != null || body.mpCount != null;
+      const hasGmpCount = body.gmp_count != null || body.gmpCount != null;
+      let manualCounts: Awaited<ReturnType<typeof setManualPayoutCounts>> = null;
+      if (hasMpCount || hasGmpCount) {
+        manualCounts = await setManualPayoutCounts(
+          rowId,
+          {
+            mpCount: hasMpCount ? n(body.mp_count ?? body.mpCount) : undefined,
+            gmpCount: hasGmpCount ? n(body.gmp_count ?? body.gmpCount) : undefined,
+          },
+          user.id,
+        );
+      }
+
       const fields: string[] = [];
       const values: unknown[] = [];
       const changes: Array<{ field: string; label: string; before: unknown; after: unknown }> = [];
@@ -421,12 +442,6 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
             || body.includeInPayout === 'true',
         );
       }
-      if (body.mp_count != null || body.mpCount != null) {
-        push('mp_count', Math.max(0, Math.floor(n(body.mp_count ?? body.mpCount))));
-      }
-      if (body.gmp_count != null || body.gmpCount != null) {
-        push('gmp_count', Math.max(0, Math.floor(n(body.gmp_count ?? body.gmpCount))));
-      }
       if (body.role_name != null || body.roleName != null) {
         push('role_name', String(body.role_name ?? body.roleName ?? ''));
       }
@@ -443,18 +458,20 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
         );
       }
 
-      if (!fields.length) return jsonError('Нет полей для обновления.', 400);
-      values.push(rowId, weekId);
-      await query(
-        `UPDATE payout_rows SET ${fields.join(', ')} WHERE id=$${values.length - 1} AND week_id=$${values.length}`,
-        values,
-      );
-      await writePayoutLog(weekId, user.id, 'row.update', {
-        rowId,
-        nickname: beforeRow.nickname,
-        changes: changes.filter((c) => c.field !== 'events_override'),
-      });
-      return ok({ updated: true });
+      if (!fields.length && !manualCounts) return jsonError('Нет полей для обновления.', 400);
+      if (fields.length) {
+        values.push(rowId, weekId);
+        await query(
+          `UPDATE payout_rows SET ${fields.join(', ')} WHERE id=$${values.length - 1} AND week_id=$${values.length}`,
+          values,
+        );
+        await writePayoutLog(weekId, user.id, 'row.update', {
+          rowId,
+          nickname: beforeRow.nickname,
+          changes: changes.filter((c) => c.field !== 'events_override'),
+        });
+      }
+      return ok({ updated: true, ...(manualCounts ? { row: manualCounts } : {}) });
     }
 
     if (action === 'delete_row') {
@@ -516,12 +533,16 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
       events_mc: number;
       events_dollars: number;
       events_override: boolean;
+      mp_count_override: boolean;
+      gmp_count_override: boolean;
       count_verbal: boolean;
       count_strict: boolean;
       breakdown: unknown;
     }>(
       `SELECT id, user_id, nickname, role_name, role_color, mp_count, gmp_count,
               events_mc, events_dollars, events_override,
+              COALESCE(mp_count_override, FALSE) AS mp_count_override,
+              COALESCE(gmp_count_override, FALSE) AS gmp_count_override,
               COALESCE(count_verbal, TRUE) AS count_verbal,
               COALESCE(count_strict, TRUE) AS count_strict,
               breakdown
@@ -561,6 +582,8 @@ export const handlePayouts: ApiHandler = async ({ key, params, method, body, req
         eventsMc: n(r.events_mc),
         eventsDollars: n(r.events_dollars),
         eventsOverride: !!r.events_override,
+        mpCountOverride: !!r.mp_count_override,
+        gmpCountOverride: !!r.gmp_count_override,
       },
       breakdown: computed.breakdown,
       computedTotals: {

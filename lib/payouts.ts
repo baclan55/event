@@ -332,6 +332,134 @@ export async function computeUserPayoutForWeek(
   };
 }
 
+/** Пересчитать «за мероприятия» по заданным МП/ГМП и ставкам конкретной роли (используется при ручном изменении счётчиков). */
+async function payoutForCounts(
+  roleId: number | null,
+  mpCount: number,
+  gmpCount: number,
+  opts: { countVerbal: boolean; countStrict: boolean; verbalCount: number; strictCount: number },
+  settingsMap?: Map<number, PayoutRoleSettings>,
+): Promise<{ variableMc: number; variableDollars: number; eligible: boolean }> {
+  const settings = settingsMap || (await loadRoleSettingsMap());
+  const cfg = (roleId ? settings.get(roleId) : undefined) || emptySettings(roleId || 0);
+  const eligible = mpCount >= cfg.min_mp;
+  let variableMc = 0;
+  let variableDollars = 0;
+  if (eligible) {
+    const rawMc = mpCount * cfg.mp_rate_mc + gmpCount * cfg.gmp_rate_mc;
+    const rawDollars = mpCount * cfg.mp_rate_dollars + gmpCount * cfg.gmp_rate_dollars;
+    let penaltyPct = 0;
+    if (opts.countVerbal) penaltyPct += opts.verbalCount * cfg.verbal_penalty_pct;
+    if (opts.countStrict) penaltyPct += opts.strictCount * cfg.strict_penalty_pct;
+    penaltyPct = Math.min(100, Math.max(0, penaltyPct));
+    const factor = 1 - penaltyPct / 100;
+    variableMc = roundMoney(rawMc * factor);
+    variableDollars = roundMoney(rawDollars * factor);
+  }
+  return { variableMc, variableDollars, eligible };
+}
+
+export type ManualCountPatch = { mpCount?: number; gmpCount?: number };
+
+export type ManualCountResult = {
+  mp_count: number;
+  gmp_count: number;
+  mp_count_override: boolean;
+  gmp_count_override: boolean;
+  events_mc: number;
+  events_dollars: number;
+};
+
+/**
+ * Вручную задать количество МП и/или ГМП в строке выплаты.
+ * Пересчитывает «за мероприятия» по ставкам текущей роли строки и помечает
+ * счётчик(и) как изменённые вручную, чтобы автопересборка недели их не затирала.
+ */
+export async function setManualPayoutCounts(
+  rowId: number,
+  patch: ManualCountPatch,
+  actorId?: number | null,
+): Promise<ManualCountResult | null> {
+  const { rows } = await query<{
+    id: number;
+    week_id: number;
+    role_id: number | null;
+    mp_count: number;
+    gmp_count: number;
+    mp_count_override: boolean;
+    gmp_count_override: boolean;
+    count_verbal: boolean;
+    count_strict: boolean;
+    nickname: string;
+  }>(
+    `SELECT id, week_id, role_id, mp_count, gmp_count,
+            COALESCE(mp_count_override, FALSE) AS mp_count_override,
+            COALESCE(gmp_count_override, FALSE) AS gmp_count_override,
+            COALESCE(count_verbal, TRUE) AS count_verbal,
+            COALESCE(count_strict, TRUE) AS count_strict,
+            nickname
+     FROM payout_rows WHERE id=$1`,
+    [rowId],
+  );
+  const row = rows[0];
+  if (!row) return null;
+
+  const hasMp = patch.mpCount != null;
+  const hasGmp = patch.gmpCount != null;
+  const nextMpCount = hasMp ? Math.max(0, Math.floor(num(patch.mpCount))) : Number(row.mp_count);
+  const nextGmpCount = hasGmp ? Math.max(0, Math.floor(num(patch.gmpCount))) : Number(row.gmp_count);
+  const nextMpOverride = hasMp ? true : row.mp_count_override;
+  const nextGmpOverride = hasGmp ? true : row.gmp_count_override;
+
+  const reps = await query<{ type: string; counted: boolean }>(
+    `SELECT type, COALESCE(counted, TRUE) AS counted FROM payout_row_reprimands WHERE row_id=$1`,
+    [rowId],
+  );
+  const verbalCount = reps.rows.filter((r) => r.type === 'verbal' && r.counted).length;
+  const strictCount = reps.rows.filter((r) => r.type === 'strict' && r.counted).length;
+
+  const { variableMc, variableDollars } = await payoutForCounts(
+    row.role_id,
+    nextMpCount,
+    nextGmpCount,
+    { countVerbal: row.count_verbal, countStrict: row.count_strict, verbalCount, strictCount },
+  );
+
+  await query(
+    `UPDATE payout_rows SET
+       mp_count=$2, gmp_count=$3,
+       mp_count_override=$4, gmp_count_override=$5,
+       events_mc=$6, events_dollars=$7, events_override=TRUE
+     WHERE id=$1`,
+    [rowId, nextMpCount, nextGmpCount, nextMpOverride, nextGmpOverride, variableMc, variableDollars],
+  );
+
+  const changes: Array<{ field: string; label: string; before: unknown; after: unknown }> = [];
+  if (hasMp && Number(row.mp_count) !== nextMpCount) {
+    changes.push({ field: 'mp_count', label: 'МП', before: row.mp_count, after: nextMpCount });
+  }
+  if (hasGmp && Number(row.gmp_count) !== nextGmpCount) {
+    changes.push({ field: 'gmp_count', label: 'ГМП', before: row.gmp_count, after: nextGmpCount });
+  }
+  await writePayoutLog(row.week_id, actorId ?? null, 'row.manual_counts', {
+    rowId,
+    nickname: row.nickname,
+    changes,
+    eventsMc: variableMc,
+    eventsDollars: variableDollars,
+    summary: `${row.nickname}: МП/ГМП изменены вручную → ${variableMc} MC / ${variableDollars} $`,
+  });
+
+  return {
+    mp_count: nextMpCount,
+    gmp_count: nextGmpCount,
+    mp_count_override: nextMpOverride,
+    gmp_count_override: nextGmpOverride,
+    events_mc: variableMc,
+    events_dollars: variableDollars,
+  };
+}
+
 async function helperUserIdsForWeek(_weekStart: string): Promise<number[]> {
   const { rows } = await query<{ id: number }>(
     `SELECT DISTINCT u.id
@@ -431,10 +559,14 @@ export async function rebuildPayoutWeekRows(
       static_id: string;
       count_verbal: boolean;
       count_strict: boolean;
+      mp_count_override: boolean;
+      gmp_count_override: boolean;
     }>(
       `SELECT id, events_override, static_id,
               COALESCE(count_verbal, TRUE) AS count_verbal,
-              COALESCE(count_strict, TRUE) AS count_strict
+              COALESCE(count_strict, TRUE) AS count_strict,
+              COALESCE(mp_count_override, FALSE) AS mp_count_override,
+              COALESCE(gmp_count_override, FALSE) AS gmp_count_override
        FROM payout_rows WHERE week_id=$1 AND user_id=$2`,
       [weekId, userId],
     );
@@ -467,6 +599,8 @@ export async function rebuildPayoutWeekRows(
     if (existing.rows[0]) {
       const row = existing.rows[0];
       const skipEvents = row.events_override && !opts.forceAll;
+      const skipMpCount = row.mp_count_override && !opts.forceAll;
+      const skipGmpCount = row.gmp_count_override && !opts.forceAll;
       await query(
         `UPDATE payout_rows SET
            role_id = $2,
@@ -474,12 +608,14 @@ export async function rebuildPayoutWeekRows(
            role_color = $4,
            nickname = $5,
            static_id = CASE WHEN $6 = '' THEN static_id ELSE $6 END,
-           mp_count = $7,
-           gmp_count = $8,
+           mp_count = CASE WHEN $18 THEN mp_count ELSE $7 END,
+           gmp_count = CASE WHEN $19 THEN gmp_count ELSE $8 END,
            breakdown = $9::jsonb,
            events_mc = CASE WHEN $10 THEN events_mc ELSE $11 END,
            events_dollars = CASE WHEN $10 THEN events_dollars ELSE $12 END,
            events_override = CASE WHEN $13 THEN FALSE ELSE events_override END,
+           mp_count_override = CASE WHEN $13 THEN FALSE ELSE mp_count_override END,
+           gmp_count_override = CASE WHEN $13 THEN FALSE ELSE gmp_count_override END,
            count_verbal = $14,
            count_strict = $15,
            fixed_mc = $16,
@@ -503,6 +639,8 @@ export async function rebuildPayoutWeekRows(
           countStrict,
           computed.fixed_mc,
           computed.fixed_dollars,
+          skipMpCount,
+          skipGmpCount,
         ],
       );
 
@@ -603,8 +741,16 @@ export async function recomputeRowEvents(rowId: number, actorId?: number | null)
     week_id: number;
     user_id: number;
     week_start: string;
+    role_id: number | null;
+    mp_count: number;
+    gmp_count: number;
+    mp_count_override: boolean;
+    gmp_count_override: boolean;
   }>(
-    `SELECT pr.id, pr.week_id, pr.user_id, pw.week_start::text AS week_start
+    `SELECT pr.id, pr.week_id, pr.user_id, pw.week_start::text AS week_start,
+            pr.role_id, pr.mp_count, pr.gmp_count,
+            COALESCE(pr.mp_count_override, FALSE) AS mp_count_override,
+            COALESCE(pr.gmp_count_override, FALSE) AS gmp_count_override
      FROM payout_rows pr
      JOIN payout_weeks pw ON pw.id = pr.week_id
      WHERE pr.id = $1`,
@@ -621,6 +767,45 @@ export async function recomputeRowEvents(rowId: number, actorId?: number | null)
   // Только отмеченные галочками выговоры: устный −N×%, строгий −N×%.
   const verbalCount = reps.rows.filter((r) => r.type === 'verbal' && r.counted).length;
   const strictCount = reps.rows.filter((r) => r.type === 'strict' && r.counted).length;
+
+  // Если МП и/или ГМП изменены вручную — используем эти значения и ставки
+  // текущей роли строки, не трогая счётчики и не запуская автопоиск событий.
+  if (row.mp_count_override || row.gmp_count_override) {
+    const settingsMap = await loadRoleSettingsMap();
+    const cfg = (row.role_id ? settingsMap.get(row.role_id) : undefined) || emptySettings(row.role_id || 0);
+    const { variableMc, variableDollars } = await payoutForCounts(
+      row.role_id,
+      row.mp_count,
+      row.gmp_count,
+      { countVerbal: true, countStrict: true, verbalCount, strictCount },
+      settingsMap,
+    );
+    await query(
+      `UPDATE payout_rows SET events_mc=$2, events_dollars=$3, events_override=TRUE WHERE id=$1`,
+      [rowId, variableMc, variableDollars],
+    );
+    await writePayoutLog(row.week_id, actorId ?? null, 'row.recompute', {
+      rowId,
+      userId: row.user_id,
+      verbalCount,
+      strictCount,
+      eventsMc: variableMc,
+      eventsDollars: variableDollars,
+      summary: `Пересчёт (МП/ГМП вручную): уст.${verbalCount}, стр.${strictCount} → ${variableMc} MC / ${variableDollars} $`,
+    });
+    return {
+      events_mc: variableMc,
+      events_dollars: variableDollars,
+      fixed_mc: roundMoney(cfg.fixed_mc),
+      fixed_dollars: roundMoney(cfg.fixed_dollars),
+      mp_count: row.mp_count,
+      gmp_count: row.gmp_count,
+      breakdown: undefined,
+      verbalCount,
+      strictCount,
+    };
+  }
+
   const computed = await computeUserPayoutForWeek(row.user_id, row.week_start, {
     countVerbal: true,
     countStrict: true,

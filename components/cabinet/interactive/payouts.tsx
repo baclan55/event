@@ -362,8 +362,8 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
 
   async function rebuild(force: boolean) {
     if (!(await askConfirm(force
-      ? 'Полный сброс: пересчитать всё, включая вручную изменённые суммы «за мероприятия»?'
-      : 'Пересобрать автополя? Ручные правки сумм «за мероприятия» сохранятся.', {
+      ? 'Полный сброс: пересчитать всё, включая вручную изменённые суммы «за мероприятия» и МП/ГМП?'
+      : 'Пересобрать автополя? Ручные правки сумм «за мероприятия» и МП/ГМП сохранятся.', {
       title: 'Пересборка',
       confirmLabel: force ? 'Сбросить и пересчитать' : 'Пересобрать',
       danger: force,
@@ -532,24 +532,58 @@ export function PayoutWeekInteractive({ weekId }: { weekId: number }) {
                     />
                   </td>
                   <td className="payout-num">
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm payout-count-btn"
-                      title="Разбор расчёта"
-                      onClick={() => void openDetail(row)}
-                    >
-                      {row.mp_count}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                      <input
+                        className="input"
+                        style={{ width: 46, padding: '4px 6px', textAlign: 'center' }}
+                        type="number"
+                        step={1}
+                        min={0}
+                        disabled={!canEdit || locked}
+                        title={row.mp_count_override ? 'МП изменено вручную' : 'МП (авто по мероприятиям)'}
+                        value={String(row.mp_count ?? 0)}
+                        onChange={(e) => setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, mp_count: e.target.value } : r)))}
+                        onBlur={(e) => void patchRow(Number(row.id), { mp_count: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm payout-count-btn"
+                        title="Разбор расчёта"
+                        onClick={() => void openDetail(row)}
+                      >
+                        <NavIcon name="history" />
+                      </button>
+                    </div>
+                    {row.mp_count_override ? (
+                      <div className="field-hint" style={{ textAlign: 'center', marginTop: 2 }}>вручную</div>
+                    ) : null}
                   </td>
                   <td className="payout-num">
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm payout-count-btn"
-                      title="Разбор расчёта"
-                      onClick={() => void openDetail(row)}
-                    >
-                      {row.gmp_count}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                      <input
+                        className="input"
+                        style={{ width: 46, padding: '4px 6px', textAlign: 'center' }}
+                        type="number"
+                        step={1}
+                        min={0}
+                        disabled={!canEdit || locked}
+                        title={row.gmp_count_override ? 'ГМП изменено вручную' : 'ГМП (авто по мероприятиям)'}
+                        value={String(row.gmp_count ?? 0)}
+                        onChange={(e) => setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, gmp_count: e.target.value } : r)))}
+                        onBlur={(e) => void patchRow(Number(row.id), { gmp_count: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm payout-count-btn"
+                        title="Разбор расчёта"
+                        onClick={() => void openDetail(row)}
+                      >
+                        <NavIcon name="history" />
+                      </button>
+                    </div>
+                    {row.gmp_count_override ? (
+                      <div className="field-hint" style={{ textAlign: 'center', marginTop: 2 }}>вручную</div>
+                    ) : null}
                   </td>
                   <td className="payout-reps">
                     <label className="payout-rep-toggle" title="Устный: −50% к сумме за мероприятия за каждый учтённый">
@@ -797,7 +831,13 @@ function PayoutBreakdownView({ detail }: { detail: Row }) {
           <div>Фикс роли начисляется всегда, даже при 0 МП.</div>
         )}
         {penaltyBits.length > 0 && <div>Штрафы: {penaltyBits.join(', ')}</div>}
-        {row.eventsOverride ? (
+        {(row.mpCountOverride || row.gmpCountOverride) ? (
+          <div className="field-hint">
+            МП/ГМП изменены вручную: в ведомости МП {row.mpCount} · ГМП {row.gmpCount}
+            {' '}(автосчёт по мероприятиям: МП {totals.mpCount ?? 0} · ГМП {totals.gmpCount ?? 0}).
+            {' '}Начислено за МП/ГМП: {row.eventsMc ?? 0} MC / {row.eventsDollars ?? 0}$.
+          </div>
+        ) : row.eventsOverride ? (
           <div className="field-hint">В ведомости суммы «за мероприятия» изменены вручную ({row.eventsMc} MC / {row.eventsDollars}$).</div>
         ) : null}
       </div>

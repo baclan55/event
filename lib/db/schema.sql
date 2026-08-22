@@ -650,6 +650,9 @@ ALTER TABLE payout_rows ADD COLUMN IF NOT EXISTS count_verbal BOOLEAN NOT NULL D
 ALTER TABLE payout_rows ADD COLUMN IF NOT EXISTS count_strict BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE payout_rows ADD COLUMN IF NOT EXISTS fixed_mc NUMERIC(12, 2) NOT NULL DEFAULT 0;
 ALTER TABLE payout_rows ADD COLUMN IF NOT EXISTS fixed_dollars NUMERIC(12, 2) NOT NULL DEFAULT 0;
+-- Ручное изменение количества МП/ГМП в ведомости (не затирается автопересборкой недели).
+ALTER TABLE payout_rows ADD COLUMN IF NOT EXISTS mp_count_override BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE payout_rows ADD COLUMN IF NOT EXISTS gmp_count_override BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_payout_rows_week ON payout_rows(week_id);
 
 CREATE TABLE IF NOT EXISTS payout_row_reprimands (

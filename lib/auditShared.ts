@@ -59,6 +59,7 @@ export const AUDIT_LABELS: Record<string, string> = {
   'row.update': 'Изменена строка выплаты',
   'row.delete': 'Сотрудник удалён из ведомости',
   'row.recompute': 'Пересчитана строка выплаты',
+  'row.manual_counts': 'МП/ГМП изменены вручную',
   'reprimand.type_toggle': 'Учёт выговоров в выплате',
   'reprimand.toggle': 'Учёт выговора в выплате',
 };
