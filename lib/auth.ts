@@ -1,6 +1,9 @@
 import { query } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import {
+  contentAdministratorCapsFromRole,
+  contentHelperCapsFromRole,
+  contentSectionCapsFromRole,
   editPermissionsFromRole,
   eventCapsFromRole,
   gmpCapsFromRole,
@@ -11,6 +14,7 @@ import {
   userHasAnyRole,
   userHasPermission,
   userHasRoleIn,
+  type ContentSection,
   type EventCap,
   type GmpCap,
   type Permission,
@@ -72,6 +76,9 @@ export type DbUser = RoleUser & {
   statsCaps: StatsCap[];
   profileViewCaps: ProfileViewCap[];
   profileOwnViewCaps: ProfileViewCap[];
+  contentSectionCaps: ContentSection[];
+  contentHelperCaps: ContentSection[];
+  contentAdministratorCaps: ContentSection[];
   is_event_helper?: boolean;
   is_administrator?: boolean;
   dashboard_blocks?: Record<DashboardBlock, boolean>;
@@ -156,6 +163,36 @@ function aggregateProfileOwnViewCaps(roles: DbRole[]): ProfileViewCap[] {
   return [...set];
 }
 
+function aggregateContentSectionCaps(roles: DbRole[]): ContentSection[] {
+  const set = new Set<ContentSection>();
+  for (const role of roles) {
+    for (const section of contentSectionCapsFromRole(role.name, role.permissions)) {
+      set.add(section);
+    }
+  }
+  return [...set];
+}
+
+function aggregateContentHelperCaps(roles: DbRole[]): ContentSection[] {
+  const set = new Set<ContentSection>();
+  for (const role of roles) {
+    for (const section of contentHelperCapsFromRole(role.name, role.permissions)) {
+      set.add(section);
+    }
+  }
+  return [...set];
+}
+
+function aggregateContentAdministratorCaps(roles: DbRole[]): ContentSection[] {
+  const set = new Set<ContentSection>();
+  for (const role of roles) {
+    for (const section of contentAdministratorCapsFromRole(role.name, role.permissions)) {
+      set.add(section);
+    }
+  }
+  return [...set];
+}
+
 function aggregateRoleFlags(roles: DbRole[]) {
   let isEventHelper = false;
   let isAdministrator = false;
@@ -205,6 +242,15 @@ function cloneUser(user: DbUser): DbUser {
   const profileOwnViewCaps = Array.isArray(user.profileOwnViewCaps)
     ? [...user.profileOwnViewCaps]
     : aggregateProfileOwnViewCaps(roles);
+  const contentSectionCaps = Array.isArray(user.contentSectionCaps)
+    ? [...user.contentSectionCaps]
+    : aggregateContentSectionCaps(roles);
+  const contentHelperCaps = Array.isArray(user.contentHelperCaps)
+    ? [...user.contentHelperCaps]
+    : aggregateContentHelperCaps(roles);
+  const contentAdministratorCaps = Array.isArray(user.contentAdministratorCaps)
+    ? [...user.contentAdministratorCaps]
+    : aggregateContentAdministratorCaps(roles);
   const flags = aggregateRoleFlags(roles);
   return {
     ...user,
@@ -217,6 +263,9 @@ function cloneUser(user: DbUser): DbUser {
     statsCaps,
     profileViewCaps,
     profileOwnViewCaps,
+    contentSectionCaps,
+    contentHelperCaps,
+    contentAdministratorCaps,
     is_event_helper: user.is_event_helper ?? flags.isEventHelper,
     is_administrator: user.is_administrator ?? flags.isAdministrator,
     dashboard_blocks: user.dashboard_blocks || flags.dashboardBlocks,
@@ -255,6 +304,15 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
   const profileOwnViewCaps = Array.isArray(u.profileOwnViewCaps)
     ? u.profileOwnViewCaps
     : aggregateProfileOwnViewCaps(roles);
+  const contentSectionCaps = Array.isArray(u.contentSectionCaps)
+    ? u.contentSectionCaps
+    : aggregateContentSectionCaps(roles);
+  const contentHelperCaps = Array.isArray(u.contentHelperCaps)
+    ? u.contentHelperCaps
+    : aggregateContentHelperCaps(roles);
+  const contentAdministratorCaps = Array.isArray(u.contentAdministratorCaps)
+    ? u.contentAdministratorCaps
+    : aggregateContentAdministratorCaps(roles);
   const flags = aggregateRoleFlags(roles);
   const isEventHelper = u.is_event_helper ?? flags.isEventHelper;
   const isAdministrator = u.is_administrator ?? flags.isAdministrator;
@@ -284,6 +342,9 @@ export function publicUser(u: DbUser | null | undefined): PublicUser | null {
     statsCaps,
     profileViewCaps,
     profileOwnViewCaps,
+    contentSectionCaps,
+    contentHelperCaps,
+    contentAdministratorCaps,
     isBlocked: !!u.is_blocked,
     blockedAt: u.blocked_at || null,
     firstName,
@@ -357,6 +418,9 @@ export async function loadUserById(userId: number): Promise<DbUser | null> {
   user.statsCaps = aggregateStatsCaps(roles);
   user.profileViewCaps = aggregateProfileViewCaps(roles);
   user.profileOwnViewCaps = aggregateProfileOwnViewCaps(roles);
+  user.contentSectionCaps = aggregateContentSectionCaps(roles);
+  user.contentHelperCaps = aggregateContentHelperCaps(roles);
+  user.contentAdministratorCaps = aggregateContentAdministratorCaps(roles);
   const flags = aggregateRoleFlags(roles);
   user.is_event_helper = flags.isEventHelper;
   user.is_administrator = flags.isAdministrator;

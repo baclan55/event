@@ -3,11 +3,15 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
 import {
+  CONTENT_AUDIENCE_SECTIONS,
+  CONTENT_GENERAL_SECTIONS,
+  CONTENT_SECTION_LABELS,
   emptyPermissions,
   EVENT_CAP_LABELS,
   EVENT_CAPS,
   GMP_CAP_LABELS,
   GMP_CAPS,
+  normalizeContentAccess,
   normalizeEventsAccess,
   normalizeGmpAccess,
   normalizeProfileViewAccess,
@@ -20,6 +24,8 @@ import {
   STATS_CAP_LABELS,
   STATS_CAPS,
   VIEW_ONLY_PERMISSIONS,
+  type ContentPermissionAccess,
+  type ContentSection,
   type EventCap,
   type EventsPermissionAccess,
   type GmpCap,
@@ -194,6 +200,32 @@ export function RolesInteractive({
         for (const key of PROFILE_VIEW_CAPS) next[key] = next.others[key];
       }
       return { ...prev, view_profile: next };
+    });
+  }
+
+  function setContentSectionCap(section: ContentSection, value: boolean) {
+    setDraftPerms((prev) => {
+      const current = normalizeContentAccess(prev.edit_content);
+      const next: ContentPermissionAccess = {
+        ...current,
+        sections: { ...current.sections, [section]: value },
+      };
+      return { ...prev, edit_content: next };
+    });
+  }
+
+  function setContentAudienceCap(
+    audience: 'helper' | 'administrator',
+    section: ContentSection,
+    value: boolean,
+  ) {
+    setDraftPerms((prev) => {
+      const current = normalizeContentAccess(prev.edit_content);
+      const next: ContentPermissionAccess = {
+        ...current,
+        [audience]: { ...current[audience], [section]: value },
+      };
+      return { ...prev, edit_content: next };
     });
   }
 
@@ -592,6 +624,70 @@ export function RolesInteractive({
                               {STATS_CAP_LABELS[cap]}
                             </label>
                           ))}
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (key === 'edit_content') {
+                    const content = normalizeContentAccess(draftPerms.edit_content);
+                    return (
+                      <div className="perm-card perm-card-gmp" key={key}>
+                        <div className="perm-card-title">{PERMISSION_LABELS[key]}</div>
+
+                        <div className="perm-profile-scope">
+                          <div className="perm-profile-scope-title">Разделы</div>
+                          <div className="perm-card-flags">
+                            {CONTENT_GENERAL_SECTIONS.map((section) => (
+                              <label className="perm-flag" key={`sec-${section}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!content.sections[section]}
+                                  disabled={!canEdit}
+                                  onChange={(e) => setContentSectionCap(section, e.target.checked)}
+                                />
+                                {CONTENT_SECTION_LABELS[section]}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="perm-profile-scope">
+                          <div className="perm-profile-scope-title">Редактирование · Event Helper</div>
+                          <div className="perm-card-flags">
+                            {CONTENT_AUDIENCE_SECTIONS.map((section) => (
+                              <label className="perm-flag" key={`helper-${section}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!content.helper[section]}
+                                  disabled={!canEdit}
+                                  onChange={(e) => setContentAudienceCap('helper', section, e.target.checked)}
+                                />
+                                {CONTENT_SECTION_LABELS[section]}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="perm-profile-scope">
+                          <div className="perm-profile-scope-title">Редактирование · Event Administrator</div>
+                          <div className="perm-card-flags">
+                            {CONTENT_AUDIENCE_SECTIONS.map((section) => (
+                              <label className="perm-flag" key={`admin-${section}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!content.administrator[section]}
+                                  disabled={!canEdit}
+                                  onChange={(e) => setContentAudienceCap('administrator', section, e.target.checked)}
+                                />
+                                {CONTENT_SECTION_LABELS[section]}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="field-hint" style={{ marginTop: 8 }}>
+                          FAQ и Регламент показывают разный текст для Event Helper и Event Administrator — редактирование
+                          каждой версии выдаётся отдельно. Остальные разделы — общий текст на всех.
                         </div>
                       </div>
                     );

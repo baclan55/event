@@ -1,4 +1,4 @@
-import type { EventCap, GmpCap, Permission, ProfileViewCap, StatsCap } from '@/lib/roleAccess';
+import type { ContentSection, EventCap, GmpCap, Permission, ProfileViewCap, StatsCap } from '@/lib/roleAccess';
 import type { DashboardBlock } from '@/lib/roleMeta';
 
 /** Клиент-безопасный тип пользователя сессии (без server-only / db). */
@@ -24,6 +24,9 @@ export type PublicUser = {
   statsCaps: StatsCap[];
   profileViewCaps: ProfileViewCap[];
   profileOwnViewCaps: ProfileViewCap[];
+  contentSectionCaps: ContentSection[];
+  contentHelperCaps: ContentSection[];
+  contentAdministratorCaps: ContentSection[];
   isBlocked: boolean;
   blockedAt: string | null;
   firstName: string | null;

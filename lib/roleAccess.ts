@@ -123,6 +123,42 @@ export const EVENT_CAP_LABELS: Record<EventCap, string> = {
   delete: 'Удаление мероприятий',
 };
 
+/** Разделы, которыми управляет edit_content (страницы «Материалы» + «Состав»). */
+export const CONTENT_SECTIONS = [
+  'faq',
+  'rules',
+  'regulations',
+  'first_steps',
+  'roster',
+] as const;
+
+export type ContentSection = (typeof CONTENT_SECTIONS)[number];
+
+export const CONTENT_SECTION_LABELS: Record<ContentSection, string> = {
+  faq: 'FAQ',
+  rules: 'Правила МП',
+  regulations: 'Регламент',
+  first_steps: 'Первые шаги',
+  roster: 'Состав',
+};
+
+/** Разделы, где текст дополнительно делится на аудиторию Event Helper / Event Administrator. */
+export const CONTENT_AUDIENCE_SECTIONS: readonly ContentSection[] = ['faq', 'regulations'];
+
+/** Разделы без деления на аудиторию — обычная страница с одним текстом. */
+export const CONTENT_GENERAL_SECTIONS: readonly ContentSection[] = CONTENT_SECTIONS.filter(
+  (section) => !CONTENT_AUDIENCE_SECTIONS.includes(section),
+);
+
+export type ContentSectionCaps = Record<ContentSection, boolean>;
+
+/** Гранулярные права внутри edit_content: обычные разделы + отдельно Helper/Administrator версии. */
+export type ContentPermissionAccess = PermissionAccess & {
+  sections: ContentSectionCaps;
+  helper: ContentSectionCaps;
+  administrator: ContentSectionCaps;
+};
+
 /** Вкладки профиля (свой / чужой) — хранятся в permissions.view_profile. */
 export const PROFILE_VIEW_CAPS = [
   'reprimands',
@@ -258,6 +294,9 @@ export type RoleUser = {
   profileViewCaps?: ProfileViewCap[];
   profileOwnViewCaps?: ProfileViewCap[];
   statsCaps?: StatsCap[];
+  contentSectionCaps?: ContentSection[];
+  contentHelperCaps?: ContentSection[];
+  contentAdministratorCaps?: ContentSection[];
 };
 
 export function emptyPermissionAccess(): PermissionAccess {
@@ -355,6 +394,77 @@ export function normalizeEventsAccess(raw: unknown): EventsPermissionAccess {
 
 export function eventCapsFromAccess(access: EventsPermissionAccess): EventCap[] {
   return EVENT_CAPS.filter((cap) => access[cap]);
+}
+
+function emptyContentSectionCaps(): ContentSectionCaps {
+  return Object.fromEntries(CONTENT_SECTIONS.map((section) => [section, false])) as ContentSectionCaps;
+}
+
+export function emptyContentAccess(): ContentPermissionAccess {
+  return {
+    view: false,
+    edit: false,
+    sections: emptyContentSectionCaps(),
+    helper: emptyContentSectionCaps(),
+    administrator: emptyContentSectionCaps(),
+  };
+}
+
+/**
+ * Разделы без аудитории живут в sections{}, а FAQ/Регламент — отдельно в helper{}/administrator{},
+ * поэтому право редактировать «Event Helper»-версию FAQ можно выдать без права трогать «Event Administrator»-версию.
+ */
+export function normalizeContentAccess(raw: unknown): ContentPermissionAccess {
+  const base = normalizePermissionAccess(raw);
+  const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const caps = emptyContentAccess();
+  caps.view = base.view;
+
+  const hasSections = source.sections != null && typeof source.sections === 'object';
+  const hasHelper = source.helper != null && typeof source.helper === 'object';
+  const hasAdministrator = source.administrator != null && typeof source.administrator === 'object';
+  const hasExplicit = hasSections || hasHelper || hasAdministrator;
+
+  if (hasSections) {
+    const sections = source.sections as Record<string, unknown>;
+    for (const section of CONTENT_GENERAL_SECTIONS) caps.sections[section] = !!sections[section];
+  }
+  if (hasHelper) {
+    const helper = source.helper as Record<string, unknown>;
+    for (const section of CONTENT_AUDIENCE_SECTIONS) caps.helper[section] = !!helper[section];
+  }
+  if (hasAdministrator) {
+    const administrator = source.administrator as Record<string, unknown>;
+    for (const section of CONTENT_AUDIENCE_SECTIONS) caps.administrator[section] = !!administrator[section];
+  }
+
+  if (!hasExplicit && base.edit) {
+    // Legacy: было общее «Редактирование» на весь edit_content — открываем все разделы и обе аудитории.
+    for (const section of CONTENT_GENERAL_SECTIONS) caps.sections[section] = true;
+    for (const section of CONTENT_AUDIENCE_SECTIONS) {
+      caps.helper[section] = true;
+      caps.administrator[section] = true;
+    }
+  }
+
+  const anySection = CONTENT_GENERAL_SECTIONS.some((section) => caps.sections[section]);
+  const anyHelper = CONTENT_AUDIENCE_SECTIONS.some((section) => caps.helper[section]);
+  const anyAdministrator = CONTENT_AUDIENCE_SECTIONS.some((section) => caps.administrator[section]);
+  caps.edit = anySection || anyHelper || anyAdministrator;
+  caps.view = caps.view || caps.edit;
+  return caps;
+}
+
+export function contentSectionCapsFromAccess(access: ContentPermissionAccess): ContentSection[] {
+  return CONTENT_GENERAL_SECTIONS.filter((section) => access.sections[section]);
+}
+
+export function contentHelperCapsFromAccess(access: ContentPermissionAccess): ContentSection[] {
+  return CONTENT_AUDIENCE_SECTIONS.filter((section) => access.helper[section]);
+}
+
+export function contentAdministratorCapsFromAccess(access: ContentPermissionAccess): ContentSection[] {
+  return CONTENT_AUDIENCE_SECTIONS.filter((section) => access.administrator[section]);
 }
 
 export function emptyStatsAccess(): StatsPermissionAccess {
@@ -477,11 +587,13 @@ export function normalizeRolePermissions(raw: unknown): Record<Permission, Permi
         ? normalizeGmpAccess(source[key])
         : key === 'manage_events'
           ? normalizeEventsAccess(source[key])
-          : key === 'view_profile'
-            ? normalizeProfileViewAccess(source[key])
-            : key === 'view_statistics'
-              ? normalizeStatsAccess(source[key])
-              : normalizePermissionAccess(source[key]);
+          : key === 'edit_content'
+            ? normalizeContentAccess(source[key])
+            : key === 'view_profile'
+              ? normalizeProfileViewAccess(source[key])
+              : key === 'view_statistics'
+                ? normalizeStatsAccess(source[key])
+                : normalizePermissionAccess(source[key]);
       if (VIEW_ONLY_PERMISSIONS.has(key)) base[key].edit = false;
     } else if (key === 'manage_events') {
       // Раньше раздел был открыт всем с ролью — сохраняем просмотр до явной настройки.
@@ -506,11 +618,13 @@ function accessFromRole(name: string, rawPermissions: unknown): Record<Permissio
         ? normalizeGmpAccess({ view: true, edit: full })
         : key === 'manage_events'
           ? normalizeEventsAccess({ view: true, edit: full })
-          : key === 'view_profile'
-            ? normalizeProfileViewAccess(null, { legacyOpen: true })
-            : key === 'view_statistics'
-              ? normalizeStatsAccess({ view: true })
-              : { view: true, edit: full };
+          : key === 'edit_content'
+            ? normalizeContentAccess({ view: true, edit: full })
+            : key === 'view_profile'
+              ? normalizeProfileViewAccess(null, { legacyOpen: true })
+              : key === 'view_statistics'
+                ? normalizeStatsAccess({ view: true })
+                : { view: true, edit: full };
     } else if (key === 'manage_events') {
       result[key] = normalizeEventsAccess({ view: true });
     } else if (key === 'view_profile') {
@@ -561,6 +675,9 @@ export function roleCtxFromPublic(user: {
   profileViewCaps?: ProfileViewCap[];
   profileOwnViewCaps?: ProfileViewCap[];
   statsCaps?: StatsCap[];
+  contentSectionCaps?: ContentSection[];
+  contentHelperCaps?: ContentSection[];
+  contentAdministratorCaps?: ContentSection[];
 }): RoleUser {
   return {
     is_owner: !!user.isOwner,
@@ -572,7 +689,25 @@ export function roleCtxFromPublic(user: {
     profileViewCaps: user.profileViewCaps || [],
     profileOwnViewCaps: user.profileOwnViewCaps || [],
     statsCaps: user.statsCaps || [],
+    contentSectionCaps: user.contentSectionCaps || [],
+    contentHelperCaps: user.contentHelperCaps || [],
+    contentAdministratorCaps: user.contentAdministratorCaps || [],
   };
+}
+
+export function contentSectionCapsFromRole(name: string, rawPermissions: unknown): ContentSection[] {
+  const access = accessFromRole(name, rawPermissions);
+  return contentSectionCapsFromAccess(normalizeContentAccess(access.edit_content));
+}
+
+export function contentHelperCapsFromRole(name: string, rawPermissions: unknown): ContentSection[] {
+  const access = accessFromRole(name, rawPermissions);
+  return contentHelperCapsFromAccess(normalizeContentAccess(access.edit_content));
+}
+
+export function contentAdministratorCapsFromRole(name: string, rawPermissions: unknown): ContentSection[] {
+  const access = accessFromRole(name, rawPermissions);
+  return contentAdministratorCapsFromAccess(normalizeContentAccess(access.edit_content));
 }
 
 export function gmpCapsFromRole(name: string, rawPermissions: unknown): GmpCap[] {
@@ -712,6 +847,42 @@ export function userHasStatsCap(
     return true;
   }
   return false;
+}
+
+/** Право редактировать обычный (без аудитории) раздел контента: rules, first_steps, roster. */
+export function userHasContentSectionCap(
+  user: RoleUser | null | undefined,
+  section: ContentSection,
+): boolean {
+  if (!user) return false;
+  if (user.is_owner) return true;
+  if (Array.isArray(user.contentSectionCaps)) return user.contentSectionCaps.includes(section);
+  // Старые сессии без гранулярных caps — как раньше, по общему edit_content.
+  return userHasPermission(user, 'edit_content', 'edit');
+}
+
+/** Право редактировать Event Helper / Event Administrator версию текста FAQ или Регламента. */
+export function userHasContentAudienceCap(
+  user: RoleUser | null | undefined,
+  section: ContentSection,
+  audience: 'helper' | 'administrator',
+): boolean {
+  if (!user) return false;
+  if (user.is_owner) return true;
+  const list = audience === 'administrator' ? user.contentAdministratorCaps : user.contentHelperCaps;
+  if (Array.isArray(list)) return list.includes(section);
+  // Старые сессии без гранулярных caps — как раньше, по общему edit_content.
+  return userHasPermission(user, 'edit_content', 'edit');
+}
+
+/** Есть ли вообще какое-то право редактировать контент — используется для необязательных плюшек (напр. показ автора правки). */
+export function userHasAnyContentEditCap(user: RoleUser | null | undefined): boolean {
+  if (!user) return false;
+  if (user.is_owner) return true;
+  if (Array.isArray(user.contentSectionCaps) && user.contentSectionCaps.length) return true;
+  if (Array.isArray(user.contentHelperCaps) && user.contentHelperCaps.length) return true;
+  if (Array.isArray(user.contentAdministratorCaps) && user.contentAdministratorCaps.length) return true;
+  return userHasPermission(user, 'edit_content', 'edit');
 }
 
 export function userHasPermission(

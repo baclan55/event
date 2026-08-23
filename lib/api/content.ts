@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { jsonError } from '@/lib/auth';
-import { userHasPermission } from '@/lib/roleAccess';
+import {
+  CONTENT_AUDIENCE_SECTIONS,
+  userHasAnyContentEditCap,
+  userHasContentAudienceCap,
+  userHasContentSectionCap,
+  type ContentSection,
+} from '@/lib/roleAccess';
 import { saveImage } from '@/lib/images';
 import { renderBody, rawBodyForEdit, normalizeMarkdownSource } from '@/lib/richText';
 import { writeAudit } from '@/lib/audit';
@@ -35,7 +41,7 @@ export const handleContent: ApiHandler = async ({ key, request, params, method, 
     const canSeeAuthor = user.is_owner
       || user.is_admin
       || !!user.is_administrator
-      || userHasPermission(user, 'edit_content');
+      || userHasAnyContentEditCap(user);
     const section = params.section;
     if (!['faq', 'regulations', 'first_steps'].includes(section)) {
       return jsonError('Неизвестный раздел.', 404);
@@ -44,6 +50,15 @@ export const handleContent: ApiHandler = async ({ key, request, params, method, 
     const audience = ['helper', 'administrator', 'general'].includes(String(audienceValue))
       ? String(audienceValue)
       : 'general';
+    if (method !== 'GET') {
+      const contentSection = section as ContentSection;
+      const canEditSection = CONTENT_AUDIENCE_SECTIONS.includes(contentSection)
+        ? userHasContentAudienceCap(user, contentSection, audience === 'administrator' ? 'administrator' : 'helper')
+        : userHasContentSectionCap(user, contentSection);
+      if (!canEditSection) {
+        return jsonError('Недостаточно прав для редактирования этого раздела.', 403);
+      }
+    }
     if (key === 'content') {
       if (method === 'GET') {
         const result = await query<Record<string, unknown>>(
@@ -113,6 +128,9 @@ export const handleContent: ApiHandler = async ({ key, request, params, method, 
       ? await required()
       : await requiredPerm('edit_content', { level: 'edit' });
     if (user instanceof NextResponse) return user;
+    if (method !== 'GET' && !userHasContentSectionCap(user, 'rules')) {
+      return jsonError('Недостаточно прав для редактирования этого раздела.', 403);
+    }
     if (key === 'rules' && method === 'GET') {
       const result = await query<Record<string, unknown>>(
         `SELECT id,position,title,body,image_id,updated_at,

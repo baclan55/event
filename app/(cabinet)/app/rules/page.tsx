@@ -1,6 +1,6 @@
 import { loadRules, requirePortalUser } from '@/lib/cabinetData';
 import { RulesInteractive } from '@/components/cabinet/InteractiveCore';
-import { roleCtxFromPublic, userHasPermission } from '@/lib/roleAccess';
+import { roleCtxFromPublic, userHasContentSectionCap } from '@/lib/roleAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +10,7 @@ export default async function RulesPage() {
   return (
     <RulesInteractive
       initialRules={rules}
-      canEdit={userHasPermission(roleCtxFromPublic(user), 'edit_content', 'edit')}
+      canEdit={userHasContentSectionCap(roleCtxFromPublic(user), 'rules')}
     />
   );
 }

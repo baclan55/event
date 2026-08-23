@@ -5,7 +5,7 @@ import { query } from '@/lib/db';
 import { rawBodyForEdit, renderBody } from '@/lib/richText';
 import { getRolesForUsers } from '@/lib/roles';
 import { tierForPriority } from '@/lib/tier';
-import { roleCtxFromPublic, userHasPermission } from '@/lib/roleAccess';
+import { roleCtxFromPublic, userHasAnyContentEditCap, userHasPermission } from '@/lib/roleAccess';
 import { ADMIN_POINT_DECAY_DAYS, adminPointActive } from '@/lib/reprimandRules';
 import { DEFAULT_CLOSED_MESSAGE } from '@/lib/audit';
 import { abandonStaleOpenGathers } from '@/lib/discordGatherCleanup';
@@ -179,7 +179,7 @@ export async function loadContent(section: string, viewer?: PublicUser) {
     viewer.isOwner
     || viewer.isAdmin
     || viewer.isAdministrator
-    || userHasPermission(roleCtxFromPublic(viewer), 'edit_content')
+    || userHasAnyContentEditCap(roleCtxFromPublic(viewer))
   );
   const r = await query<Record<string, unknown>>(
     `SELECT c.audience, c.body, c.image_id, c.updated_at, u.nickname AS updated_by_name

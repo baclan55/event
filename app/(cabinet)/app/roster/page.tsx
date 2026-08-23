@@ -1,6 +1,6 @@
 import { loadRoster, requirePortalUser } from '@/lib/cabinetData';
 import { RosterInteractive } from '@/components/cabinet/InteractiveCore';
-import { roleCtxFromPublic, userHasPermission } from '@/lib/roleAccess';
+import { roleCtxFromPublic, userHasContentSectionCap, userHasPermission } from '@/lib/roleAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +13,7 @@ export default async function RosterPage() {
       initialMembers={data.members}
       roles={data.roles}
       target={data.target}
-      canEdit={userHasPermission(roleUser, 'edit_content', 'edit')}
+      canEdit={userHasContentSectionCap(roleUser, 'roster')}
       canViewProfiles
       canGrantOwner={userHasPermission(roleUser, 'grant_owner', 'edit')}
       actorRolePriority={user.rolePriority}

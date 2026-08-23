@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { invalidateUserCache, jsonError } from '@/lib/auth';
-import { userHasPermission } from '@/lib/roleAccess';
+import { userHasContentSectionCap, userHasPermission } from '@/lib/roleAccess';
 import { tierForPriority } from '@/lib/tier';
 import { getRolesForUsers, replaceUserRoles } from '@/lib/roles';
 import { writeAudit } from '@/lib/audit';
@@ -41,6 +41,9 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
       ? await required()
       : await requiredPerm('edit_content', { level: 'edit' });
     if (user instanceof NextResponse) return user;
+    if (!publicRequest && !userHasContentSectionCap(user, 'roster')) {
+      return jsonError('Недостаточно прав для редактирования этого раздела.', 403);
+    }
     if (key === 'roster-roles') {
       const result = await query('SELECT id,name,priority FROM roles ORDER BY priority');
       return NextResponse.json({ roles: result.rows });
@@ -70,7 +73,7 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
         target: null,
         roles: allRoles.rows,
         canGrantOwner: userHasPermission(user, 'grant_owner', 'edit'),
-        canEdit: userHasPermission(user, 'edit_content', 'edit'),
+        canEdit: userHasContentSectionCap(user, 'roster'),
         actorRolePriority: user.role_priority,
         actorIsOwner: !!user.is_owner,
       });

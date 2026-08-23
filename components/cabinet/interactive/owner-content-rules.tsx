@@ -81,13 +81,20 @@ export function ContentInteractive({
   title,
   initialBlocks,
   canEdit,
+  canEditHelper,
+  canEditAdministrator,
   splitByAudience = false,
   canViewAdministrator = false,
 }: {
   section: string;
   title: string;
   initialBlocks: Record<string, Row>;
-  canEdit: boolean;
+  /** Право редактирования для разделов без деления на аудиторию (первые шаги и т.п.). */
+  canEdit?: boolean;
+  /** Право редактировать версию «Event Helper» — для разделов с splitByAudience. */
+  canEditHelper?: boolean;
+  /** Право редактировать версию «Event Administrator» — для разделов с splitByAudience. */
+  canEditAdministrator?: boolean;
   splitByAudience?: boolean;
   canViewAdministrator?: boolean;
 }) {
@@ -97,6 +104,9 @@ export function ContentInteractive({
   const [error, setError] = useState('');
   const block = blocks[audience] || (audience === 'helper' ? blocks.general : undefined) || {};
   const hasAudienceTabs = splitByAudience && canViewAdministrator;
+  const canEditCurrent = splitByAudience
+    ? (audience === 'administrator' ? !!canEditAdministrator : !!canEditHelper)
+    : !!canEdit;
 
   async function reload() {
     const data = await request(`/api/content/${section}`);
@@ -132,7 +142,7 @@ export function ContentInteractive({
       <div className="card card-pad">
         <div className="card-header">
           {hasAudienceTabs ? <div className="segmented"><button className={audience === 'helper' ? 'active' : ''} onClick={() => setAudience('helper')}>Event Helper</button><button className={audience === 'administrator' ? 'active' : ''} onClick={() => setAudience('administrator')}>Event Administrator</button></div> : <h3>{splitByAudience ? 'Event Helper' : title}</h3>}
-          {canEdit && <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}><NavIcon name="edit" /> Редактировать</button>}
+          {canEditCurrent && <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}><NavIcon name="edit" /> Редактировать</button>}
         </div>
         {block.body ? <div className="md-body" dangerouslySetInnerHTML={{ __html: block.body }} /> : <div className="empty-state"><p>Текст пока не добавлен.</p></div>}
         {block.imageId && <div className="section-image"><img src={`/media/${block.imageId}`} alt="" /></div>}
