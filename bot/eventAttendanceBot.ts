@@ -10,6 +10,13 @@
 
 import { Client, GatewayIntentBits, Partials, Events } from 'discord.js';
 import { getRestAgent, resolveProxyUrl } from './outboundProxy';
+import {
+  resolveSyncIntervalMs,
+  resolveGuildId,
+  isLiveSyncEnabled,
+  runRoleSyncPass,
+  syncMemberByDiscordId,
+} from './roleSync';
 
 const DEFAULT_CHANNEL_ID = '1446581838100430878';
 const DEFAULT_SOURCE_BOT_ID = '1468289401795903690';
@@ -704,6 +711,7 @@ function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }
   let stopped = false;
   let timer = null;
   let tickRunning = false;
+  let lastRoleSyncAt = 0;
   const seen = new Map();
 
   async function discordGet(path, { allow404 = false } = {}) {
@@ -731,6 +739,12 @@ function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }
 
   function contentKey(m) {
     return `${m.id}:${m.content || ''}:${JSON.stringify(m.embeds || [])}:${JSON.stringify(m.components || [])}`;
+  }
+
+  /** Роли участника гильдии через relay — обычный REST, без привилегированного intent. */
+  async function fetchMemberRoleIds(guildId, discordId) {
+    const member = await discordGet(`/guilds/${guildId}/members/${discordId}`, { allow404: true });
+    return member ? (member.roles || []) : null;
   }
 
   async function pollOnce(label) {
@@ -797,6 +811,14 @@ function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }
         `[event-bot] ${label}: источника ${fromSource.length}, новых/изменённых ${processed}, ` +
         `open вне окна ${openRows.rows.filter((r) => !presentIds.has(r.message_id)).length}.`,
       );
+
+      const roleSyncIntervalMs = resolveSyncIntervalMs();
+      if (Date.now() - lastRoleSyncAt >= roleSyncIntervalMs) {
+        lastRoleSyncAt = Date.now();
+        await runRoleSyncPass(pool, fetchMemberRoleIds).catch((err) => {
+          console.error('[event-bot] Синхронизация ролей (relay):', err.message);
+        });
+      }
     } finally {
       tickRunning = false;
     }
@@ -853,11 +875,17 @@ function startEventAttendanceBot(pool) {
   }
 
   const restAgent = getRestAgent();
+  const liveRoleSync = isLiveSyncEnabled();
   const clientOptions = {
     intents: [
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.MessageContent,
+      // Только если явно включили DISCORD_ROLE_SYNC_LIVE=1 — требует
+      // предварительно включённый переключатель "Server Members Intent"
+      // в Discord Developer Portal (Bot → Privileged Gateway Intents),
+      // иначе client.login() упадёт с ошибкой Disallowed intents.
+      ...(liveRoleSync ? [GatewayIntentBits.GuildMembers] : []),
     ],
     partials: [Partials.Message, Partials.Channel],
   };
@@ -869,8 +897,22 @@ function startEventAttendanceBot(pool) {
   const pollMs = resolvePollMs();
   let staleTimer = null;
   let minuteTickRunning = false;
+  let lastRoleSyncAt = 0;
   /** Очередь сообщений с gateway: обрабатываем пачкой раз в минуту, без спама fetch. */
   const pendingById = new Map();
+
+  /** Роли участника гильдии обычным REST-запросом — не требует GUILD_MEMBERS intent. */
+  async function fetchMemberRoleIds(guildId, discordId) {
+    try {
+      const member = await client.rest.get(`/guilds/${guildId}/members/${discordId}`);
+      return member?.roles || [];
+    } catch (err) {
+      if (err?.status === 404 || err?.rawError?.code === 10007 || err?.code === 10007) {
+        return null; // участника нет на сервере
+      }
+      throw err;
+    }
+  }
 
   async function gatewayResyncFetch(before) {
     const channel = await client.channels.fetch(channelId);
@@ -953,6 +995,14 @@ function startEventAttendanceBot(pool) {
       if (flushed) {
         console.log(`[event-bot] ${label}: обработано отложенных обновлений ${flushed}.`);
       }
+
+      const roleSyncIntervalMs = resolveSyncIntervalMs();
+      if (Date.now() - lastRoleSyncAt >= roleSyncIntervalMs) {
+        lastRoleSyncAt = Date.now();
+        await runRoleSyncPass(pool, fetchMemberRoleIds).catch((err) => {
+          console.error('[event-bot] Синхронизация ролей:', err.message);
+        });
+      }
     } finally {
       minuteTickRunning = false;
     }
@@ -1002,6 +1052,28 @@ function startEventAttendanceBot(pool) {
   });
   client.on(Events.MessageDelete, (message) => handleMessageDelete(pool, message, { channelId }));
   client.on(Events.Error, (err) => console.error('[event-bot] Ошибка клиента Discord:', err));
+
+  if (liveRoleSync) {
+    // Мгновенная реакция на выдачу/снятие роли в Discord — дополнение к
+    // периодическому проходу выше (тот подстрахует, если это событие
+    // пропущено, например пока бот был offline).
+    client.on(Events.GuildMemberUpdate, async (_oldMember, newMember) => {
+      const guildId = resolveGuildId();
+      if (!guildId || newMember.guild?.id !== guildId) return;
+      try {
+        const roleIds = [...newMember.roles.cache.keys()];
+        const result = await syncMemberByDiscordId(pool, newMember.id, roleIds);
+        if (result.changed) {
+          console.log(
+            `[role-sync] live: ${newMember.id} [${result.before.join(', ') || '—'}] → ` +
+            `[${result.after.join(', ') || '—'}]`,
+          );
+        }
+      } catch (err) {
+        console.error(`[role-sync] live-обновление ${newMember.id}:`, err.message || err);
+      }
+    });
+  }
 
   const originalDestroy = client.destroy.bind(client);
   client.destroy = async () => {
