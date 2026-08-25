@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { invalidateUserCache, jsonError } from '@/lib/auth';
-import { userHasContentSectionCap, userHasPermission } from '@/lib/roleAccess';
+import {
+  userHasContentSectionCap,
+  userHasPermission,
+  userHasProfileOwnViewCap,
+  userHasProfileViewCap,
+} from '@/lib/roleAccess';
 import { tierForPriority } from '@/lib/tier';
 import { getRolesForUsers, replaceUserRoles } from '@/lib/roles';
 import { writeAudit } from '@/lib/audit';
@@ -63,13 +68,19 @@ export const handleRoster: ApiHandler = async ({ key, params, method, body }) =>
       const roles = await getRolesForUsers(result.rows.map((row) => row.id as number));
       const targets = await weeklyTargetsByRoleId();
       const allRoles = await query('SELECT id,name,priority,weekly_events_target,COALESCE(color,\'\') AS color FROM roles ORDER BY priority');
+      const canViewWeeklyMp = userHasProfileViewCap(user, 'weekly_mp');
+      const canViewOwnWeeklyMp = userHasProfileOwnViewCap(user, 'weekly_mp');
       return NextResponse.json({
-        members: result.rows.map((row) => ({
-          ...row,
-          tier: tierForPriority(row.role_priority as number),
-          roles: roles.get(row.id as number) || [],
-          weekly_target: row.role_id != null ? targets.get(row.role_id as number) ?? null : null,
-        })),
+        members: result.rows.map((row) => {
+          const allowedWeekly = (row.id as number) === user.id ? canViewOwnWeeklyMp : canViewWeeklyMp;
+          return {
+            ...row,
+            tier: tierForPriority(row.role_priority as number),
+            roles: roles.get(row.id as number) || [],
+            weekly_target: row.role_id != null ? targets.get(row.role_id as number) ?? null : null,
+            ...(allowedWeekly ? null : { weekly_events: null, weekly_target: null }),
+          };
+        }),
         target: null,
         roles: allRoles.rows,
         canGrantOwner: userHasPermission(user, 'grant_owner', 'edit'),

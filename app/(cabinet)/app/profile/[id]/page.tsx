@@ -30,6 +30,7 @@ export default async function UserProfilePage({
     events: userHasProfileViewCap(roleCtx, 'events'),
     gmp: userHasProfileViewCap(roleCtx, 'gmp'),
     audit: userHasProfileViewCap(roleCtx, 'audit'),
+    weekly_mp: userHasProfileViewCap(roleCtx, 'weekly_mp'),
   };
 
   await evaluateAchievementsForUser(id).catch(() => undefined);
@@ -55,9 +56,9 @@ export default async function UserProfilePage({
 
   return (
     <ProfileInteractive
-      initialUser={{ ...user, weeklyEvents }}
+      initialUser={{ ...user, weeklyEvents: profileTabs.weekly_mp ? weeklyEvents : 0 }}
       reprimands={reprimands}
-      target={weeklyTarget}
+      target={profileTabs.weekly_mp ? weeklyTarget : null}
       canViewAudit={profileTabs.audit}
       initialAudit={audit}
       isSelf={false}

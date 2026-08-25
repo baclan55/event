@@ -16,6 +16,7 @@ export default async function ProfilePage() {
     events: userHasProfileOwnViewCap(roleCtx, 'events'),
     gmp: userHasProfileOwnViewCap(roleCtx, 'gmp'),
     audit: userHasProfileOwnViewCap(roleCtx, 'audit'),
+    weekly_mp: userHasProfileOwnViewCap(roleCtx, 'weekly_mp'),
   };
   await evaluateAchievementsForUser(user.id).catch(() => undefined);
   const [{ weeklyEvents, weeklyTarget }, reprimands, audit, achievementCatalog] = await Promise.all([
@@ -27,9 +28,9 @@ export default async function ProfilePage() {
   invalidateUserCache(user.id);
   return (
     <ProfileInteractive
-      initialUser={{ ...user, weeklyEvents }}
+      initialUser={{ ...user, weeklyEvents: profileTabs.weekly_mp ? weeklyEvents : 0 }}
       reprimands={reprimands}
-      target={weeklyTarget}
+      target={profileTabs.weekly_mp ? weeklyTarget : null}
       canViewAudit={profileTabs.audit}
       initialAudit={audit}
       initialAchievementCatalog={achievementCatalog}

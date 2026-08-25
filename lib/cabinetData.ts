@@ -250,6 +250,7 @@ export async function loadRoster() {
   return {
     members: r.rows.map((x) => ({
       ...x,
+      id: x.id as number,
       tier: tierForPriority(x.role_priority as number),
       roles: rolesMap.get(x.id as number) || [],
       weekly_target: x.role_id != null ? targets.get(x.role_id as number) ?? null : null,

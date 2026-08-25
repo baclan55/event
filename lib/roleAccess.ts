@@ -166,6 +166,7 @@ export const PROFILE_VIEW_CAPS = [
   'events',
   'gmp',
   'audit',
+  'weekly_mp',
 ] as const;
 
 export type ProfileViewCap = (typeof PROFILE_VIEW_CAPS)[number];
@@ -183,6 +184,7 @@ export const PROFILE_VIEW_CAP_LABELS: Record<ProfileViewCap, string> = {
   events: 'Мероприятия (МП)',
   gmp: 'ГМП',
   audit: 'Журнал действий',
+  weekly_mp: 'Счётчик МП за неделю',
 };
 
 /** Страницы раздела «Статистика» (хранятся в permissions.view_statistics). */
@@ -227,6 +229,7 @@ export function emptyProfileTabCaps(): ProfileTabCaps {
     events: false,
     gmp: false,
     audit: false,
+    weekly_mp: false,
   };
 }
 
@@ -521,6 +524,19 @@ function applyLegacyOpenTabs(target: ProfileTabCaps, includeAudit = false) {
 }
 
 /**
+ * Капы, добавленные в PROFILE_VIEW_CAPS позже остальных — часть ролей уже могла иметь явно
+ * сохранённые права `view_profile` (в старом плоском виде или в новом others/own), в которых
+ * такого ключа ещё не существовало. Чтобы появление нового капа не «спрятало» то, что раньше
+ * было видно без каких-либо ограничений, при отсутствии ключа в уже сохранённых правах
+ * считаем его включённым, а не выключенным — как будто он был открыт всегда.
+ */
+const PROFILE_VIEW_DEFAULT_ON: ReadonlySet<ProfileViewCap> = new Set(['weekly_mp']);
+
+function readProfileCap(source: Record<string, unknown>, cap: ProfileViewCap): boolean {
+  return cap in source ? !!source[cap] : PROFILE_VIEW_DEFAULT_ON.has(cap);
+}
+
+/**
  * Просмотр вкладок своего и чужого профиля.
  * Legacy без own/others: чужие — как раньше по плоским флагам; свой — все вкладки кроме журнала.
  */
@@ -545,11 +561,11 @@ export function normalizeProfileViewAccess(raw: unknown, opts?: { legacyOpen?: b
 
   if (hasOthers) {
     const others = source.others as Record<string, unknown>;
-    for (const cap of PROFILE_VIEW_CAPS) caps.others[cap] = !!others[cap];
+    for (const cap of PROFILE_VIEW_CAPS) caps.others[cap] = readProfileCap(others, cap);
   } else {
     const hasExplicitCaps = PROFILE_VIEW_CAPS.some((cap) => cap in source);
     if (hasExplicitCaps) {
-      for (const cap of PROFILE_VIEW_CAPS) caps.others[cap] = !!source[cap];
+      for (const cap of PROFILE_VIEW_CAPS) caps.others[cap] = readProfileCap(source, cap);
     } else if (caps.view) {
       applyLegacyOpenTabs(caps.others);
     }
@@ -557,7 +573,7 @@ export function normalizeProfileViewAccess(raw: unknown, opts?: { legacyOpen?: b
 
   if (hasOwn) {
     const own = source.own as Record<string, unknown>;
-    for (const cap of PROFILE_VIEW_CAPS) caps.own[cap] = !!own[cap];
+    for (const cap of PROFILE_VIEW_CAPS) caps.own[cap] = readProfileCap(own, cap);
   } else {
     // До явной настройки «Свой профиль» — вкладки открыты (журнал по-прежнему отдельно).
     applyLegacyOpenTabs(caps.own);
@@ -732,9 +748,9 @@ export function profileViewCapsFromRole(name: string, rawPermissions: unknown): 
     const raw = (rawPermissions as Record<string, unknown>).view_profile;
     return profileViewCapsFromAccess(normalizeProfileViewAccess(raw));
   }
-  // Legacy: МП/ГМП/достижения открыты; выговоры и журнал — по старым правам разделов.
+  // Legacy: МП/ГМП/достижения/счётчик МП за неделю открыты; выговоры и журнал — по старым правам разделов.
   const access = accessFromRole(name, rawPermissions);
-  const caps: ProfileViewCap[] = ['achievements', 'events', 'gmp'];
+  const caps: ProfileViewCap[] = ['achievements', 'events', 'gmp', 'weekly_mp'];
   if (access.reprimands.view || access.reprimands.edit) caps.push('reprimands');
   if (access.view_audit.view) caps.push('audit');
   return caps;

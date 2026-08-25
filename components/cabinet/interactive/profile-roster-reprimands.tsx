@@ -38,6 +38,7 @@ export function ProfileInteractive({
     events?: boolean;
     gmp?: boolean;
     audit?: boolean;
+    weekly_mp?: boolean;
   };
 }) {
   const router = useRouter();
@@ -80,6 +81,7 @@ export function ProfileInteractive({
   });
   const hasNorm = target != null && target > 0;
   const done = hasNorm && user.weeklyEvents >= target;
+  const canViewWeeklyMp = profileTabs?.weekly_mp !== false;
   const tabs = {
     reprimands: profileTabs ? !!profileTabs.reprimands : isSelf,
     achievements: profileTabs ? !!profileTabs.achievements : isSelf,
@@ -264,15 +266,17 @@ export function ProfileInteractive({
           ) : null}
         </div>
         <div className="profile-weekly-group">
-          <div className="profile-weekly profile-stat">
-            <div className="stat-value">{user.weeklyEvents}</div>
-            <div className="stat-label">мп за неделю</div>
-                        {hasNorm ? (
-              <span className={`badge ${done ? 'badge-green' : 'badge-red'}`}>
-                {done ? 'норма' : `цель ${target}`}
-              </span>
-            ) : null}
-          </div>
+          {canViewWeeklyMp ? (
+            <div className="profile-weekly profile-stat">
+              <div className="stat-value">{user.weeklyEvents}</div>
+              <div className="stat-label">мп за неделю</div>
+              {hasNorm ? (
+                <span className={`badge ${done ? 'badge-green' : 'badge-red'}`}>
+                  {done ? 'норма' : `цель ${target}`}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           <div className="profile-weekly profile-stat">
             <div className="stat-value">{gmpWeekCount}</div>
             <div className="stat-label">гмп за неделю</div>
@@ -508,6 +512,8 @@ export function RosterInteractive({
   actorRolePriority = null,
   actorIsOwner = false,
   actorId = null,
+  canViewWeeklyMp = true,
+  canViewOwnWeeklyMp = true,
 }: {
   initialMembers: Row[];
   roles: Row[];
@@ -518,6 +524,10 @@ export function RosterInteractive({
   actorRolePriority?: number | null;
   actorIsOwner?: boolean;
   actorId?: number | null;
+  /** Право видеть счётчик «МП за неделю» у ДРУГИХ сотрудников (permissions.view_profile.others.weekly_mp). */
+  canViewWeeklyMp?: boolean;
+  /** Право видеть свой собственный счётчик «МП за неделю» в «Составе» (permissions.view_profile.own.weekly_mp). */
+  canViewOwnWeeklyMp?: boolean;
 }) {
   const [members, setMembers] = useState(initialMembers);
   const [tab, setTab] = useState<'with' | 'without' | 'candidates'>('with');
@@ -646,6 +656,8 @@ const memberRow = (member: Row, candidate = false) => (
         {!String(member.discord_id || '').trim() ? <span className="badge badge-amber">Нет Discord ID</span> : null}
         {member.is_blocked && <span className="badge badge-red">Заблокирован</span>}
         {(() => {
+          const allowed = member.id === actorId ? canViewOwnWeeklyMp : canViewWeeklyMp;
+          if (!allowed) return null;
           const norm = member.weekly_target != null ? Number(member.weekly_target) : (target ?? null);
           const count = Number(member.weekly_events) || 0;
           if (norm == null) return <span className="badge badge-muted">{count} / нед.</span>;
