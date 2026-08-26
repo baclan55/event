@@ -39,12 +39,14 @@ export function ApplicationsInteractive({
   const [error, setError] = useState('');
   const [savingMessage, setSavingMessage] = useState(false);
   const [query, setQuery] = useState('');
+  const [refreshingId, setRefreshingId] = useState<number | null>(null);
 
   const filtered = useMemo(
     () => rows.filter((item) => matchesSearch([
       item.nickname_static,
       item.applicant_name,
       item.discord,
+      item.discord_tag,
       item.static_id,
       item.first_name,
       item.age,
@@ -93,6 +95,20 @@ export function ApplicationsInteractive({
     if (!(await askConfirm('Удалить заявку?', { title: 'Удаление', confirmLabel: 'Удалить' }))) return;
     try { await request(`/api/applications/${id}`, { method: 'DELETE' }); await reload(); }
     catch (err) { setError((err as Error).message); }
+  }
+  async function refreshTag(id: number) {
+    setRefreshingId(id);
+    setError('');
+    try {
+      const data = await request(`/api/applications/${id}/discord-tag`, { method: 'POST' });
+      setRows((prev) => prev.map((r) => (r.id === id
+        ? { ...r, discord_tag: data.discordTag, discord_tag_updated_at: data.discordTagUpdatedAt }
+        : r)));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setRefreshingId(null);
+    }
   }
   async function toggle() {
     try {
@@ -179,7 +195,14 @@ export function ApplicationsInteractive({
                 <Avatar row={{ nickname: item.candidate_nickname || item.nickname_static, avatar_url: item.candidate_avatar_url, avatar_image_id: item.candidate_avatar_image_id }} />
                 <div>
                   <h4>{item.candidate_nickname || item.nickname_static || item.applicant_name}</h4>
-                  <div className="role-tag">Discord: {item.discord}</div>
+                  <div className="role-tag">
+                    Discord: {item.discord}
+                    {item.discord_tag ? (
+                      <> · <b title={item.discord_tag_updated_at ? `Тег проверен: ${new Date(item.discord_tag_updated_at).toLocaleString('ru-RU')}` : undefined}>{item.discord_tag}</b></>
+                    ) : (
+                      <span> · тег не проверен</span>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -213,6 +236,13 @@ export function ApplicationsInteractive({
                 <>
                   <button className="btn btn-primary btn-sm" onClick={() => void call(item.id, true)}>Прошёл обзвон</button>
                   <button className="btn btn-danger btn-sm" onClick={() => void call(item.id, false)}>Не прошёл</button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    disabled={refreshingId === item.id}
+                    onClick={() => void refreshTag(item.id)}
+                  >
+                    {refreshingId === item.id ? 'Обновляем…' : 'Обновить тег'}
+                  </button>
                 </>
               ) : (
                 <>

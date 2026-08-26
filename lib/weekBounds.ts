@@ -78,3 +78,63 @@ export async function syncWeeklyEventsForUser(
   );
   return count;
 }
+
+/**
+ * Условие SQL: момент `expr` попадает в календарную неделю со смещением `offsetWeeks`
+ * назад от текущей (0 = текущая неделя, 1 = прошлая неделя и т.д.).
+ * `offsetWeeks` подставляется как литерал — вызывается только с константами из кода,
+ * не с пользовательским вводом.
+ */
+export function sqlInWeekOffset(expr: string, tzParam: number, offsetWeeks: number): string {
+  const n = Math.max(0, Math.floor(offsetWeeks));
+  const shift = `- interval '7 days' * ${n}`;
+  return (
+    `(${expr} AT TIME ZONE $${tzParam}) >= date_trunc('week', now() AT TIME ZONE $${tzParam}) ${shift}`
+    + ` AND (${expr} AT TIME ZONE $${tzParam}) < date_trunc('week', now() AT TIME ZONE $${tzParam}) ${shift} + interval '7 days'`
+  );
+}
+
+/**
+ * Число уникальных проведённых сборов МП за календарную неделю со смещением offsetWeeks
+ * назад от текущей (1 = прошлая, уже завершившаяся неделя). Считается напрямую по
+ * discord_gather_events — той же логикой, что и текущая неделя, — независимо от того,
+ * сформирована ли уже выплата за эту неделю.
+ */
+export async function countMpForUserInWeekOffset(
+  query: SqlQuery,
+  userId: number,
+  offsetWeeks: number,
+  tz = weekTimeZone(),
+): Promise<number> {
+  const result = await query(
+    `SELECT COUNT(DISTINCT e.message_id)::text AS count
+     FROM discord_gather_participants p
+     JOIN discord_gather_events e ON e.message_id = p.message_id
+     JOIN users u ON u.discord_id = p.discord_id
+     WHERE u.id = $1
+       AND u.discord_id IS NOT NULL
+       AND e.status = 'completed'
+       AND ${sqlInWeekOffset('e.message_created_at', 2, offsetWeeks)}`,
+    [userId, tz],
+  );
+  return Number(result.rows[0]?.count || 0);
+}
+
+/** Календарные границы (даты пн и вс) недели со смещением offsetWeeks назад от текущей. */
+export async function weekOffsetDateRange(
+  query: SqlQuery,
+  offsetWeeks: number,
+  tz = weekTimeZone(),
+): Promise<{ start: string; end: string }> {
+  const n = Math.max(0, Math.floor(offsetWeeks));
+  const result = await query(
+    `SELECT
+       (date_trunc('week', now() AT TIME ZONE $1) - interval '7 days' * $2)::date::text AS start,
+       (date_trunc('week', now() AT TIME ZONE $1) - interval '7 days' * $2 + interval '6 days')::date::text AS "end"`,
+    [tz, n],
+  );
+  return {
+    start: String(result.rows[0]?.start || ''),
+    end: String(result.rows[0]?.end || ''),
+  };
+}

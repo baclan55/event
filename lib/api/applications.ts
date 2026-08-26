@@ -6,6 +6,7 @@ import { DEFAULT_CLOSED_MESSAGE, writeAudit } from '@/lib/audit';
 import { findBlacklistMatch, isValidStaticId } from '@/lib/blacklist';
 import { evaluateAchievementsForUser } from '@/lib/achievements';
 import { userHasPermission } from '@/lib/roleAccess';
+import { fetchDiscordUserById, formatDiscordTag } from '@/lib/discordApi';
 import { ok, parseId, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
 
@@ -126,7 +127,8 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     const user = await requiredPerm('candidates');
     if (user instanceof NextResponse) return user;
     const result = await query(
-      `SELECT a.id, a.applicant_name, a.discord, a.nickname_static, a.status, a.created_at,
+      `SELECT a.id, a.applicant_name, a.discord, a.discord_tag, a.discord_tag_updated_at,
+        a.nickname_static, a.status, a.created_at,
         a.first_name, a.last_name, a.static_id,
         a.candidate_user_id, cu.nickname AS candidate_nickname, cu.avatar_image_id AS candidate_avatar_image_id,
         cu.avatar_url AS candidate_avatar_url, rb.nickname AS reviewed_by_nickname
@@ -136,6 +138,44 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
         WHERE a.status='approved' ORDER BY a.created_at ASC`,
     );
     return NextResponse.json({ candidates: result.rows });
+  }
+
+  if (key === 'application-discord-tag') {
+    if (method !== 'POST') return jsonError('Метод не поддерживается.', 405);
+    const user = await requiredPerm('candidates', { level: 'edit' });
+    if (user instanceof NextResponse) return user;
+    const id = parseId(params.id);
+    const { rows } = await query<{ discord: string | null }>(
+      'SELECT discord FROM applications WHERE id=$1',
+      [id],
+    );
+    const application = rows[0];
+    if (!application) return jsonError('Заявка не найдена.', 404);
+    const discordId = String(application.discord || '').replace(/[^0-9]/g, '');
+    if (!/^[0-9]{17,20}$/.test(discordId)) {
+      return jsonError('В заявке некорректный Discord ID — тег получить нельзя.', 400);
+    }
+    const profile = await fetchDiscordUserById(discordId);
+    if (!profile) {
+      return jsonError('Не удалось получить данные из Discord. Попробуйте ещё раз позже.', 502);
+    }
+    const discordTag = formatDiscordTag(profile);
+    const updated = await query<{ discord_tag_updated_at: string }>(
+      `UPDATE applications SET discord_tag=$1, discord_tag_updated_at=now()
+       WHERE id=$2 RETURNING discord_tag_updated_at`,
+      [discordTag, id],
+    );
+    await writeAudit({
+      actorId: user.id,
+      action: 'application.discord_tag_refresh',
+      entityType: 'application',
+      entityId: params.id,
+      details: { discordTag },
+    });
+    return NextResponse.json({
+      discordTag,
+      discordTagUpdatedAt: updated.rows[0]?.discord_tag_updated_at || null,
+    });
   }
 
   if (key === 'applications-history') {

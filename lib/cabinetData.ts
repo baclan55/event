@@ -10,10 +10,12 @@ import { ADMIN_POINT_DECAY_DAYS, adminPointActive } from '@/lib/reprimandRules';
 import { DEFAULT_CLOSED_MESSAGE } from '@/lib/audit';
 import { abandonStaleOpenGathers } from '@/lib/discordGatherCleanup';
 import {
+  countMpForUserInWeekOffset,
   sqlCountWeeklyMpSubquery,
   sqlInCurrentDay,
   sqlInCurrentWeek,
   syncWeeklyEventsForUser,
+  weekOffsetDateRange,
   weekTimeZone,
 } from '@/lib/weekBounds';
 import { weeklyTargetForUser, weeklyTargetsByRoleId } from '@/lib/weeklyTarget';
@@ -137,6 +139,33 @@ export async function loadProfileWeekly(userId: number): Promise<{
   const weeklyEvents = await syncWeeklyEventsForUser(query, userId, weekTimeZone());
   const weeklyTarget = await weeklyTargetForUser(userId);
   return { weeklyEvents, weeklyTarget };
+}
+
+/**
+ * МП за прошлую (уже завершившуюся) календарную неделю — не текущую.
+ * Считается напрямую по событиям сборов (как и текущая неделя), независимо от того,
+ * сформирована ли уже выплата за эту неделю в разделе «Выплаты».
+ */
+export async function loadLastWeekMp(userId: number): Promise<{
+  count: number;
+  rangeLabel: string;
+}> {
+  const tz = weekTimeZone();
+  const [count, range] = await Promise.all([
+    countMpForUserInWeekOffset(query, userId, 1, tz),
+    weekOffsetDateRange(query, 1, tz),
+  ]);
+  let rangeLabel = '';
+  if (range.start && range.end) {
+    const startDate = new Date(`${range.start}T00:00:00Z`);
+    const endDate = new Date(`${range.end}T00:00:00Z`);
+    const dayFmt = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', timeZone: 'UTC' });
+    const monthFmt = new Intl.DateTimeFormat('ru-RU', { month: 'short', timeZone: 'UTC' });
+    rangeLabel = startDate.getUTCMonth() === endDate.getUTCMonth()
+      ? `${dayFmt.format(startDate)}–${dayFmt.format(endDate)} ${monthFmt.format(endDate)}`
+      : `${dayFmt.format(startDate)} ${monthFmt.format(startDate)} – ${dayFmt.format(endDate)} ${monthFmt.format(endDate)}`;
+  }
+  return { count, rangeLabel };
 }
 
 export async function loadReprimandsMe(userId: number) {
@@ -324,7 +353,8 @@ export async function loadApplicationHistory() {
 
 export async function loadCandidates() {
   const r = await query<Record<string, unknown>>(
-    `SELECT a.id, a.applicant_name, a.discord, a.nickname_static, a.status, a.created_at,
+    `SELECT a.id, a.applicant_name, a.discord, a.discord_tag, a.discord_tag_updated_at,
+            a.nickname_static, a.status, a.created_at,
             a.candidate_user_id, cu.nickname AS candidate_nickname,
             cu.avatar_image_id AS candidate_avatar_image_id, cu.avatar_url AS candidate_avatar_url,
             rb.nickname AS reviewed_by_nickname

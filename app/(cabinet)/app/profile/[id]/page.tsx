@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { invalidateUserCache, loadUserById, publicUser } from '@/lib/auth';
 import { evaluateAchievementsForUser, listProfileAchievementCatalog } from '@/lib/achievements';
-import { loadProfileWeekly, requirePortalUser } from '@/lib/cabinetData';
+import { loadLastWeekMp, loadProfileWeekly, requirePortalUser } from '@/lib/cabinetData';
 import { ProfileInteractive } from '@/components/cabinet/InteractiveCore';
 import { roleCtxFromPublic, userHasProfileViewCap } from '@/lib/roleAccess';
 import { listAudit } from '@/lib/audit';
@@ -34,8 +34,9 @@ export default async function UserProfilePage({
   };
 
   await evaluateAchievementsForUser(id).catch(() => undefined);
-  const [{ weeklyEvents, weeklyTarget }, achievementCatalog] = await Promise.all([
+  const [{ weeklyEvents, weeklyTarget }, lastWeek, achievementCatalog] = await Promise.all([
     loadProfileWeekly(id),
+    profileTabs.weekly_mp ? loadLastWeekMp(id) : Promise.resolve({ count: 0, rangeLabel: '' }),
     profileTabs.achievements
       ? listProfileAchievementCatalog(id, viewer.id)
       : Promise.resolve(undefined),
@@ -59,6 +60,8 @@ export default async function UserProfilePage({
       initialUser={{ ...user, weeklyEvents: profileTabs.weekly_mp ? weeklyEvents : 0 }}
       reprimands={reprimands}
       target={profileTabs.weekly_mp ? weeklyTarget : null}
+      lastWeekMp={profileTabs.weekly_mp ? lastWeek.count : 0}
+      lastWeekMpLabel={profileTabs.weekly_mp ? lastWeek.rangeLabel : ''}
       canViewAudit={profileTabs.audit}
       initialAudit={audit}
       isSelf={false}

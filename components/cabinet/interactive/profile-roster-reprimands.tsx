@@ -19,6 +19,8 @@ export function ProfileInteractive({
   initialUser,
   reprimands,
   target,
+  lastWeekMp = 0,
+  lastWeekMpLabel = '',
   canViewAudit = false,
   initialAudit = [],
   isSelf = true,
@@ -28,6 +30,10 @@ export function ProfileInteractive({
   initialUser: PublicUser;
   reprimands: Row[];
   target: number | null;
+  /** МП за прошлую (уже завершившуюся) неделю — отдельно от текущей. */
+  lastWeekMp?: number;
+  /** Подпись диапазона дат прошлой недели, например «17–23 авг.». */
+  lastWeekMpLabel?: string;
   canViewAudit?: boolean;
   initialAudit?: Row[];
   isSelf?: boolean;
@@ -275,6 +281,12 @@ export function ProfileInteractive({
                   {done ? 'норма' : `цель ${target}`}
                 </span>
               ) : null}
+            </div>
+          ) : null}
+          {canViewWeeklyMp ? (
+            <div className="profile-weekly profile-stat">
+              <div className="stat-value">{lastWeekMp}</div>
+              <div className="stat-label">мп за прошлую неделю{lastWeekMpLabel ? ` (${lastWeekMpLabel})` : ''}</div>
             </div>
           ) : null}
           <div className="profile-weekly profile-stat">

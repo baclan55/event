@@ -163,6 +163,10 @@ ALTER TABLE applications ADD COLUMN IF NOT EXISTS candidate_user_id INTEGER REFE
 -- Поля формы заявки (см. src/routes/applications.js). ADD COLUMN IF NOT EXISTS
 -- делает это безопасным при повторном запуске и на уже существующей базе.
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS discord          TEXT NOT NULL DEFAULT '';
+-- Тег Discord (username), подтягивается вручную кнопкой «Обновить тег» у кандидата —
+-- discord (ID) не меняется, а тег человек может сменить в любой момент.
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS discord_tag TEXT NOT NULL DEFAULT '';
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS discord_tag_updated_at TIMESTAMPTZ;
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS nickname_static  TEXT NOT NULL DEFAULT '';
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS age              TEXT NOT NULL DEFAULT '';
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS avg_online       TEXT NOT NULL DEFAULT '';
