@@ -6,7 +6,7 @@ import { DEFAULT_CLOSED_MESSAGE, writeAudit } from '@/lib/audit';
 import { findBlacklistMatch, isValidStaticId } from '@/lib/blacklist';
 import { evaluateAchievementsForUser } from '@/lib/achievements';
 import { userHasPermission } from '@/lib/roleAccess';
-import { fetchDiscordUserById, formatDiscordTag } from '@/lib/discordApi';
+import { fetchDiscordUserById, formatDiscordTag, describeDiscordLookupError } from '@/lib/discordApi';
 import { ok, parseId, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
 
@@ -155,11 +155,15 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     if (!/^[0-9]{17,20}$/.test(discordId)) {
       return jsonError('В заявке некорректный Discord ID — тег получить нельзя.', 400);
     }
-    const profile = await fetchDiscordUserById(discordId);
-    if (!profile) {
-      return jsonError('Не удалось получить данные из Discord. Попробуйте ещё раз позже.', 502);
+    const lookup = await fetchDiscordUserById(discordId);
+    if (!lookup.ok) {
+      const status = lookup.error.type === 'no_token' ? 500
+        : lookup.error.type === 'not_found' ? 404
+        : lookup.error.type === 'rate_limited' ? 429
+        : 502;
+      return jsonError(describeDiscordLookupError(lookup.error), status);
     }
-    const discordTag = formatDiscordTag(profile);
+    const discordTag = formatDiscordTag(lookup.user);
     const updated = await query<{ discord_tag_updated_at: string }>(
       `UPDATE applications SET discord_tag=$1, discord_tag_updated_at=now()
        WHERE id=$2 RETURNING discord_tag_updated_at`,
