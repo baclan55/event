@@ -158,6 +158,7 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     const lookup = await fetchDiscordUserById(discordId);
     if (!lookup.ok) {
       const status = lookup.error.type === 'no_token' ? 500
+        : lookup.error.type === 'relay_misconfigured' ? 500
         : lookup.error.type === 'not_found' ? 404
         : lookup.error.type === 'rate_limited' ? 429
         : 502;
