@@ -364,7 +364,14 @@ export function RulesInteractive({ initialRules, canEdit }: { initialRules: Row[
           <details className="rules-card" key={rule.id}>
             <summary className="rules-card-header">
               <div className="rules-thumb">{rule.image_id ? <img src={`/media/${rule.image_id}`} alt="" /> : <NavIcon name="image" />}</div>
-              <div className="rules-title">{rule.title}</div>
+              <div className="rules-title">
+                <div className="rules-title-text">{rule.title}</div>
+                {rule.lastHeldAt && (
+                  <div className="rules-last-held">
+                    Последний раз: {new Date(rule.lastHeldAt).toLocaleDateString('ru-RU')}
+                  </div>
+                )}
+              </div>
               <div className="rules-card-actions" onClick={(event) => event.preventDefault()}>
                 <button
                   className="icon-btn"

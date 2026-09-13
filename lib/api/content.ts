@@ -10,6 +10,7 @@ import {
 } from '@/lib/roleAccess';
 import { saveImage } from '@/lib/images';
 import { renderBody, rawBodyForEdit, normalizeMarkdownSource } from '@/lib/richText';
+import { attachLastHeld, loadLastHeldByTitle } from '@/lib/ruleEventStats';
 import { writeAudit } from '@/lib/audit';
 import { ok, parseId, readImage, required, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
@@ -132,18 +133,24 @@ export const handleContent: ApiHandler = async ({ key, request, params, method, 
       return jsonError('Недостаточно прав для редактирования этого раздела.', 403);
     }
     if (key === 'rules' && method === 'GET') {
-      const result = await query<Record<string, unknown>>(
-        `SELECT id,position,title,body,image_id,updated_at,
-                COALESCE(archived, FALSE) AS archived
-         FROM rules ORDER BY archived ASC, position,id`,
-      );
+      const [result, lastByTitle] = await Promise.all([
+        query<Record<string, unknown>>(
+          `SELECT id,position,title,body,image_id,updated_at,
+                  COALESCE(archived, FALSE) AS archived
+           FROM rules ORDER BY archived ASC, position,id`,
+        ),
+        loadLastHeldByTitle(),
+      ]);
       return NextResponse.json({
-        rules: result.rows.map((row) => ({
-          ...row,
-          archived: !!row.archived,
-          body: renderBody(row.body),
-          bodyRaw: rawBodyForEdit(row.body),
-        })),
+        rules: attachLastHeld(
+          result.rows.map((row) => ({
+            ...row,
+            archived: !!row.archived,
+            body: renderBody(row.body),
+            bodyRaw: rawBodyForEdit(row.body),
+          })),
+          lastByTitle,
+        ),
       });
     }
     if (key === 'rules' && method === 'POST') {

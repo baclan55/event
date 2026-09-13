@@ -9,6 +9,7 @@ import { roleCtxFromPublic, userHasAnyContentEditCap, userHasPermission } from '
 import { ADMIN_POINT_DECAY_DAYS, adminPointActive } from '@/lib/reprimandRules';
 import { DEFAULT_CLOSED_MESSAGE } from '@/lib/audit';
 import { abandonStaleOpenGathers } from '@/lib/discordGatherCleanup';
+import { attachLastHeld, loadLastHeldByTitle } from '@/lib/ruleEventStats';
 import {
   countMpForUserInWeekOffset,
   sqlCountWeeklyMpSubquery,
@@ -234,17 +235,23 @@ export async function loadContent(section: string, viewer?: PublicUser) {
 }
 
 export async function loadRules() {
-  const r = await query<Record<string, unknown>>(
-    `SELECT id, position, title, body, image_id, updated_at,
-            COALESCE(archived, FALSE) AS archived
-     FROM rules ORDER BY archived ASC, position, id`
+  const [r, lastByTitle] = await Promise.all([
+    query<Record<string, unknown>>(
+      `SELECT id, position, title, body, image_id, updated_at,
+              COALESCE(archived, FALSE) AS archived
+       FROM rules ORDER BY archived ASC, position, id`
+    ),
+    loadLastHeldByTitle(),
+  ]);
+  return attachLastHeld(
+    r.rows.map((x) => ({
+      ...x,
+      archived: !!x.archived,
+      bodyHtml: renderBody(x.body),
+      bodyRaw: rawBodyForEdit(x.body),
+    })),
+    lastByTitle,
   );
-  return r.rows.map((x) => ({
-    ...x,
-    archived: !!x.archived,
-    bodyHtml: renderBody(x.body),
-    bodyRaw: rawBodyForEdit(x.body),
-  }));
 }
 
 export async function loadProps() {
