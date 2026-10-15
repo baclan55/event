@@ -5,7 +5,10 @@
  * Слушает канал с сообщениями бота-источника («Сбор на мероприятие: …»).
  * - Есть кнопки (components) → мероприятие ещё идёт (status=open).
  * - Кнопки сняты → completed: участники + администратор из эмбеда в БД + уникальный +1 к weekly_events.
- * - Сообщение удалено или open >24ч с даты сообщения → abandoned (в статистику не идёт).
+ * - Сообщение удалено, либо кнопки всё ещё есть спустя >24ч с даты сообщения → abandoned.
+ * - Сбор без кнопок засчитывается ВСЕГДА, даже если бот был выключен и сообщению больше суток:
+ *   неделя определяется по дате сообщения (message_created_at), а не по моменту обработки.
+ *   Прошлонедельный сбор уходит в прошлую неделю и не трогает weekly_events текущей.
  */
 
 import { Client, GatewayIntentBits, Partials, Events } from 'discord.js';
@@ -225,8 +228,10 @@ async function upsertGather(pool, {
       ? createdAt.toISOString()
       : null;
 
-    // При полном ресинке: abandoned без кнопок снова открываем → затем complete.
-    if (force && prevStatus === 'abandoned' && !hasButtons) {
+    // abandoned, но в Discord кнопок уже нет (бот был выключен, сбор давно закончился) →
+    // снова открываем и сразу засчитываем. Удалённые сообщения сюда не попадают —
+    // их в Discord больше нет. Неделя определяется по message_created_at.
+    if (prevStatus === 'abandoned' && !hasButtons) {
       await client.query(
         `UPDATE discord_gather_events SET
            status='open', abandoned_at=NULL, has_buttons=FALSE,
@@ -467,6 +472,10 @@ async function abandonGather(pool, messageId, reason) {
   return result.rowCount > 0;
 }
 
+/**
+ * Вызывать ТОЛЬКО после того, как все open-сборы перепроверены в Discord:
+ * к этому моменту оставшиеся open старше 24ч гарантированно всё ещё с кнопками.
+ */
 async function abandonStaleOpens(pool) {
   const cutoff = new Date(Date.now() - ABANDON_AFTER_MS).toISOString();
   const result = await pool.query(
@@ -478,7 +487,7 @@ async function abandonStaleOpens(pool) {
   );
   for (const row of result.rows) {
     console.log(
-      `[event-bot] Сбор "${row.title}" (${row.message_id}) → отменено (прошло 24ч с отправки).`,
+      `[event-bot] Сбор "${row.title}" (${row.message_id}) → отменено (кнопки висят дольше 24ч с отправки).`,
     );
   }
   return result.rowCount;
@@ -519,13 +528,6 @@ async function handleMessage(pool, rawMessage, { channelId, sourceBotId, force =
       force,
     });
 
-    // Open дольше 24ч с даты сообщения → отменено (сразу, не ждём следующего тика).
-    const ageMs = Date.now() - createdAt.getTime();
-    if (status === 'open' && ageMs >= ABANDON_AFTER_MS) {
-      await abandonGather(pool, message.id, 'прошло 24ч с отправки сообщения');
-      return;
-    }
-
     // Уже проведено: дозачёт администратора / новых ID из текста (без двойного +1).
     if (status === 'completed') {
       const result = await backfillCompletedGather(pool, {
@@ -549,6 +551,13 @@ async function handleMessage(pool, rawMessage, { channelId, sourceBotId, force =
 
     // Кнопки ещё есть — ждём завершения.
     if (hasButtons) {
+      // Кнопки висят дольше 24ч с даты сообщения → мероприятие так и не завершили.
+      // Сбор БЕЗ кнопок возраст не проверяет: он завершён и засчитывается в свою неделю.
+      const ageMs = Date.now() - createdAt.getTime();
+      if (ageMs >= ABANDON_AFTER_MS) {
+        await abandonGather(pool, message.id, 'кнопки висят дольше 24ч с отправки сообщения');
+        return;
+      }
       if (!prevStatus) {
         console.log(
           `[event-bot] Открыт сбор "${title || eventLabel}" (${message.id}), участников: ${participantIds.length}.`,
@@ -677,7 +686,8 @@ async function runHistoryResync(pool, {
     before = oldest.id;
   }
 
-  await abandonStaleOpens(pool);
+  // abandonStaleOpens здесь не зовём: часть open-сборов может быть за пределами
+  // просканированных страниц. Их перепроверит и закроет обычный тик.
   return { pages, scanned, fromSource };
 }
 
@@ -765,8 +775,6 @@ function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }
         },
       });
 
-      await abandonStaleOpens(pool);
-
       const list = await discordGet(
         `/channels/${channelId}/messages?limit=${catchupLimit}`,
       );
@@ -807,6 +815,9 @@ function startRelayPollBot(pool, { token, channelId, sourceBotId, catchupLimit }
           if (!keep.has(id)) seen.delete(id);
         }
       }
+      // Все open перепроверены в Discord (при ошибке сюда не дойдём) — теперь безопасно.
+      await abandonStaleOpens(pool);
+
       console.log(
         `[event-bot] ${label}: источника ${fromSource.length}, новых/изменённых ${processed}, ` +
         `open вне окна ${openRows.rows.filter((r) => !presentIds.has(r.message_id)).length}.`,
@@ -937,9 +948,10 @@ function startEventAttendanceBot(pool) {
        WHERE channel_id=$1 AND status='open'`,
       [channelId],
     );
-    if (!openRows.rows.length) return;
+    if (!openRows.rows.length) return true;
     const channel = await client.channels.fetch(channelId);
-    if (!channel || !channel.isTextBased()) return;
+    if (!channel || !channel.isTextBased()) return false;
+    let allChecked = true;
     for (const row of openRows.rows) {
       try {
         const msg = await channel.messages.fetch(row.message_id);
@@ -948,11 +960,13 @@ function startEventAttendanceBot(pool) {
         if (err?.code === 10008 || /Unknown Message/i.test(String(err.message || ''))) {
           await abandonGather(pool, row.message_id, 'сообщение удалено');
         } else {
+          allChecked = false;
           console.error(`[event-bot] Проверка open ${row.message_id}:`, err.message);
         }
       }
       await new Promise((r) => setTimeout(r, 80));
     }
+    return allChecked;
   }
 
   async function flushPendingGateway() {
@@ -985,13 +999,18 @@ function startEventAttendanceBot(pool) {
         sourceBotId,
         fetchPage: gatewayResyncFetch,
       }).catch((err) => console.error('[event-bot] Resync:', err.message));
-      await abandonStaleOpens(pool).catch((err) => {
-        console.error('[event-bot] Проверка просроченных сборов:', err.message);
-      });
-      await refreshOpenGathers().catch((err) => {
+      // Сначала перепроверяем все open в Discord (сбор мог закончиться, пока бот был выключен),
+      // и только потом отменяем те, что всё ещё с кнопками дольше 24ч.
+      const openChecked = await refreshOpenGathers().catch((err) => {
         console.error('[event-bot] Проверка open-МП:', err.message);
+        return false;
       });
       const flushed = await flushPendingGateway();
+      if (openChecked) {
+        await abandonStaleOpens(pool).catch((err) => {
+          console.error('[event-bot] Проверка просроченных сборов:', err.message);
+        });
+      }
       if (flushed) {
         console.log(`[event-bot] ${label}: обработано отложенных обновлений ${flushed}.`);
       }

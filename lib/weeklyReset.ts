@@ -33,6 +33,32 @@ export function startWeeklyResetScheduler() {
         console.error('[payout-pending]', (err as Error).message);
       }
 
+      // Сбор за прошлую неделю засчитался с опозданием (бот был выключен) —
+      // пересобираем уже сформированную (но не заблокированную) неделю выплат.
+      // Ручные правки сохраняются (forceRebuild не используется).
+      try {
+        const late = await pool.query<{ week_start: string }>(
+          `SELECT w.week_start::text AS week_start
+           FROM payout_weeks w
+           WHERE w.status = 'ready'
+             AND w.week_start >= (now() AT TIME ZONE $1)::date - 35
+             AND EXISTS (
+               SELECT 1 FROM discord_gather_events e
+               WHERE e.status = 'completed'
+                 AND e.completed_at > w.updated_at
+                 AND e.message_created_at >= (w.week_start::timestamp AT TIME ZONE $1)
+                 AND e.message_created_at <  ((w.week_start + 7)::timestamp AT TIME ZONE $1)
+             )`,
+          [tz],
+        );
+        for (const row of late.rows) {
+          await ensurePayoutWeek(row.week_start, { forceRebuild: false });
+          console.log(`[payouts] Неделя ${row.week_start} пересобрана: сбор засчитан с опозданием.`);
+        }
+      } catch (err) {
+        console.error('[payout-late-events]', (err as Error).message);
+      }
+
       if (parts.weekday !== 'Mon') return;
       const hour = Number(parts.hour);
       const minute = Number(parts.minute);
