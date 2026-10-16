@@ -19,6 +19,7 @@ export async function abandonStaleOpenGathers(): Promise<number> {
       `UPDATE discord_gather_events
        SET status='abandoned', abandoned_at=now(), updated_at=now()
        WHERE status='open'
+         AND has_buttons = TRUE
          AND message_created_at < $1::timestamptz
          AND last_seen_at >= message_created_at + interval '24 hours'
        RETURNING message_id`,

@@ -481,7 +481,7 @@ async function abandonStaleOpens(pool) {
   const result = await pool.query(
     `UPDATE discord_gather_events
      SET status='abandoned', abandoned_at=now(), updated_at=now()
-     WHERE status='open' AND message_created_at < $1
+     WHERE status='open' AND has_buttons = TRUE AND message_created_at < $1
      RETURNING message_id, title`,
     [cutoff],
   );
