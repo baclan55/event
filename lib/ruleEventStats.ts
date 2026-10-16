@@ -19,12 +19,12 @@ export async function loadLastHeldByTitle(): Promise<Map<string, string>> {
 }
 
 /** Добавляет lastHeldAt (ISO-строка или null) к строкам с полем title. */
-export function attachLastHeld<T extends { title?: unknown }>(
+export function attachLastHeld<T extends object>(
   rows: T[],
   lastByTitle: Map<string, string>,
 ): (T & { lastHeldAt: string | null })[] {
   return rows.map((row) => ({
     ...row,
-    lastHeldAt: lastByTitle.get(String(row.title ?? '').trim().toLowerCase()) ?? null,
+    lastHeldAt: lastByTitle.get(String((row as { title?: unknown }).title ?? '').trim().toLowerCase()) ?? null,
   }));
 }
