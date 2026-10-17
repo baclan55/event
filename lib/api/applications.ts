@@ -12,6 +12,7 @@ import type { ApiHandler } from './types';
 
 const CLOSED_MESSAGE_MAX = 280;
 const BL_REASON = 'Пользователь находится в ЧС';
+const REJECT_REASON_MAX = 500;
 
 async function releaseCandidate(userId: number | null) {
   if (!userId) return;
@@ -264,17 +265,48 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
     return ok();
   }
   if (key === 'application' && method === 'PUT') {
-    const user = await requiredPerm('applications', { level: 'edit' });
-    if (user instanceof NextResponse) return user;
     const status = String(body.status || '');
     if (!['pending', 'approved', 'rejected'].includes(status)) {
       return jsonError('Некорректный статус.', 400);
     }
+    let actor = await requiredPerm('applications', { level: 'edit' });
+    // Одобренную заявку (кандидата) может отклонить и тот, у кого есть право
+    // редактировать кандидатов — даже без доступа к разделу «Заявки».
+    let viaCandidates = false;
+    if (actor instanceof NextResponse) {
+      if (status !== 'rejected') return actor;
+      const alt = await requiredPerm('candidates', { level: 'edit' });
+      if (alt instanceof NextResponse) return actor;
+      actor = alt;
+      viaCandidates = true;
+    }
+    const user = actor;
     const { rows } = await query<Record<string, unknown>>('SELECT * FROM applications WHERE id=$1', [
       parseId(params.id),
     ]);
     const application = rows[0];
     if (!application) return jsonError('Заявка не найдена.', 404);
+    const previousStatus = String(application.status || '');
+
+    // Отклонение: только с причиной; можно из «на рассмотрении» и из «одобрена».
+    const rejectReason = String(body.reason ?? '').trim();
+    if (status === 'rejected') {
+      if (!['pending', 'approved'].includes(previousStatus)) {
+        return jsonError(
+          previousStatus === 'rejected'
+            ? 'Заявка уже отклонена.'
+            : 'Заявка уже прошла обзвон — отклонить её нельзя.',
+          400,
+        );
+      }
+      if (viaCandidates && previousStatus !== 'approved') {
+        return jsonError('Недостаточно прав для отклонения этой заявки.', 403);
+      }
+      if (!rejectReason) return jsonError('Укажите причину отклонения.', 400);
+      if (rejectReason.length > REJECT_REASON_MAX) {
+        return jsonError(`Причина слишком длинная (максимум ${REJECT_REASON_MAX} символов).`, 400);
+      }
+    }
     let candidateId = (application.candidate_user_id || application.applicant_id) as number | null;
     if (status === 'approved') {
       const hit = await findBlacklistMatch({
@@ -328,7 +360,7 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
       }
       await query(
         'UPDATE applications SET status=$1, reviewed_by=$2, candidate_user_id=NULL, reject_reason=$3 WHERE id=$4',
-        [status, user.id, String(body.reason || ''), parseId(params.id)],
+        [status, user.id, status === 'rejected' ? rejectReason : '', parseId(params.id)],
       );
     }
     await writeAudit({
@@ -336,7 +368,11 @@ export const handleApplications: ApiHandler = async ({ key, params, method, body
       action: `application.${status}`,
       entityType: 'application',
       entityId: params.id,
-      details: { candidateUserId: candidateId },
+      details: {
+        candidateUserId: candidateId,
+        previousStatus,
+        ...(status === 'rejected' ? { reason: rejectReason } : {}),
+      },
     });
     return ok({ status });
   }

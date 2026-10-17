@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ErrorText, matchesSearch, request, SearchBox, type Row } from './shared';
+import { askReason, ErrorText, matchesSearch, request, SearchBox, type Row } from './shared';
 
 type StatusFilter = 'pending' | 'approved' | 'rejected' | 'all';
 
@@ -58,10 +58,18 @@ export function ProfileModerationInteractive() {
   }, []);
 
   async function decide(id: number, status: 'approved' | 'rejected') {
+    let reason: string | null = null;
+    if (status === 'rejected') {
+      reason = await askReason('Укажите причину отклонения заявки на смену игровых данных.', {
+        title: 'Отклонение заявки',
+        confirmLabel: 'Отклонить',
+      });
+      if (!reason) return;
+    }
     try {
       await request('/api/profile/moderation', {
         method: 'PUT',
-        body: JSON.stringify({ id, status }),
+        body: JSON.stringify({ id, status, ...(reason ? { reason } : {}) }),
       });
       await load();
     } catch (err) {

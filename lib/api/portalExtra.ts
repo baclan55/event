@@ -139,6 +139,11 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
       );
       const req = rows.rows[0];
       if (!req || req.status !== 'pending') return jsonError('Заявка не найдена.', 404);
+      const rejectReason = String(body.reason ?? '').trim();
+      if (status === 'rejected') {
+        if (!rejectReason) return jsonError('Укажите причину отклонения.', 400);
+        if (rejectReason.length > 500) return jsonError('Причина слишком длинная (максимум 500 символов).', 400);
+      }
       if (status === 'approved') {
         await query(
           'UPDATE users SET first_name=$1, last_name=$2, static_id=$3, nickname=$1 WHERE id=$4',
@@ -149,14 +154,14 @@ export const handlePortalExtra: ApiHandler = async ({ key, params, method, body,
       await query(
         `UPDATE profile_change_requests
          SET status=$1, reviewed_by=$2, reviewed_at=now(), reject_reason=$3 WHERE id=$4`,
-        [status, user.id, String(body.reason || ''), id],
+        [status, user.id, status === 'rejected' ? rejectReason : '', id],
       );
       await writeAudit({
         actorId: user.id,
         action: `profile.game.${status}`,
         entityType: 'profile_change',
         entityId: id,
-        details: { userId: req.user_id },
+        details: { userId: req.user_id, ...(status === 'rejected' ? { reason: rejectReason } : {}) },
       });
       return ok();
     }

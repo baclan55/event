@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { NavIcon } from '@/components/NavIcons';
 import { DEFAULT_CLOSED_MESSAGE } from '@/lib/auditShared';
-import { askConfirm, Avatar, ErrorText, matchesSearch, request, SearchBox, type Row } from './shared';
+import { askConfirm, askReason, Avatar, ErrorText, matchesSearch, request, SearchBox, type Row } from './shared';
 
 const STATUS_LABEL: Record<string, string> = {
   pending: 'На рассмотрении',
@@ -81,6 +81,21 @@ export function ApplicationsInteractive({
   async function update(id: number, status: string) {
     try { await request(`/api/applications/${id}`, { method: 'PUT', body: JSON.stringify({ status }) }); await reload(); }
     catch (err) { setError((err as Error).message); }
+  }
+  /** Отклонение всегда с причиной. Работает и для уже одобренных заявок. */
+  async function reject(id: number, wasApproved: boolean) {
+    const reason = await askReason(
+      wasApproved
+        ? 'Заявка уже одобрена. После отклонения кандидат будет снят с рассмотрения. Укажите причину.'
+        : 'Укажите причину отклонения заявки.',
+      { title: 'Отклонение заявки', confirmLabel: 'Отклонить', placeholder: 'Например: не подходит по возрасту / онлайну…' },
+    );
+    if (!reason) return;
+    setError('');
+    try {
+      await request(`/api/applications/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'rejected', reason }) });
+      await reload();
+    } catch (err) { setError((err as Error).message); }
   }
   async function call(id: number, passed: boolean) {
     if (!(await askConfirm(passed ? 'Кандидат прошёл обзвон?' : 'Кандидат не прошёл обзвон?', {
@@ -184,7 +199,7 @@ export function ApplicationsInteractive({
         </form>
       )}
       {history && rows.length > 0 && (
-        <div className="rp-legend">Архив одобренных и отклонённых заявок с сайта. Только просмотр.</div>
+        <div className="rp-legend">Архив одобренных и отклонённых заявок с сайта. Одобренную заявку (пока не пройден обзвон) можно отклонить, указав причину.</div>
       )}
       {candidates && rows.length > 0 && <div className="rp-legend">После обзвона кандидат получает роль <b>Mini Event Helper</b> и автоматически попадает в состав либо снимается с рассмотрения.</div>}
       {filtered.map((item) => (
@@ -230,12 +245,18 @@ export function ApplicationsInteractive({
               {item.reviewed_by_nickname ? ` · рассмотрел ${item.reviewed_by_nickname}` : ''}
             </div>
           </div>
+          {history && item.status === 'approved' && (
+            <div className="rule-actions">
+              <button className="btn btn-danger btn-sm" onClick={() => void reject(item.id, true)}>Отклонить</button>
+            </div>
+          )}
           {!history && (
             <div className="rule-actions">
               {candidates ? (
                 <>
                   <button className="btn btn-primary btn-sm" onClick={() => void call(item.id, true)}>Прошёл обзвон</button>
                   <button className="btn btn-danger btn-sm" onClick={() => void call(item.id, false)}>Не прошёл</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => void reject(item.id, true)}>Отклонить заявку</button>
                   <button
                     className="btn btn-ghost btn-sm"
                     disabled={refreshingId === item.id}
@@ -247,7 +268,7 @@ export function ApplicationsInteractive({
               ) : (
                 <>
                   <button className="btn btn-primary btn-sm" onClick={() => void update(item.id, 'approved')}>Одобрить</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => void update(item.id, 'rejected')}>Отклонить</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => void reject(item.id, false)}>Отклонить</button>
                   <button className="icon-btn danger" onClick={() => void remove(item.id)}><NavIcon name="trash" /></button>
                 </>
               )}

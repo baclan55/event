@@ -289,7 +289,7 @@ export function askConfirm(
   });
 }
 
-export function ConfirmHost() {
+function ConfirmDialog() {
   const [state, setState] = useState<ConfirmState | null>(null);
 
   useEffect(() => {
@@ -341,6 +341,109 @@ export function ConfirmHost() {
       </div>
     </div>,
     document.body,
+  );
+}
+
+type ReasonState = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  placeholder: string;
+  maxLength: number;
+  resolve: (value: string | null) => void;
+};
+
+let reasonSetter: ((state: ReasonState | null) => void) | null = null;
+
+/**
+ * Диалог с обязательным текстовым полем (например, причина отклонения).
+ * Возвращает обрезанный по краям текст или null, если пользователь отменил.
+ * Пустую причину подтвердить нельзя.
+ */
+export function askReason(
+  message: string,
+  opts?: { title?: string; confirmLabel?: string; placeholder?: string; maxLength?: number },
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (!reasonSetter) {
+      const typed = window.prompt(message);
+      resolve(typed && typed.trim() ? typed.trim() : null);
+      return;
+    }
+    reasonSetter({
+      title: opts?.title || 'Укажите причину',
+      message,
+      confirmLabel: opts?.confirmLabel || 'Подтвердить',
+      placeholder: opts?.placeholder || 'Причина…',
+      maxLength: opts?.maxLength || 500,
+      resolve,
+    });
+  });
+}
+
+function ReasonDialog() {
+  const [state, setState] = useState<ReasonState | null>(null);
+  const [value, setValue] = useState('');
+
+  useEffect(() => {
+    reasonSetter = (next) => {
+      setValue('');
+      setState(next);
+    };
+    return () => {
+      reasonSetter = null;
+    };
+  }, []);
+
+  const close = useCallback((result: string | null) => {
+    setState((current) => {
+      current?.resolve(result);
+      return null;
+    });
+  }, []);
+
+  if (!state) return null;
+  const trimmed = value.trim();
+  return createPortal(
+    <div className="modal-overlay confirm-overlay" onMouseDown={(event) => event.target === event.currentTarget && close(null)}>
+      <div className="modal-dialog confirm-modal" role="dialog" aria-modal="true" aria-label={state.title}>
+        <h2>{state.title}</h2>
+        <p className="modal-sub">{state.message}</p>
+        <div className="field" style={{ textAlign: 'left' }}>
+          <textarea
+            className="input"
+            rows={3}
+            autoFocus
+            maxLength={state.maxLength}
+            value={value}
+            placeholder={state.placeholder}
+            onChange={(event) => setValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') close(null);
+              if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && trimmed) close(trimmed);
+            }}
+          />
+          <div className="field-hint">Причина обязательна · {value.length}/{state.maxLength}</div>
+        </div>
+        <div className="modal-actions" style={{ justifyContent: 'center' }}>
+          <button type="button" className="btn btn-ghost" onClick={() => close(null)}>Отмена</button>
+          <button type="button" className="btn btn-danger" disabled={!trimmed} onClick={() => close(trimmed)}>
+            {state.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** Монтируется один раз: рисует и askConfirm, и askReason. */
+export function ConfirmHost() {
+  return (
+    <>
+      <ConfirmDialog />
+      <ReasonDialog />
+    </>
   );
 }
 
