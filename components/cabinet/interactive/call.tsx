@@ -15,13 +15,17 @@ import { askConfirm, ErrorText, matchesSearch, Modal, request, SearchBox, Select
 
 type SheetQuestion = { id: number; position: number; category: string; question: string; answer: string };
 type SheetScore = { applicationId: number; sheetQuestionId: number; score: number };
-export type CallSheetData = { questions: SheetQuestion[]; scores: SheetScore[]; bankTotal: number };
+type SheetNote = { applicationId: number; index: number; note: string };
+export type CallSheetData = { questions: SheetQuestion[]; scores: SheetScore[]; notes: SheetNote[]; bankTotal: number };
 
 const SELECTED_KEY = 'call-selected-candidates';
 /** Как часто лист подтягивает чужие изменения (оценки, перемешивание). */
 const POLL_INTERVAL_MS = 3000;
 
 const scoreKey = (applicationId: number, sheetQuestionId: number) => `${applicationId}:${sheetQuestionId}`;
+const noteKey = (applicationId: number, index: number) => `${applicationId}:${index}`;
+/** Пауза после последнего нажатия клавиши, после которой ответ уходит на сервер. */
+const NOTE_SAVE_DELAY_MS = 700;
 const candidateName = (c: Row) => String(c.candidate_nickname || c.nickname_static || c.applicant_name || `#${c.id}`);
 const fmt = (n: number) => n.toLocaleString('ru-RU', { maximumFractionDigits: 1 });
 
@@ -29,7 +33,11 @@ function scoresToMap(list: SheetScore[]): Record<string, number> {
   return Object.fromEntries(list.map((s) => [scoreKey(s.applicationId, s.sheetQuestionId), s.score]));
 }
 
-function sameScores(a: Record<string, number>, b: Record<string, number>) {
+function notesToMap(list: SheetNote[]): Record<string, string> {
+  return Object.fromEntries(list.map((n) => [noteKey(n.applicationId, n.index), n.note]));
+}
+
+function sameMap<T>(a: Record<string, T>, b: Record<string, T>) {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
 }
@@ -79,6 +87,7 @@ export function CallInteractive({
   const [scores, setScores] = useState<Record<string, number>>(() =>
     Object.fromEntries(initialSheet.scores.map((s) => [scoreKey(s.applicationId, s.sheetQuestionId), s.score])),
   );
+  const [notes, setNotes] = useState<Record<string, string>>(() => notesToMap(initialSheet.notes || []));
   const [bankTotal, setBankTotal] = useState(initialSheet.bankTotal);
   const [selected, setSelected] = useState<number[]>(() => (candidates[0] ? [candidates[0].id] : []));
   const [bankOpen, setBankOpen] = useState(false);
@@ -88,6 +97,12 @@ export function CallInteractive({
   // собственной правки или во время неё, устарел и не должен её затирать.
   const pendingRef = useRef(0);
   const mutationRef = useRef(0);
+  // Ответы, которые сейчас печатаются или ещё не сохранены: опрос их не перезаписывает.
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
+  const dirtyNotesRef = useRef(new Map<string, number>());
+  const noteTimersRef = useRef(new Map<string, number>());
+  const noteCounterRef = useRef(0);
 
   // Общий лист: подтягиваем оценки и новый набор вопросов, которые поставили другие.
   useEffect(() => {
@@ -101,7 +116,16 @@ export function CallInteractive({
         const nextQuestions: SheetQuestion[] = data.questions || [];
         const nextScores = scoresToMap(data.scores || []);
         setQuestions((prev) => (JSON.stringify(prev) === JSON.stringify(nextQuestions) ? prev : nextQuestions));
-        setScores((prev) => (sameScores(prev, nextScores) ? prev : nextScores));
+        setScores((prev) => (sameMap(prev, nextScores) ? prev : nextScores));
+        const nextNotes = notesToMap(data.notes || []);
+        setNotes((prev) => {
+          const merged = { ...nextNotes };
+          for (const k of dirtyNotesRef.current.keys()) {
+            if (k in prev) merged[k] = prev[k];
+            else delete merged[k];
+          }
+          return sameMap(prev, merged) ? prev : merged;
+        });
         if (typeof data.bankTotal === 'number') setBankTotal(data.bankTotal);
       } catch {
         /* временная ошибка сети или прав — просто попробуем на следующем тике */
@@ -110,8 +134,10 @@ export function CallInteractive({
     const timer = window.setInterval(() => void poll(), POLL_INTERVAL_MS);
     const onVisible = () => { if (!document.hidden) void poll(); };
     document.addEventListener('visibilitychange', onVisible);
+    const noteTimers = noteTimersRef.current;
     return () => {
       stopped = true;
+      noteTimers.forEach((t) => window.clearTimeout(t));
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
@@ -211,6 +237,43 @@ export function CallInteractive({
     }
   }
 
+  async function flushNote(applicationId: number, index: number) {
+    const key = noteKey(applicationId, index);
+    const version = dirtyNotesRef.current.get(key);
+    if (version === undefined) return;
+    const timer = noteTimersRef.current.get(key);
+    if (timer !== undefined) window.clearTimeout(timer);
+    noteTimersRef.current.delete(key);
+    pendingRef.current += 1;
+    mutationRef.current += 1;
+    try {
+      await request('/api/call/notes', {
+        method: 'PUT',
+        body: JSON.stringify({ applicationId, index, note: notesRef.current[key] ?? '' }),
+      });
+      // Если за время запроса текст изменился — запись остаётся «грязной» и уйдёт ещё раз.
+      if (dirtyNotesRef.current.get(key) === version) dirtyNotesRef.current.delete(key);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      pendingRef.current -= 1;
+      mutationRef.current += 1;
+    }
+  }
+
+  function changeNote(applicationId: number, index: number, text: string) {
+    const key = noteKey(applicationId, index);
+    noteCounterRef.current += 1;
+    dirtyNotesRef.current.set(key, noteCounterRef.current);
+    setNotes((prev) => ({ ...prev, [key]: text }));
+    const previousTimer = noteTimersRef.current.get(key);
+    if (previousTimer !== undefined) window.clearTimeout(previousTimer);
+    noteTimersRef.current.set(
+      key,
+      window.setTimeout(() => void flushNote(applicationId, index), NOTE_SAVE_DELAY_MS),
+    );
+  }
+
   const candidateCols = Math.max(columns.length, 1);
   const emptyHint = bankTotal === 0
     ? 'База вопросов пуста — добавьте вопросы через кнопку «База вопросов».'
@@ -285,13 +348,23 @@ export function CallInteractive({
             {CALL_FIXED_QUESTIONS.map((text, index) => (
               <tr key={text}>
                 <td colSpan={2} className="call-fixed">{text}</td>
-                {index === 0 && (
-                  <td
-                    colSpan={candidateCols}
-                    rowSpan={CALL_FIXED_QUESTIONS.length}
-                    className="call-fixed-side"
-                  >
-                    Вопросы без оценки
+                {columns.length ? columns.map((c) => (
+                  <td key={c.id} className="call-note-cell">
+                    <textarea
+                      className="call-note-input"
+                      rows={2}
+                      maxLength={2000}
+                      readOnly={!canEdit}
+                      placeholder="Ответ кандидата…"
+                      aria-label={`${candidateName(c)}: ${text}`}
+                      value={notes[noteKey(c.id, index)] ?? ''}
+                      onChange={(e) => changeNote(c.id, index, e.target.value)}
+                      onBlur={() => void flushNote(c.id, index)}
+                    />
+                  </td>
+                )) : index === 0 && (
+                  <td rowSpan={CALL_FIXED_QUESTIONS.length} className="call-fixed-side">
+                    Выберите кандидата
                   </td>
                 )}
               </tr>

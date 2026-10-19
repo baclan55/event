@@ -175,3 +175,8 @@ a.stats-rank-title:hover{color:var(--accent-light)}
 .call-category-add{display:flex;gap:10px;align-items:center;margin-bottom:14px}
 .call-category-add .input{flex:1;min-width:0}
 .call-live{margin-left:12px;font-size:11.5px;color:var(--green);opacity:.85;white-space:nowrap}
+.call-note-cell{padding:6px 8px !important;background:var(--bg-input)}
+.call-note-input{display:block;width:100%;min-height:52px;resize:vertical;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text-heading);font:inherit;font-size:13px;line-height:1.4;text-align:left}
+.call-note-input::placeholder{color:var(--text-faint)}
+.call-note-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.call-note-input[readonly]{opacity:.8}

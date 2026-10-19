@@ -3,7 +3,7 @@ import { query } from '@/lib/db';
 import { jsonError } from '@/lib/auth';
 import { writeAudit } from '@/lib/audit';
 import { userHasPermission } from '@/lib/roleAccess';
-import { CALL_QUESTIONS_COUNT, isCallScore } from '@/lib/callTemplate';
+import { CALL_FIXED_QUESTIONS, CALL_QUESTIONS_COUNT, isCallScore } from '@/lib/callTemplate';
 import { loadCallSheet } from '@/lib/callSheet';
 import { ok, parseId, requiredPerm } from './helpers';
 import type { ApiHandler } from './types';
@@ -85,6 +85,36 @@ export const handleCall: ApiHandler = async ({ key, params, method, body }) => {
        ON CONFLICT (sheet_question_id, application_id)
        DO UPDATE SET score=EXCLUDED.score, updated_at=now()`,
       [sheetQuestionId, applicationId, score],
+    );
+    return ok();
+  }
+
+  // Ответ кандидата на постоянный вопрос (текст). Пустой текст удаляет запись.
+  if (key === 'call-note' && method === 'PUT') {
+    const applicationId = Number(body.applicationId);
+    const index = Number(body.index);
+    if (
+      !Number.isInteger(applicationId)
+      || !Number.isInteger(index)
+      || index < 0
+      || index >= CALL_FIXED_QUESTIONS.length
+    ) {
+      return jsonError('Некорректные данные.', 400);
+    }
+    const note = String(body.note ?? '');
+    if (note.length > ANSWER_MAX) return jsonError(`Ответ слишком длинный (максимум ${ANSWER_MAX} символов).`, 400);
+    const app = await query(`SELECT 1 FROM applications WHERE id=$1 AND status='approved'`, [applicationId]);
+    if (!app.rows[0]) return jsonError('Кандидат не найден.', 404);
+    if (!note.trim()) {
+      await query('DELETE FROM call_notes WHERE application_id=$1 AND question_index=$2', [applicationId, index]);
+      return ok();
+    }
+    await query(
+      `INSERT INTO call_notes(application_id, question_index, note)
+       VALUES($1,$2,$3)
+       ON CONFLICT (application_id, question_index)
+       DO UPDATE SET note=EXCLUDED.note, updated_at=now()`,
+      [applicationId, index, note],
     );
     return ok();
   }

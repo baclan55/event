@@ -730,3 +730,12 @@ CREATE TABLE IF NOT EXISTS call_scores (
   PRIMARY KEY (sheet_question_id, application_id)
 );
 CREATE INDEX IF NOT EXISTS idx_call_scores_application ON call_scores(application_id);
+
+-- Ответы кандидатов на постоянные вопросы обзвона (индекс вопроса в CALL_FIXED_QUESTIONS)
+CREATE TABLE IF NOT EXISTS call_notes (
+  application_id INTEGER NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+  question_index INTEGER NOT NULL CHECK (question_index >= 0),
+  note           TEXT NOT NULL,
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (application_id, question_index)
+);
