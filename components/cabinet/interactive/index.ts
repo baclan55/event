@@ -4,6 +4,7 @@ export { ProfileInteractive, ReprimandsInteractive, RosterInteractive } from './
 export { ContentInteractive, OwnerInteractive, RulesInteractive } from './owner-content-rules';
 export { VacationsInteractive } from './vacations';
 export { ApplicationsInteractive } from './applications';
+export { CallInteractive } from './call';
 export { RolesInteractive } from './roles';
 export { BlacklistInteractive } from './blacklist';
 export { AchievementsInteractive } from './achievements';

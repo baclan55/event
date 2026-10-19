@@ -13,6 +13,7 @@ import { handleVacations } from './api/vacations';
 import { handleGmp } from './api/gmp';
 import { handlePayouts } from './api/payouts';
 import { handleProps } from './api/props';
+import { handleCall } from './api/call';
 
 const handlers: ApiHandler[] = [
   handleSystem,
@@ -26,6 +27,7 @@ const handlers: ApiHandler[] = [
   handleGmp,
   handlePayouts,
   handleProps,
+  handleCall,
 ];
 
 export async function handle(

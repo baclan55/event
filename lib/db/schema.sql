@@ -677,3 +677,56 @@ CREATE TABLE IF NOT EXISTS payout_log (
 );
 CREATE INDEX IF NOT EXISTS idx_payout_log_week ON payout_log(week_id, created_at DESC);
 
+
+-- Обзвон кандидатов: база вопросов, листы обзвона и оценки
+CREATE TABLE IF NOT EXISTS call_categories (
+  id         SERIAL PRIMARY KEY,
+  name       TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_call_categories_name ON call_categories(lower(name));
+
+CREATE TABLE IF NOT EXISTS call_questions (
+  id          SERIAL PRIMARY KEY,
+  category_id INTEGER REFERENCES call_categories(id) ON DELETE SET NULL,
+  question    TEXT NOT NULL,
+  answer      TEXT NOT NULL DEFAULT '',
+  created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_call_questions_category ON call_questions(category_id);
+
+-- Общий лист обзвона: один на всех, у кого есть доступ. Вопросы копируются «снимком»,
+-- поэтому правки базы не меняют уже начатый обзвон.
+CREATE TABLE IF NOT EXISTS call_sheet_questions (
+  id            SERIAL PRIMARY KEY,
+  position      INTEGER NOT NULL,
+  question_id   INTEGER REFERENCES call_questions(id) ON DELETE SET NULL,
+  category_name TEXT NOT NULL DEFAULT '',
+  question      TEXT NOT NULL,
+  answer        TEXT NOT NULL DEFAULT '',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Раньше лист был личным (user_id): переводим на общий, старые личные листы сбрасываются.
+DO $call$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'call_sheet_questions' AND column_name = 'user_id'
+  ) THEN
+    DELETE FROM call_sheet_questions;
+    ALTER TABLE call_sheet_questions DROP COLUMN user_id;
+  END IF;
+END
+$call$;
+CREATE INDEX IF NOT EXISTS idx_call_sheet_questions_position ON call_sheet_questions(position);
+
+CREATE TABLE IF NOT EXISTS call_scores (
+  sheet_question_id INTEGER NOT NULL REFERENCES call_sheet_questions(id) ON DELETE CASCADE,
+  application_id    INTEGER NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+  score             NUMERIC(2, 1) NOT NULL CHECK (score IN (0, 0.5, 1)),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (sheet_question_id, application_id)
+);
+CREATE INDEX IF NOT EXISTS idx_call_scores_application ON call_scores(application_id);

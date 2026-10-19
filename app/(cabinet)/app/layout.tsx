@@ -73,6 +73,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
     ['/app/applications', 'applications'],
     ['/app/application-history', 'application_history'],
     ['/app/candidates', 'candidates'],
+    ['/app/call', 'candidates'],
     ['/app/events', 'manage_events'],
     ['/app/roles', 'manage_roles'],
     ['/app/blacklist', 'manage_blacklist'],
@@ -136,6 +137,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
         ['applications', 'Заявки', userHasPermission(roleCtx, 'applications')],
         ['application-history', 'История заявок', userHasPermission(roleCtx, 'application_history')],
         ['candidates', 'Кандидаты', userHasPermission(roleCtx, 'candidates')],
+        ['call', 'Обзвон', userHasPermission(roleCtx, 'candidates')],
       ],
     },
     {

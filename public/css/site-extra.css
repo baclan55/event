@@ -124,3 +124,54 @@ a.stats-rank-title:hover{color:var(--accent-light)}
   .stats-custom-range{flex-direction:column;align-items:stretch}
   .stats-period-row{align-items:flex-start}
 }
+
+/* --- Обзвон: лист с вопросами, оценками кандидатов и база вопросов --- */
+.call-picker{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:14px}
+.call-picker-label{font-size:12.5px;color:var(--text-muted);margin-right:2px}
+.call-picker-empty{font-size:12.5px;color:var(--text-faint)}
+.call-chip{padding:6px 12px;border-radius:var(--radius-pill);border:1px solid var(--border);background:var(--bg-card);color:var(--text-body);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+.call-chip:hover{background:var(--bg-hover);border-color:var(--border-strong)}
+.call-chip.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-light)}
+
+.call-sheet-wrap{overflow-x:auto;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-card)}
+.call-sheet{width:100%;min-width:calc(560px + var(--call-cols, 1) * 200px);border-collapse:collapse;table-layout:fixed}
+.call-sheet col.call-col-question{width:34%}
+.call-sheet col.call-col-answer{width:26%}
+.call-sheet col.call-col-score{width:200px}
+.call-sheet td,.call-sheet th{border:1px solid var(--border-strong);padding:11px 14px;vertical-align:middle;text-align:center;font-size:13px;line-height:1.45;color:var(--text-body);overflow-wrap:anywhere}
+.call-greeting,.call-note{background:rgba(52,211,153,.14);color:var(--text-heading);font-weight:600}
+.call-candidate{background:var(--accent-soft);color:var(--text-heading);font-weight:400}
+.call-candidate-name{font-size:15px;font-weight:700;margin-bottom:8px}
+.call-candidate-empty{color:var(--text-muted);font-weight:500}
+.call-stats{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text-muted)}
+.call-stats b{color:var(--text-heading)}
+.call-fixed{background:var(--bg-card-2);color:var(--text-heading)}
+.call-fixed-side{background:var(--bg-input);color:var(--text-faint);font-size:11.5px;text-transform:uppercase;letter-spacing:.08em}
+.call-head th{background:var(--accent-soft);color:var(--accent-light);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.call-row .call-question,.call-row .call-answer{text-align:left;white-space:pre-wrap}
+.call-row .call-question{color:var(--text-heading)}
+.call-row:hover td{background:var(--bg-hover)}
+.call-category{display:inline-block;margin:0 8px 4px 0;white-space:normal}
+.call-score-cell{background:var(--bg-input)}
+.call-score-none{color:var(--text-faint)}
+.call-empty{padding:30px 16px;color:var(--text-muted);background:var(--bg-card-2)}
+
+.call-score{display:inline-flex;gap:6px}
+.call-score-btn{min-width:46px;padding:6px 10px;border-radius:9px;border:1px solid var(--border-strong);background:var(--bg-card);color:var(--text-muted);font:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+.call-score-btn:hover:not(:disabled){background:var(--bg-hover);color:var(--text-heading)}
+.call-score-btn:disabled{opacity:.55;cursor:default}
+.call-score-btn.active.call-score-full{background:var(--green-soft);border-color:var(--green);color:var(--green)}
+.call-score-btn.active.call-score-half{background:var(--amber-soft);border-color:var(--amber);color:var(--amber)}
+.call-score-btn.active.call-score-zero{background:var(--red-soft);border-color:var(--red);color:var(--red)}
+
+.call-bank-toolbar{margin-bottom:14px}
+.call-bank-filter{min-width:210px}
+.call-bank-item{display:flex;gap:14px;align-items:flex-start;justify-content:space-between;padding:14px 16px;margin-bottom:10px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-card-2)}
+.call-bank-body{flex:1;min-width:0}
+.call-bank-meta{margin-bottom:6px}
+.call-bank-question{font-weight:700;color:var(--text-heading);white-space:pre-wrap;overflow-wrap:anywhere}
+.call-bank-answer{margin-top:4px;font-size:13px;color:var(--text-muted);white-space:pre-wrap;overflow-wrap:anywhere}
+.call-bank-answer b{color:var(--text-body)}
+.call-category-add{display:flex;gap:10px;align-items:center;margin-bottom:14px}
+.call-category-add .input{flex:1;min-width:0}
+.call-live{margin-left:12px;font-size:11.5px;color:var(--green);opacity:.85;white-space:nowrap}
